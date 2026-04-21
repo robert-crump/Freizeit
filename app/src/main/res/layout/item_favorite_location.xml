@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/favoriteCard"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    style="@style/CardViewStyle"
+    android:layout_marginVertical="4dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
+
+        <!-- Stern-Icon -->
+        <ImageView
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_star"
+            android:contentDescription="Favorite Location" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="12dp">
+
+            <!-- Zeile 1: Name (groß, fett) -->
+            <TextView
+                android:id="@+id/favoriteName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textStyle="bold" />
+
+            <!-- Zeile 2: Straße + Hausnummer (klein, grau) -->
+            <TextView
+                android:id="@+id/favoriteStreet"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="2dp" />
+
+            <!-- Zeile 3: PLZ + Stadt (klein, grau) -->
+            <TextView
+                android:id="@+id/favoriteCity"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="12sp"
+                android:textColor="@color/text_secondary"
+                android:layout_marginTop="2dp" />
+
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/editButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_edit"
+            android:contentDescription="@string/edit"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="@color/turquoise_primary" />
+
+        <ImageButton
+            android:id="@+id/deleteButton"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_delete"
+            android:contentDescription="@string/delete"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="@color/red" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

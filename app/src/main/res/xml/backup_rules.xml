@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 
+    Exclude the database from auto-backup since we have our own export/import
+    -->
+    <exclude domain="database" path="freizeit_database" />
+    
+    <!--
+    Include shared preferences if needed
+    <include domain="sharedpref" path="."/>
+    -->
+</full-backup-content>

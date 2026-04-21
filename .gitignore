@@ -1,0 +1,46 @@
+## Android Studio
+.idea/
+*.iml
+local.properties
+
+## Gradle
+.gradle/
+build/
+**/build/
+
+## Compiled files
+*.class
+*.dex
+
+## APK / AAB
+*.apk
+*.ap_
+*.aab
+
+## Generated
+gen/
+out/
+bin/
+release/
+
+## Signing
+*.jks
+*.keystore
+
+## Claude Code
+.claude/
+
+## Google Services
+google-services.json
+
+## NDK
+obj/
+.externalNativeBuild/
+.cxx/
+
+## Captures
+captures/
+
+## OS
+.DS_Store
+Thumbs.db
