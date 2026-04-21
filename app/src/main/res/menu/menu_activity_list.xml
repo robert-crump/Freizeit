@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_toggle_view"
+        android:icon="@drawable/ic_map_view"
+        android:title="@string/menu_map_view"
+        app:iconTint="@color/white"
+        app:showAsAction="ifRoom" />
+
+</menu>

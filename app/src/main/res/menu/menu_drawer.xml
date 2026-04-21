@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/nav_all"
+        android:icon="@drawable/ic_all"
+        android:title="@string/category_all" />
+
+    <item
+        android:id="@+id/nav_walk"
+        android:icon="@drawable/ic_walk_category"
+        android:title="@string/category_walk" />
+
+    <item
+        android:id="@+id/nav_cafe"
+        android:icon="@drawable/ic_cafe"
+        android:title="@string/category_cafe" />
+
+    <item
+        android:id="@+id/nav_restaurant"
+        android:icon="@drawable/ic_restaurant"
+        android:title="@string/category_restaurant" />
+
+    <item
+        android:id="@+id/nav_playground"
+        android:icon="@drawable/ic_playground"
+        android:title="@string/category_playground" />
+
+    <item
+        android:id="@+id/nav_park"
+        android:icon="@drawable/ic_park"
+        android:title="@string/category_park" />
+
+    <item
+        android:id="@+id/nav_jogging"
+        android:icon="@drawable/ic_jogging"
+        android:title="@string/category_jogging" />
+
+    <item
+        android:id="@+id/nav_cycling"
+        android:icon="@drawable/ic_cycling"
+        android:title="@string/category_cycling" />
+
+</menu>
