@@ -26,11 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
+import com.example.freizeit.ui.common.categoryDisplayName
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import java.util.Locale
 
 @Composable
 fun SettingsScreen(
@@ -120,7 +120,7 @@ private fun ImportSummaryCard(summary: PoiSummary?) {
             summary.categoryCounts.forEach { entry ->
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = displayCategory(entry.category),
+                        text = categoryDisplayName(entry.category),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -149,7 +149,3 @@ private fun formatTimestamp(epochMillis: Long): String =
     DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
         .withZone(ZoneId.systemDefault())
         .format(Instant.ofEpochMilli(epochMillis))
-
-private fun displayCategory(category: String): String =
-    category.replace('_', ' ')
-        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }

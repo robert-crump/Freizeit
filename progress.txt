@@ -48,3 +48,32 @@
   import wants (full-row replace).
 - Device still disconnected; on-device SAF-picker flow untested. Build + full test
   suite green.
+
+## 2026-07-05 — Issue #4: Explore (map + filterable list + place detail sheet)
+
+- Carried-over device debt from #2/#3 partially cleared: phone reconnected; APK
+  installs, launches, three tabs render (uiautomator dump), freizeit.db created at
+  startup. Aborted deeper UI driving BOTH times — the owner was actively using the
+  phone (my taps landed on their launcher once; backed out immediately). Rule for
+  future cycles: check mCurrentFocus + screen state before injecting input, abort
+  on any collision.
+- Explore implementation:
+  - PoiDao.observeAll(); ExploreViewModel combines POIs + category selection +
+    location on Dispatchers.Default; filterAndSort() is a pure top-level function
+    (unit-tested): selected categories only; nearest-first with location, name
+    sort (unnamed last) without.
+  - osmdroid 6.1.18 (Compose AndroidView interop): one SimpleFastPointOverlay per
+    category (28k POIs total → MAXIMUM_OPTIMIZATION above 5k points), category
+    colors from shared ui/common/CategoryUi.kt, click → detail sheet. Lifecycle
+    wired via LifecycleEventObserver; fallback center Cologne, else last known
+    location (LocationHelper, plain LocationManager, no Play Services).
+  - Map/List segmented toggle; FilterChips filter both; LazyColumn list with
+    distance labels.
+  - PlaceDetailSheet (ModalBottomSheet): name/category dot/missing-from-OSM badge,
+    distance, address line, opening hours; commented slot for #6 verdict buttons.
+  - Location permission requested on first Explore entry; everything degrades
+    gracefully without it (name sort, no distances).
+- Tests: 25 total green (new: GeoDistanceTest, FilterAndSortTest).
+- Pushed data/pois.json to the phone's Downloads for the manual import test.
+- NOT verified on device (owner using phone): map rendering/pan-zoom performance,
+  marker taps, SAF import flow. Left a 30-second verification recipe on issue #4.

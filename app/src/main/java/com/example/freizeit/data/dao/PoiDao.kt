@@ -23,6 +23,9 @@ interface PoiDao {
     @Query("DELETE FROM poi WHERE missingFromOsm = 1 AND id NOT IN (SELECT placeId FROM verdict)")
     suspend fun deleteUnverdictedMissing()
 
+    @Query("SELECT * FROM poi")
+    fun observeAll(): Flow<List<Poi>>
+
     @Query("SELECT category, COUNT(*) as count FROM poi GROUP BY category ORDER BY category")
     fun categoryCounts(): Flow<List<CategoryCount>>
 

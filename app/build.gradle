@@ -73,6 +73,9 @@ dependencies {
     // POI file parsing
     implementation 'com.google.code.gson:gson:2.10.1'
 
+    // Map (OpenStreetMap)
+    implementation 'org.osmdroid:osmdroid-android:6.1.18'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.11.1'

@@ -4,7 +4,14 @@
     <string name="tab_explore">Explore</string>
     <string name="tab_settings">Settings</string>
     <string name="placeholder_home">Suggestions will appear here.</string>
-    <string name="placeholder_explore">Map and place list will appear here.</string>
+    <!-- Explore -->
+    <string name="explore_view_map">Map</string>
+    <string name="explore_view_list">List</string>
+    <string name="explore_empty">No places yet. Import a POI file in Settings.</string>
+    <string name="explore_unnamed">Unnamed %1$s</string>
+    <string name="detail_no_longer_in_osm">No longer in OSM</string>
+    <string name="detail_opening_hours">Opening hours: %1$s</string>
+    <string name="detail_distance">%1$s away</string>
     <!-- Settings: POI import -->
     <string name="settings_poi_section">Place data</string>
     <string name="settings_import_button">Import POI file</string>
