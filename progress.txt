@@ -77,3 +77,12 @@
 - Pushed data/pois.json to the phone's Downloads for the manual import test.
 - NOT verified on device (owner using phone): map rendering/pan-zoom performance,
   marker taps, SAF import flow. Left a 30-second verification recipe on issue #4.
+
+## 2026-07-05 — Hotfix: Settings crashed on first import (reported by Robert)
+
+- Cause: return@Column early-return in ImportSummaryCard's empty state; when the
+  summary flow emitted after the first successful import, the branch switch
+  corrupted the composer group stack → IndexOutOfBoundsException at Stack.pop.
+- Fix (d87b81a): restructured as if/else; grep confirmed no other return@ inside
+  composables. Rule: no early returns inside composable lambdas.
+- Fixed APK installed on the phone; import retry pending Robert.
