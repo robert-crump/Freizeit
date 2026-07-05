@@ -1,0 +1,23 @@
+# Freizeit v2 progress log
+
+## 2026-07-05 — Issue #2: v2 scaffold (Compose app skeleton with three-tab navigation)
+
+- Created `v2` branch for the in-place rewrite; v1 preserved in git history on `main`.
+- Restored the missing Gradle wrapper (gradlew, gradlew.bat, gradle-wrapper.jar) for Gradle 8.5.
+- Removed all v1 View-based sources: Kotlin activities/adapters/util, XML layouts, menus,
+  drawables, old themes/colors. Kept launcher icons, backup rules, and app_name.
+- Rewrote app/build.gradle: single-module Compose + Material 3 app, minSdk 26, targetSdk 34,
+  Kotlin 1.9.22, Compose BOM 2024.02.02, navigation-compose, Room 2.6.1 (KSP).
+- New skeleton under com.example.freizeit:
+  - FreizeitApplication + di/AppContainer (manual DI, no Hilt); DB warmed at startup on IO.
+  - data/FreizeitDatabase (Room v1) with minimal Poi seed entity (issue #3 will evolve it).
+  - ui/MainActivity (edge-to-edge) + ui/FreizeitApp: Scaffold with Material 3 NavigationBar,
+    NavHost with three destinations (home/explore/settings), state saved/restored per tab.
+  - ui/theme: Material 3 dynamic color on Android 12+, green fallback palette, dark theme
+    via isSystemInDarkTheme.
+  - Placeholder screens: HomeScreen, ExploreScreen, SettingsScreen.
+- Tests: FreizeitDestinationTest (routes, uniqueness, start destination) — passing.
+- Build: `gradlew assembleDebug testDebugUnitTest` → BUILD SUCCESSFUL (JBR 21).
+- Device verification: physical device (55241FDCH0007C) was attached at session start but
+  disconnected before install; emulator not available (no system images installed).
+  APK assembled cleanly; on-device smoke test pending device reconnection.
