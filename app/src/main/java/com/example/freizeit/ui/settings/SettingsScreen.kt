@@ -95,51 +95,53 @@ fun SettingsScreen(
 
 @Composable
 private fun ImportSummaryCard(summary: PoiSummary?) {
+    // No early returns inside composable lambdas: switching branches across
+    // recompositions corrupts the composer's group stack (Stack.pop IOOBE).
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            if (summary == null || summary.importInfo == null) {
+            val info = summary?.importInfo
+            if (info == null) {
                 Text(
                     text = stringResource(R.string.settings_no_import),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                return@Column
-            }
-
-            Text(
-                text = stringResource(
-                    R.string.settings_last_import,
-                    formatTimestamp(summary.importInfo.importedAt)
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(modifier = Modifier.size(4.dp))
-            summary.categoryCounts.forEach { entry ->
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = categoryDisplayName(entry.category),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        text = "%,d".format(entry.count),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-            if (summary.missingCount > 0) {
-                Spacer(modifier = Modifier.size(4.dp))
+            } else {
                 Text(
                     text = stringResource(
-                        R.string.settings_missing_flagged,
-                        summary.missingCount
+                        R.string.settings_last_import,
+                        formatTimestamp(info.importedAt)
                     ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    style = MaterialTheme.typography.bodyMedium
                 )
+                Spacer(modifier = Modifier.size(4.dp))
+                summary.categoryCounts.forEach { entry ->
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = categoryDisplayName(entry.category),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "%,d".format(entry.count),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+                if (summary.missingCount > 0) {
+                    Spacer(modifier = Modifier.size(4.dp))
+                    Text(
+                        text = stringResource(
+                            R.string.settings_missing_flagged,
+                            summary.missingCount
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
