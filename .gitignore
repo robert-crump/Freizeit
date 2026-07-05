@@ -44,3 +44,6 @@ captures/
 ## OS
 .DS_Store
 Thumbs.db
+
+## Generated POI data (tools/poi_extraction — regenerate on demand)
+data/pois.json
