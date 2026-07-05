@@ -41,6 +41,12 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.10'
     }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -64,8 +70,14 @@ dependencies {
     implementation "androidx.room:room-ktx:$room_version"
     ksp "androidx.room:room-compiler:$room_version"
 
+    // POI file parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
+    testImplementation 'androidx.test:core-ktx:1.5.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation platform('androidx.compose:compose-bom:2024.02.02')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'

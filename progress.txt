@@ -21,3 +21,30 @@
 - Device verification: physical device (55241FDCH0007C) was attached at session start but
   disconnected before install; emulator not available (no system images installed).
   APK assembled cleanly; on-device smoke test pending device reconnection.
+
+## 2026-07-05 — Issue #3: POI import end-to-end (extraction file → Room, keep+flag)
+
+- Schema (still Room v1 — no installed devices exist, so no migration needed):
+  - Poi evolved: String id ("node/123") PK, category, lat/lon, optional
+    name/opening_hours/address fields, missingFromOsm flag.
+  - Verdict table added now (storage/UI lands in #6) because the import's keep+flag
+    rule depends on it; snapshots name/coords/category, deliberately no FK to poi.
+  - ImportInfo single-row table (importedAt, fileGeneratedAt); per-category counts
+    are queried live (GROUP BY), not stored.
+- PoiJsonParser (Gson): strict validation of the tools/poi_extraction format;
+  whole file parses before any DB write.
+- PoiRepository.importFrom(uri) in one transaction:
+  markAllMissing → upsert file contents (clears flag) → delete missing-without-verdict.
+  Malformed/unreadable file throws PoiParseException, database untouched.
+- Settings screen: SAF file picker (OpenDocument), import progress/success/error
+  states, summary card with per-category counts, last-import timestamp, and
+  kept-but-missing count. SettingsViewModel with manual DI factory.
+- Tests (17 total, all green): parser unit tests + Robolectric in-memory-Room tests
+  covering all five acceptance criteria (all categories import, idempotent re-import,
+  unverdicted vanished place dropped, verdicted one kept+flagged and un-flagged on
+  return, malformed file leaves DB untouched).
+- Gotcha: Room @Upsert breaks under Robolectric's legacy SQLite shadow (Windows) —
+  switched DAOs to @Insert(onConflict = REPLACE), which is also the semantics the
+  import wants (full-row replace).
+- Device still disconnected; on-device SAF-picker flow untested. Build + full test
+  suite green.
