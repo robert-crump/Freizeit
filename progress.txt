@@ -230,3 +230,48 @@
 - Not verified on device: the address-geocoding path depends on the real
   platform Geocoder (Robolectric can't exercise it), and the 2→3 migration
   needs a run over a real device database like #6's did.
+
+## 2026-07-06 — Issue #7: Override chips — time budget and who's along re-rank the cards
+
+- Both engine hooks the issue depends on already existed from #5/#6:
+  `SuggestionContext.timeBudgetMinutes` drives the reachability hard filter
+  (2×bike + 30 min stay > budget) and `kidsAlong` drives `categoryWeight()`
+  (playgrounds ×0.1 when adults-only). The 22-scenario fixture already had
+  passing coverage for both ("one hour budget…", "all day budget…",
+  "adults only…") — nothing to build there, just wiring + the missing
+  reason-line piece.
+- SuggestionEngine.evaluate(): added the one genuinely new piece — override
+  reason lines ("quick outing" / "you've got all day" / "adults-only pick")
+  appended when the context differs from the 3h/kids-along defaults, so the
+  card explains *why* it's on the list when a chip is active. Two new
+  named constants (SHORT/LONG_TIME_BUDGET_MINUTES = 60/480) match the chip's
+  three stops (1h / 3h / all day) and the values already used by the #5
+  scenario tests.
+- HomeViewModel: two new transient `MutableStateFlow`s (`timeBudgetMinutes`,
+  `kidsAlong`) — process-scoped only, same pattern as ExploreViewModel's
+  `selectedCategory`/`lovedOnly` and Home's own `rerolledIds`, so state
+  resets to defaults on next app open by construction (no persistence
+  layer touched, per the acceptance criteria). The existing 5-flow combine
+  was already at the stdlib arity limit (per #8's note), so `location` was
+  folded into a new 3-flow `locationAndOverrides = combine(location,
+  timeBudgetMinutes, kidsAlong)` feeding the outer combine in the same slot
+  `location` used to occupy — outer combine stays at 5 args.
+- HomeScreen: new `OverrideChipsRow` — two Material3 FilterChips ("1 h/3 h/
+  All day" cycling on tap, "Kids along"/"Adults only" toggling on tap),
+  placed above the suggestion cards, below the anchor-name line. `selected`
+  reflects "this chip is not at its default" so an active override is
+  visually distinct without needing a third visual state.
+- Tests: 98 total green (was 93). New: 5 SuggestionScenariosTest cases for
+  the override reason lines (adults-only claim/no-claim, quick-outing/
+  all-day/no-claim) — hit one bug in my own test on the first run: a
+  substring check for "all day" collided with the pre-existing "dry all
+  day" weather reason, fixed to check the full "you've got all day" phrase.
+- No HomeViewModel-level test added (no HomeViewModelTest file exists in
+  this codebase yet — Home's ViewModel tests to date only cover pure
+  top-level functions like isReadyForBanner/nearestFavoriteWithin extracted
+  out of it); chip wiring is straightforward StateFlow → SuggestionContext
+  plumbing already exercised at the engine level.
+- Not verified on device: the two chips' tap-to-cycle interaction and the
+  "resets on next app open" behavior are structurally guaranteed (plain
+  ViewModel field, no persistence) but untested by an actual app restart
+  on Robert's phone.

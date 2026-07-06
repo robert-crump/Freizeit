@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +38,7 @@ import com.example.freizeit.R
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.suggestion.Suggestion
+import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.explore.CategoryDot
@@ -95,6 +97,13 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+
+        OverrideChipsRow(
+            timeBudgetMinutes = state.timeBudgetMinutes,
+            kidsAlong = state.kidsAlong,
+            onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
+            onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
+        )
 
         if (state.isLoading) {
             CenteredLoading()
@@ -216,6 +225,51 @@ private fun WeatherStrip(weather: WeatherSnapshot?, modifier: Modifier = Modifie
             }
         }
     }
+}
+
+/** Two tap-to-cycle chips (issue #7): time budget and who's along, both optional overrides. */
+@Composable
+private fun OverrideChipsRow(
+    timeBudgetMinutes: Int,
+    kidsAlong: Boolean,
+    onTimeBudgetClick: () -> Unit,
+    onKidsAlongClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = timeBudgetMinutes != SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES,
+            onClick = onTimeBudgetClick,
+            label = { Text(stringResource(timeBudgetLabelRes(timeBudgetMinutes))) }
+        )
+        FilterChip(
+            selected = !kidsAlong,
+            onClick = onKidsAlongClick,
+            label = {
+                Text(
+                    stringResource(
+                        if (kidsAlong) R.string.home_who_kids else R.string.home_who_adults
+                    )
+                )
+            }
+        )
+    }
+}
+
+private fun timeBudgetLabelRes(minutes: Int): Int = when {
+    minutes <= SuggestionContext.SHORT_TIME_BUDGET_MINUTES -> R.string.home_time_budget_short
+    minutes >= SuggestionContext.LONG_TIME_BUDGET_MINUTES -> R.string.home_time_budget_long
+    else -> R.string.home_time_budget_default
+}
+
+/** 1 h → 3 h → all day → 1 h. */
+private fun nextTimeBudget(current: Int): Int = when {
+    current <= SuggestionContext.SHORT_TIME_BUDGET_MINUTES -> SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES
+    current >= SuggestionContext.LONG_TIME_BUDGET_MINUTES -> SuggestionContext.SHORT_TIME_BUDGET_MINUTES
+    else -> SuggestionContext.LONG_TIME_BUDGET_MINUTES
 }
 
 @Composable

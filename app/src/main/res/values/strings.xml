@@ -13,6 +13,11 @@
     <string name="home_visit_prompt">Were you at %1$s?</string>
     <string name="home_visit_didnt_go">Didn\'t go</string>
     <string name="home_near_favorite">Near %1$s</string>
+    <string name="home_time_budget_short">1 h</string>
+    <string name="home_time_budget_default">3 h</string>
+    <string name="home_time_budget_long">All day</string>
+    <string name="home_who_kids">Kids along</string>
+    <string name="home_who_adults">Adults only</string>
     <!-- Explore -->
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>

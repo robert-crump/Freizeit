@@ -29,6 +29,9 @@ data class SuggestionContext(
 
     companion object {
         const val DEFAULT_TIME_BUDGET_MINUTES = 180
+        /** Chip option values for issue #7's time-budget override. */
+        const val SHORT_TIME_BUDGET_MINUTES = 60
+        const val LONG_TIME_BUDGET_MINUTES = 480
     }
 }
 
@@ -168,6 +171,13 @@ object SuggestionEngine {
         }
 
         score += noveltyJitter(context.noveltySeed, poi.id)
+
+        // Issue #7: call out an active chip override so the reason line explains itself.
+        when {
+            context.timeBudgetMinutes <= SuggestionContext.SHORT_TIME_BUDGET_MINUTES -> reasons += "quick outing"
+            context.timeBudgetMinutes >= SuggestionContext.LONG_TIME_BUDGET_MINUTES -> reasons += "you've got all day"
+        }
+        if (!context.kidsAlong) reasons += "adults-only pick"
 
         return Suggestion(poi, score * categoryWeight, distanceMeters, travelMinutes, reasons)
     }

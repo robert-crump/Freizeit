@@ -69,6 +69,9 @@ data class HomeUiState(
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
     val pendingVisit: PendingVisit? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
+    /** Active chip overrides (issue #7); reset to defaults on next app open. */
+    val timeBudgetMinutes: Int = SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES,
+    val kidsAlong: Boolean = true,
     /** True until the first Room/weather emission lands — drives the loading spinner. */
     val isLoading: Boolean = true
 )
@@ -87,6 +90,14 @@ class HomeViewModel(
     /** Card ids already shown this session; reroll excludes them until the pool runs dry. */
     private val rerolledIds = MutableStateFlow<Set<String>>(emptySet())
 
+    /** Chip overrides (issue #7): process-scoped only, back to defaults on next app open. */
+    private val timeBudgetMinutes = MutableStateFlow(SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES)
+    private val kidsAlong = MutableStateFlow(true)
+
+    private val locationAndOverrides = combine(
+        location, timeBudgetMinutes, kidsAlong
+    ) { loc, budget, kids -> Triple(loc, budget, kids) }
+
     private val _selectedCard = MutableStateFlow<Suggestion?>(null)
     val selectedCard: StateFlow<Suggestion?> = _selectedCard
 
@@ -102,16 +113,18 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         poisVerdictsAndFavorites,
         weatherRepository.snapshot,
-        location,
+        locationAndOverrides,
         rerolledIds,
         pendingVisitDao.observe()
-    ) { (pois, verdictMap, favorites), weather, loc, excluded, pendingVisit ->
+    ) { (pois, verdictMap, favorites), weather, (loc, budget, kids), excluded, pendingVisit ->
         val anchor = loc?.let { nearestFavoriteWithin(it, favorites) }
         val effectiveLocation = anchor?.let { LatLon(it.lat, it.lon) } ?: loc
         val context = SuggestionContext(
             now = LocalDateTime.now(),
             location = effectiveLocation,
             weather = weather,
+            timeBudgetMinutes = budget,
+            kidsAlong = kids,
             verdicts = verdictMap
         )
         var cards = SuggestionEngine.suggest(pois, context, excludeIds = excluded)
@@ -127,6 +140,8 @@ class HomeViewModel(
             hasPois = pois.isNotEmpty(),
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = verdictMap,
+            timeBudgetMinutes = budget,
+            kidsAlong = kids,
             isLoading = false
         )
     }
@@ -165,6 +180,14 @@ class HomeViewModel(
 
     fun selectCard(card: Suggestion?) {
         _selectedCard.value = card
+    }
+
+    fun setTimeBudget(minutes: Int) {
+        timeBudgetMinutes.value = minutes
+    }
+
+    fun setKidsAlong(value: Boolean) {
+        kidsAlong.value = value
     }
 
     fun setVerdict(poi: Poi, value: String?) {
