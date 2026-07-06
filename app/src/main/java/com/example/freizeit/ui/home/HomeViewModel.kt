@@ -68,7 +68,9 @@ data class HomeUiState(
     val hasPois: Boolean = true,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
     val pendingVisit: PendingVisit? = null,
-    val verdicts: Map<String, Verdict> = emptyMap()
+    val verdicts: Map<String, Verdict> = emptyMap(),
+    /** True until the first Room/weather emission lands — drives the loading spinner. */
+    val isLoading: Boolean = true
 )
 
 class HomeViewModel(
@@ -124,7 +126,8 @@ class HomeViewModel(
             anchorName = anchor?.name,
             hasPois = pois.isNotEmpty(),
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
-            verdicts = verdictMap
+            verdicts = verdictMap,
+            isLoading = false
         )
     }
         .flowOn(Dispatchers.Default)

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -95,7 +96,9 @@ fun HomeScreen(
             )
         }
 
-        if (!state.hasPois) {
+        if (state.isLoading) {
+            CenteredLoading()
+        } else if (!state.hasPois) {
             CenteredHint(stringResource(R.string.home_empty))
         } else if (state.cards.isEmpty()) {
             CenteredHint(stringResource(R.string.home_no_suggestions))
@@ -125,7 +128,8 @@ fun HomeScreen(
             item = PoiWithDistance(card.poi, card.distanceMeters),
             verdict = state.verdicts[card.poi.id]?.value,
             onVerdictChange = { viewModel.setVerdict(card.poi, it) },
-            onDismiss = { viewModel.selectCard(null) }
+            onDismiss = { viewModel.selectCard(null) },
+            location = state.location
         )
     }
 }
@@ -274,5 +278,16 @@ private fun CenteredHint(text: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun CenteredLoading() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 48.dp)
+    ) {
+        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
     }
 }

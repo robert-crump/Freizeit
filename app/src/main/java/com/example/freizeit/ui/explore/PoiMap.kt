@@ -8,7 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -33,7 +35,7 @@ private const val FALLBACK_LON = 6.96
 private const val LOCATE_ME_ZOOM = 16.0
 
 /** CARTO's dark basemap, raster tiles so it drops straight into osmdroid's tile source API. */
-private val CARTO_DARK_MATTER = XYTileSource(
+val CARTO_DARK_MATTER = XYTileSource(
     "CartoDarkMatter",
     0, 20, 256, ".png",
     arrayOf(
@@ -60,6 +62,7 @@ fun PoiMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val locationDotColor = MaterialTheme.colorScheme.primary.toArgb()
 
     val mapView = remember {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -104,17 +107,33 @@ fun PoiMap(
 
     AndroidView(
         factory = { mapView },
-        modifier = modifier,
-        update = {
+        modifier = modifier.clipToBounds(),
+        update = { view ->
+            var changed = false
             if (overlayState.renderedPois !== pois) {
                 overlayState.renderedPois = pois
-                it.overlays.removeAll(overlayState.overlays)
-                overlayState.overlays.clear()
+                view.overlays.removeAll(overlayState.poiOverlays)
+                overlayState.poiOverlays.clear()
                 pois.groupBy { p -> p.poi.category }.forEach { (category, group) ->
-                    overlayState.overlays += buildCategoryOverlay(category, group, onPoiClick)
+                    overlayState.poiOverlays += buildCategoryOverlay(category, group, onPoiClick)
                 }
-                it.overlays.addAll(overlayState.overlays)
-                it.invalidate()
+                view.overlays.addAll(overlayState.poiOverlays)
+                changed = true
+            }
+            if (overlayState.renderedLocation != location) {
+                overlayState.renderedLocation = location
+                overlayState.locationOverlay?.let(view.overlays::remove)
+                overlayState.locationOverlay = location?.let { loc ->
+                    DotOverlay(GeoPoint(loc.lat, loc.lon), locationDotColor, loc.accuracyMeters)
+                }
+                changed = true
+            } else if (changed) {
+                // POI overlays were just rebuilt underneath; re-append the dot so it stays on top.
+                overlayState.locationOverlay?.let(view.overlays::remove)
+            }
+            if (changed) {
+                overlayState.locationOverlay?.let(view.overlays::add)
+                view.invalidate()
             }
         }
     )
@@ -122,7 +141,9 @@ fun PoiMap(
 
 private class MapOverlayState {
     var renderedPois: List<PoiWithDistance>? = null
-    val overlays = mutableListOf<SimpleFastPointOverlay>()
+    val poiOverlays = mutableListOf<SimpleFastPointOverlay>()
+    var renderedLocation: LatLon? = null
+    var locationOverlay: DotOverlay? = null
 }
 
 private fun buildCategoryOverlay(

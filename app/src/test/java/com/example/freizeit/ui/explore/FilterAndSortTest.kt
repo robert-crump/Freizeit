@@ -19,45 +19,43 @@ class FilterAndSortTest {
     )
 
     @Test
-    fun `filters to the selected categories`() {
-        val result = filterAndSort(pois, setOf("cafe"), null)
+    fun `filters to the selected category`() {
+        val result = filterAndSort(pois, "cafe", null)
         assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
     }
 
     @Test
-    fun `empty selection shows nothing`() {
-        assertEquals(0, filterAndSort(pois, emptySet(), null).size)
+    fun `no category selected shows nothing`() {
+        assertEquals(0, filterAndSort(pois, null, null).size)
     }
 
     @Test
     fun `with location sorts nearest first and fills distances`() {
         val home = LatLon(50.90, 6.90)
-        val result = filterAndSort(pois, setOf("cafe", "park", "playground"), home)
+        val result = filterAndSort(pois, "cafe", home)
 
-        assertEquals(listOf("node/1", "node/4", "node/2", "node/3"), result.map { it.poi.id })
+        assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
         assertEquals(0.0, result[0].distanceMeters!!, 0.001)
-        assertEquals(true, result[3].distanceMeters!! > result[2].distanceMeters!!)
+        assertEquals(true, result[1].distanceMeters!! > result[0].distanceMeters!!)
     }
 
     @Test
     fun `without location sorts by name with unnamed last`() {
-        val result = filterAndSort(pois, setOf("cafe", "park", "playground"), null)
+        val result = filterAndSort(pois, "cafe", null)
 
-        assertEquals(listOf("node/2", "node/1", "node/4", "node/3"), result.map { it.poi.id })
-        assertNull(result[0].distanceMeters)
+        assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
+        assertNull(result[1].distanceMeters)
     }
 
     @Test
-    fun `loved filter keeps only the ids in the loved set`() {
-        val result = filterAndSort(
-            pois, setOf("cafe", "park", "playground"), null, lovedIds = setOf("node/2")
-        )
+    fun `loved filter keeps only the ids in the loved set regardless of category`() {
+        val result = filterAndSort(pois, null, null, lovedIds = setOf("node/2"))
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }
 
     @Test
-    fun `null loved filter (the default) does not restrict by loved status`() {
-        val result = filterAndSort(pois, setOf("cafe", "park", "playground"), null, lovedIds = null)
-        assertEquals(4, result.size)
+    fun `null loved filter falls back to the selected category`() {
+        val result = filterAndSort(pois, "cafe", null, lovedIds = null)
+        assertEquals(2, result.size)
     }
 }

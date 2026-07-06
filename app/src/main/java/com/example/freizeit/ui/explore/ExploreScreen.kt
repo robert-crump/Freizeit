@@ -114,8 +114,8 @@ fun ExploreScreen(
                 )
                 PoiCategoryChipRow(
                     categories = state.categories,
-                    selectedCategories = state.selectedCategories,
-                    onToggle = viewModel::toggleCategory,
+                    selectedCategory = state.selectedCategory,
+                    onSelect = viewModel::selectCategory,
                     lovedOnly = state.lovedOnly,
                     onToggleLoved = viewModel::toggleLovedOnly,
                     modifier = Modifier.align(Alignment.TopStart)
@@ -135,8 +135,8 @@ fun ExploreScreen(
                 Column(modifier = Modifier.fillMaxSize()) {
                     PoiCategoryChipRow(
                         categories = state.categories,
-                        selectedCategories = state.selectedCategories,
-                        onToggle = viewModel::toggleCategory,
+                        selectedCategory = state.selectedCategory,
+                        onSelect = viewModel::selectCategory,
                         lovedOnly = state.lovedOnly,
                         onToggleLoved = viewModel::toggleLovedOnly
                     )
@@ -155,7 +155,8 @@ fun ExploreScreen(
             item = item,
             verdict = state.verdicts[item.poi.id]?.value,
             onVerdictChange = { viewModel.setVerdict(item.poi, it) },
-            onDismiss = { viewModel.selectPoi(null) }
+            onDismiss = { viewModel.selectPoi(null) },
+            location = state.location
         )
     }
 }
@@ -163,8 +164,8 @@ fun ExploreScreen(
 @Composable
 private fun PoiCategoryChipRow(
     categories: List<String>,
-    selectedCategories: Set<String>,
-    onToggle: (String) -> Unit,
+    selectedCategory: String?,
+    onSelect: (String) -> Unit,
     lovedOnly: Boolean,
     onToggleLoved: () -> Unit,
     modifier: Modifier = Modifier
@@ -188,8 +189,8 @@ private fun PoiCategoryChipRow(
         }
         items(categories) { category ->
             FilterChip(
-                selected = category in selectedCategories,
-                onClick = { onToggle(category) },
+                selected = category == selectedCategory,
+                onClick = { onSelect(category) },
                 label = { Text(categoryDisplayName(category)) },
                 leadingIcon = { CategoryDot(category) },
                 colors = FilterChipDefaults.filterChipColors(

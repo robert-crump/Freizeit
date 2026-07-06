@@ -6,7 +6,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import androidx.core.content.ContextCompat
 
-data class LatLon(val lat: Double, val lon: Double)
+data class LatLon(val lat: Double, val lon: Double, val accuracyMeters: Float? = null)
 
 object LocationHelper {
 
@@ -28,7 +28,7 @@ object LocationHelper {
             manager.getProviders(true)
                 .mapNotNull { provider -> manager.getLastKnownLocation(provider) }
                 .maxByOrNull { it.time }
-                ?.let { LatLon(it.latitude, it.longitude) }
+                ?.let { LatLon(it.latitude, it.longitude, it.accuracy.takeIf { acc -> acc > 0f }) }
         } catch (e: SecurityException) {
             null
         }

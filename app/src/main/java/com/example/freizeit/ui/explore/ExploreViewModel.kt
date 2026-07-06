@@ -32,24 +32,28 @@ data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
 data class ExploreUiState(
     val pois: List<PoiWithDistance> = emptyList(),
     val categories: List<String> = emptyList(),
-    val selectedCategories: Set<String> = emptySet(),
+    val selectedCategory: String? = null,
     val location: LatLon? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
     val lovedOnly: Boolean = false
 )
 
 /**
- * Pure filter+sort so the semantics are unit-testable: keep POIs whose
- * category is selected (and, when [lovedIds] is non-null, whose id is in it);
- * with a location, sort nearest first, otherwise sort by name (unnamed places last).
+ * Pure filter+sort so the semantics are unit-testable. Exactly one filter is ever
+ * active: [lovedIds] (non-null) restricts to loved places across all categories,
+ * otherwise [selectedCategory] restricts to that one category; with neither set,
+ * nothing matches. With a location, sorts nearest first, otherwise by name
+ * (unnamed places last).
  */
 fun filterAndSort(
     pois: List<Poi>,
-    selected: Set<String>,
+    selectedCategory: String?,
     location: LatLon?,
     lovedIds: Set<String>? = null
 ): List<PoiWithDistance> {
-    val filtered = pois.filter { it.category in selected && (lovedIds == null || it.id in lovedIds) }
+    val filtered = pois.filter {
+        if (lovedIds != null) it.id in lovedIds else it.category == selectedCategory
+    }
     return if (location != null) {
         filtered
             .map {
@@ -72,8 +76,8 @@ class ExploreViewModel(
     private val verdictDao: VerdictDao
 ) : ViewModel() {
 
-    // null = "everything selected", so newly imported categories are visible by default
-    private val selectedOverride = MutableStateFlow<Set<String>?>(null)
+    // null = no category chosen yet, so the map/list starts empty until the user taps a chip
+    private val selectedCategory = MutableStateFlow<String?>(null)
     private val location = MutableStateFlow<LatLon?>(null)
     private val lovedOnly = MutableStateFlow(false)
 
@@ -86,22 +90,21 @@ class ExploreViewModel(
 
     val uiState: StateFlow<ExploreUiState> = combine(
         poisAndVerdicts,
-        selectedOverride,
+        selectedCategory,
         location,
         lovedOnly
-    ) { (pois, verdictMap), override, loc, loved ->
+    ) { (pois, verdictMap), selectedCat, loc, loved ->
         val categories = pois.map { it.category }.distinct()
             .sortedWith(compareBy({ categoryOrderIndex(it) }, { it }))
-        val selected = override ?: categories.toSet()
         val lovedIds = if (loved) {
             verdictMap.values.filter { it.value == Verdict.VALUE_LOVE }.map { it.placeId }.toSet()
         } else {
             null
         }
         ExploreUiState(
-            pois = filterAndSort(pois, selected, loc, lovedIds),
+            pois = filterAndSort(pois, selectedCat, loc, lovedIds),
             categories = categories,
-            selectedCategories = selected,
+            selectedCategory = selectedCat,
             location = loc,
             verdicts = verdictMap,
             lovedOnly = loved
@@ -114,14 +117,16 @@ class ExploreViewModel(
         refreshLocation()
     }
 
-    fun toggleCategory(category: String) {
-        val current = selectedOverride.value ?: uiState.value.categories.toSet()
-        selectedOverride.value =
-            if (category in current) current - category else current + category
+    /** Category chips are mutually exclusive with each other and with "loved only". */
+    fun selectCategory(category: String) {
+        selectedCategory.value = if (selectedCategory.value == category) null else category
+        if (selectedCategory.value != null) lovedOnly.value = false
     }
 
+    /** Mutually exclusive with category chips — see [selectCategory]. */
     fun toggleLovedOnly() {
         lovedOnly.value = !lovedOnly.value
+        if (lovedOnly.value) selectedCategory.value = null
     }
 
     fun refreshLocation() {
