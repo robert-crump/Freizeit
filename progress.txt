@@ -1,0 +1,277 @@
+# Freizeit v2 progress log
+
+## 2026-07-05 — Issue #2: v2 scaffold (Compose app skeleton with three-tab navigation)
+
+- Created `v2` branch for the in-place rewrite; v1 preserved in git history on `main`.
+- Restored the missing Gradle wrapper (gradlew, gradlew.bat, gradle-wrapper.jar) for Gradle 8.5.
+- Removed all v1 View-based sources: Kotlin activities/adapters/util, XML layouts, menus,
+  drawables, old themes/colors. Kept launcher icons, backup rules, and app_name.
+- Rewrote app/build.gradle: single-module Compose + Material 3 app, minSdk 26, targetSdk 34,
+  Kotlin 1.9.22, Compose BOM 2024.02.02, navigation-compose, Room 2.6.1 (KSP).
+- New skeleton under com.example.freizeit:
+  - FreizeitApplication + di/AppContainer (manual DI, no Hilt); DB warmed at startup on IO.
+  - data/FreizeitDatabase (Room v1) with minimal Poi seed entity (issue #3 will evolve it).
+  - ui/MainActivity (edge-to-edge) + ui/FreizeitApp: Scaffold with Material 3 NavigationBar,
+    NavHost with three destinations (home/explore/settings), state saved/restored per tab.
+  - ui/theme: Material 3 dynamic color on Android 12+, green fallback palette, dark theme
+    via isSystemInDarkTheme.
+  - Placeholder screens: HomeScreen, ExploreScreen, SettingsScreen.
+- Tests: FreizeitDestinationTest (routes, uniqueness, start destination) — passing.
+- Build: `gradlew assembleDebug testDebugUnitTest` → BUILD SUCCESSFUL (JBR 21).
+- Device verification: physical device (55241FDCH0007C) was attached at session start but
+  disconnected before install; emulator not available (no system images installed).
+  APK assembled cleanly; on-device smoke test pending device reconnection.
+
+## 2026-07-05 — Issue #3: POI import end-to-end (extraction file → Room, keep+flag)
+
+- Schema (still Room v1 — no installed devices exist, so no migration needed):
+  - Poi evolved: String id ("node/123") PK, category, lat/lon, optional
+    name/opening_hours/address fields, missingFromOsm flag.
+  - Verdict table added now (storage/UI lands in #6) because the import's keep+flag
+    rule depends on it; snapshots name/coords/category, deliberately no FK to poi.
+  - ImportInfo single-row table (importedAt, fileGeneratedAt); per-category counts
+    are queried live (GROUP BY), not stored.
+- PoiJsonParser (Gson): strict validation of the tools/poi_extraction format;
+  whole file parses before any DB write.
+- PoiRepository.importFrom(uri) in one transaction:
+  markAllMissing → upsert file contents (clears flag) → delete missing-without-verdict.
+  Malformed/unreadable file throws PoiParseException, database untouched.
+- Settings screen: SAF file picker (OpenDocument), import progress/success/error
+  states, summary card with per-category counts, last-import timestamp, and
+  kept-but-missing count. SettingsViewModel with manual DI factory.
+- Tests (17 total, all green): parser unit tests + Robolectric in-memory-Room tests
+  covering all five acceptance criteria (all categories import, idempotent re-import,
+  unverdicted vanished place dropped, verdicted one kept+flagged and un-flagged on
+  return, malformed file leaves DB untouched).
+- Gotcha: Room @Upsert breaks under Robolectric's legacy SQLite shadow (Windows) —
+  switched DAOs to @Insert(onConflict = REPLACE), which is also the semantics the
+  import wants (full-row replace).
+- Device still disconnected; on-device SAF-picker flow untested. Build + full test
+  suite green.
+
+## 2026-07-05 — Issue #4: Explore (map + filterable list + place detail sheet)
+
+- Carried-over device debt from #2/#3 partially cleared: phone reconnected; APK
+  installs, launches, three tabs render (uiautomator dump), freizeit.db created at
+  startup. Aborted deeper UI driving BOTH times — the owner was actively using the
+  phone (my taps landed on their launcher once; backed out immediately). Rule for
+  future cycles: check mCurrentFocus + screen state before injecting input, abort
+  on any collision.
+- Explore implementation:
+  - PoiDao.observeAll(); ExploreViewModel combines POIs + category selection +
+    location on Dispatchers.Default; filterAndSort() is a pure top-level function
+    (unit-tested): selected categories only; nearest-first with location, name
+    sort (unnamed last) without.
+  - osmdroid 6.1.18 (Compose AndroidView interop): one SimpleFastPointOverlay per
+    category (28k POIs total → MAXIMUM_OPTIMIZATION above 5k points), category
+    colors from shared ui/common/CategoryUi.kt, click → detail sheet. Lifecycle
+    wired via LifecycleEventObserver; fallback center Cologne, else last known
+    location (LocationHelper, plain LocationManager, no Play Services).
+  - Map/List segmented toggle; FilterChips filter both; LazyColumn list with
+    distance labels.
+  - PlaceDetailSheet (ModalBottomSheet): name/category dot/missing-from-OSM badge,
+    distance, address line, opening hours; commented slot for #6 verdict buttons.
+  - Location permission requested on first Explore entry; everything degrades
+    gracefully without it (name sort, no distances).
+- Tests: 25 total green (new: GeoDistanceTest, FilterAndSortTest).
+- Pushed data/pois.json to the phone's Downloads for the manual import test.
+- NOT verified on device (owner using phone): map rendering/pan-zoom performance,
+  marker taps, SAF import flow. Left a 30-second verification recipe on issue #4.
+
+## 2026-07-05 — Hotfix: Settings crashed on first import (reported by Robert)
+
+- Cause: return@Column early-return in ImportSummaryCard's empty state; when the
+  summary flow emitted after the first successful import, the branch switch
+  corrupted the composer group stack → IndexOutOfBoundsException at Stack.pop.
+- Fix (d87b81a): restructured as if/else; grep confirmed no other return@ inside
+  composables. Rule: no early returns inside composable lambdas.
+- Fixed APK installed on the phone; import retry pending Robert.
+
+## 2026-07-06 — Issue #5: Home — three suggestion cards with transparent ranking and weather
+
+- domain/ layer (pure Kotlin, fully unit-tested, no Android deps):
+  - OpeningHours: conservative OSM opening_hours evaluator implementing the #1
+    hybrid decision — only ever returns CLOSED when the value is fully understood
+    (24/7, day ranges/lists, split + overnight spans, "off", ";" rule override,
+    PH rules skipped); anything else is UNKNOWN = never filter by hours.
+  - WeatherSnapshot: current + 12h hourly, WMO code helpers, badWeatherWithin /
+    dryHoursAhead / outlook for the strip.
+  - SuggestionEngine: hard filters (known-closed, outdoor when rain falls inside
+    the outing window, unreachable = 2×bike travel + 30 min stay > budget; bike =
+    Haversine ×1.3 detour at 250 m/min) then transparent soft score (distance
+    decay 40·e^(-min/25), weather-fit bonuses, +6 confirmed-open, deterministic
+    daily novelty jitter 0–8) × who-is-along category weight (kids default
+    neutral; adults-only ready for #7). Diversity: if the top 3 share a category
+    the third is swapped for the best other-category place. rankAll() exposed for
+    tests/reroll; reason line parts ("Open", "4 min by bike", "dry all day",
+    "21° ice-cream weather", "good for a rainy day") built alongside the score.
+- data/weather: OpenMeteoClient (plain HttpURLConnection + Gson, keyless, null on
+  any failure) + WeatherRepository with stale-beats-spinner semantics: disk cache
+  in filesDir served instantly, refetch only when >30 min old, failures keep the
+  cache. Live API response shape verified against the DTO from the desktop.
+- ui/home: HomeViewModel (combine POIs + weather + location + reroll exclusions
+  on Dispatchers.Default; reroll excludes all session-shown ids and wraps when
+  the pool runs dry; Cologne fallback for weather when no location) and the new
+  HomeScreen: weather strip (emoji, temp, condition, outlook), three tappable
+  suggestion cards with reason lines, reroll button, reuse of PlaceDetailSheet.
+  Location permission requested on first entry, degrades gracefully without.
+- Tests: 60 total green (was 25). New: 22-scenario fixture (SuggestionScenariosTest
+  — the "suggestions must not feel dumb" validation: rainy Tuesday, sunny Saturday,
+  night owl 3am, budget shrink/grow, no-location, no-weather, reroll, determinism,
+  diversity, adults-only…), 9 OpeningHours tests, 4 OpenMeteo parse tests.
+- APK installed on the phone (was dozing + locked, so no UI drive per the
+  focus-collision rule). On-device smoke test of Home pending Robert.
+
+## 2026-07-06 — Unlogged carry-over: Explore polish (dark map, locate-me, floating chips)
+
+- Found uncommitted, working, tested changes at session start (not mine, no
+  progress.txt entry) — committed separately before starting #6 so it
+  wouldn't get mixed into that diff: CARTO Dark Matter basemap, a locate-me
+  FAB that recenters/zooms on tap, and the category chips moved to float
+  over the map instead of a separate row above the view toggle.
+
+## 2026-07-06 — Issue #6: Verdicts + cooldowns end-to-end
+
+- PendingVisit: new single-row table (same pattern as ImportInfo), snapshots
+  name/coords/category like Verdict does so the banner and the verdict it
+  may produce don't depend on the poi row still existing. This is the
+  first real schema change since #2/#3 seeded v1 — wrote an actual
+  Migration(1, 2) (CREATE TABLE, no data loss) instead of destructive
+  fallback, since the phone already carries real POI/verdict data.
+- VerdictDao: added delete + observeAll, plus a `setVerdict(poi, value)`
+  extension (null clears) shared by Home and Explore — one tap sets,
+  re-tapping the same value clears, tapping another changes it.
+- SuggestionEngine: verdicts flow into SuggestionContext keyed by place id.
+  👎 is a hard filter forever; ❤️/👍 are hard-filtered only inside their
+  cooldown (❤️ 2 days, 👍 2 weeks — kids' rituals are a feature) and get a
+  score boost with a reason line once the cooldown passes. Pure and
+  covered by SuggestionVerdictTest; existing scenario tests untouched
+  since verdicts defaults to empty.
+- PlaceDetailSheet: added the 👍/👎/❤️ row (shared composable, wired from
+  both HomeScreen and ExploreScreen so both surfaces get one-tap set/change
+  for free).
+- Home: "Go" button on each suggestion card writes a PendingVisit. The
+  combine pipeline gates the banner on `wentAt` being ≥2h old
+  (`PendingVisit.isReadyForBanner`, pulled out as a pure top-level function
+  and unit-tested — the ViewModel itself stays thin per this codebase's
+  convention). Answering 👍/👎/❤️ records a verdict from the snapshot and
+  clears the pending visit; "didn't go" just clears it.
+- Explore: ❤️ "Loved" filter chip added to the floating category-chip row
+  (today's other change); `filterAndSort` takes an optional `lovedIds` set
+  so the pure-function contract stays testable.
+- Deliberately out of scope: the issue's prose mentions rerolled-past cards
+  getting "a mild penalty until the next day" as color, but it's not in the
+  acceptance criteria — the existing session-scoped hard reroll-exclusion
+  from #5 already satisfies "no repeats" and I didn't want to add a new
+  persisted RerollEvent table for an untested requirement. Flagging here in
+  case a future issue wants day-scoped (not session-scoped) reroll memory.
+- Not verified: the 1→2 migration against a real on-device v1 database —
+  exportSchema is false (a deliberate #2 choice) so there's no schema
+  fixture to run a MigrationTestHelper against, and adding that
+  infrastructure felt like scope creep for this issue. The CREATE TABLE
+  was hand-checked column-by-column against the PendingVisit entity.
+  Real validation is on-device: install the updated APK over the existing
+  one and confirm POIs/verdicts survive and pending_visit gets created.
+- Tests: 78 total green (was 60). New: SuggestionVerdictTest (6, cooldown +
+  boost + permanent down-filter), HomeVisitBannerTest (4, the 2h gate),
+  VerdictDaoTest (3), PendingVisitDaoTest (3), FilterAndSortTest +2 (loved
+  filter).
+- Not verified on device (same reasons as prior sessions — phone in active
+  use / locked). Go → banner → verdict loop, the ❤️ Explore filter, and the
+  migration itself all need a real run on Robert's phone.
+
+## 2026-07-06 — Issue #8: Settings — favorite locations + backup of verdicts/favorites
+
+- Picked over #7 (override chips) on purpose: a parallel session was working
+  Home/Explore that same session (confirmed live — same working tree showed
+  their uncommitted edits to HomeViewModel/HomeScreen/ExploreScreen mid-flight
+  throughout this one, e.g. a loading-spinner state and a LatLon.accuracyMeters
+  field that landed while I was editing HomeViewModel myself). #8 is
+  Settings-primary; its only Home touch is the anchor-name line, kept to a
+  minimal additive diff for exactly this reason. No file conflicts in the end
+  — Edit's exact-match requirement caught one stale read (fails loudly, not
+  silently) and a re-read fixed it.
+- Favorite entity/DAO/repository: Room table (id, name, address, lat, lon).
+  Geocoding uses the platform Geocoder (keyless, no new dependency) behind an
+  AddressResolver interface so FavoriteRepository is unit-testable with a
+  fake. Migration 2→3 (CREATE TABLE favorite) hand-checked like #6's did.
+- Home distance anchor: nearestFavoriteWithin() is a pure top-level function
+  (same convention as isReadyForBanner/filterAndSort) — nearest favorite
+  within 300 m of GPS becomes the SuggestionContext location and its name
+  shows above the weather strip. Wired via one extra combine() stage
+  (poisVerdictsAndFavorites) since the existing 5-flow combine was already at
+  the stdlib arity limit.
+- Backup: BackupJsonCodec parses defensively like PoiJsonParser (hand-rolled
+  JsonObject walk, not raw Gson-to-data-class binding) because Gson silently
+  populates non-null Kotlin fields with null via reflection on missing keys —
+  same failure mode the POI importer was already built to avoid. Restore is a
+  wholesale replace (delete + insert in one transaction), matching the
+  fresh-install use case in the acceptance criteria; POIs are excluded on
+  purpose (regenerated by #1/#3's pipeline).
+- Settings UI: favorites list with add/edit (dialog, geocode-on-save) and
+  delete; backup export/import via CreateDocument/OpenDocument system
+  pickers, mirroring the existing POI-import status-flow pattern.
+- Build gotcha: exporting a backup writes through
+  ContentResolver.openOutputStream, which under Robolectric hits its
+  ParcelFileDescriptor shadow reflecting into java.io.FileDescriptor — blocked
+  by JDK 17+ module encapsulation. Added
+  `--add-opens=java.base/java.io=ALL-UNNAMED` to the unitTests JVM args in
+  app/build.gradle; the POI importer never hit this because it only reads.
+- Found and did not chase: a pre-existing test-suite flake unrelated to this
+  issue — FreizeitApplication's startup DB-warm coroutine (Dispatchers.IO)
+  occasionally throws after a Robolectric sandbox tears down between tests,
+  surfacing as an "uncaught exception before test" failure in whichever test
+  runs next (reproduced on PoiImportTest and on this session's own
+  FavoriteDaoTest, on different reruns — confirmed order-dependent, not
+  caused by either). A rerun always goes green.
+- Tests: 93 total green (was 78). New: FavoriteDaoTest (4), FavoriteRepositoryTest
+  (3, fake AddressResolver), BackupRepositoryTest (4, including the round-trip
+  export→wipe→import scenario from the acceptance criteria), HomeAnchorTest (4).
+- Not verified on device: the address-geocoding path depends on the real
+  platform Geocoder (Robolectric can't exercise it), and the 2→3 migration
+  needs a run over a real device database like #6's did.
+
+## 2026-07-06 — Issue #7: Override chips — time budget and who's along re-rank the cards
+
+- Both engine hooks the issue depends on already existed from #5/#6:
+  `SuggestionContext.timeBudgetMinutes` drives the reachability hard filter
+  (2×bike + 30 min stay > budget) and `kidsAlong` drives `categoryWeight()`
+  (playgrounds ×0.1 when adults-only). The 22-scenario fixture already had
+  passing coverage for both ("one hour budget…", "all day budget…",
+  "adults only…") — nothing to build there, just wiring + the missing
+  reason-line piece.
+- SuggestionEngine.evaluate(): added the one genuinely new piece — override
+  reason lines ("quick outing" / "you've got all day" / "adults-only pick")
+  appended when the context differs from the 3h/kids-along defaults, so the
+  card explains *why* it's on the list when a chip is active. Two new
+  named constants (SHORT/LONG_TIME_BUDGET_MINUTES = 60/480) match the chip's
+  three stops (1h / 3h / all day) and the values already used by the #5
+  scenario tests.
+- HomeViewModel: two new transient `MutableStateFlow`s (`timeBudgetMinutes`,
+  `kidsAlong`) — process-scoped only, same pattern as ExploreViewModel's
+  `selectedCategory`/`lovedOnly` and Home's own `rerolledIds`, so state
+  resets to defaults on next app open by construction (no persistence
+  layer touched, per the acceptance criteria). The existing 5-flow combine
+  was already at the stdlib arity limit (per #8's note), so `location` was
+  folded into a new 3-flow `locationAndOverrides = combine(location,
+  timeBudgetMinutes, kidsAlong)` feeding the outer combine in the same slot
+  `location` used to occupy — outer combine stays at 5 args.
+- HomeScreen: new `OverrideChipsRow` — two Material3 FilterChips ("1 h/3 h/
+  All day" cycling on tap, "Kids along"/"Adults only" toggling on tap),
+  placed above the suggestion cards, below the anchor-name line. `selected`
+  reflects "this chip is not at its default" so an active override is
+  visually distinct without needing a third visual state.
+- Tests: 98 total green (was 93). New: 5 SuggestionScenariosTest cases for
+  the override reason lines (adults-only claim/no-claim, quick-outing/
+  all-day/no-claim) — hit one bug in my own test on the first run: a
+  substring check for "all day" collided with the pre-existing "dry all
+  day" weather reason, fixed to check the full "you've got all day" phrase.
+- No HomeViewModel-level test added (no HomeViewModelTest file exists in
+  this codebase yet — Home's ViewModel tests to date only cover pure
+  top-level functions like isReadyForBanner/nearestFavoriteWithin extracted
+  out of it); chip wiring is straightforward StateFlow → SuggestionContext
+  plumbing already exercised at the engine level.
+- Not verified on device: the two chips' tap-to-cycle interaction and the
+  "resets on next app open" behavior are structurally guaranteed (plain
+  ViewModel field, no persistence) but untested by an actual app restart
+  on Robert's phone.
