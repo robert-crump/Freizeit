@@ -3,7 +3,11 @@ package com.example.freizeit.ui.explore
 import android.graphics.Paint
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -15,9 +19,10 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.util.LatLon
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.XYTileSource
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.simplefastpoint.LabelledGeoPoint
 import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlay
 import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
@@ -25,6 +30,20 @@ import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
 
 private const val FALLBACK_LAT = 50.94 // Cologne area, center of the extract coverage
 private const val FALLBACK_LON = 6.96
+private const val LOCATE_ME_ZOOM = 16.0
+
+/** CARTO's dark basemap, raster tiles so it drops straight into osmdroid's tile source API. */
+private val CARTO_DARK_MATTER = XYTileSource(
+    "CartoDarkMatter",
+    0, 20, 256, ".png",
+    arrayOf(
+        "https://a.basemaps.cartocdn.com/dark_all/",
+        "https://b.basemaps.cartocdn.com/dark_all/",
+        "https://c.basemaps.cartocdn.com/dark_all/",
+        "https://d.basemaps.cartocdn.com/dark_all/"
+    ),
+    "© OpenStreetMap contributors © CARTO"
+)
 
 /**
  * osmdroid map showing the filtered POIs as fast point overlays, one per
@@ -36,6 +55,7 @@ fun PoiMap(
     pois: List<PoiWithDistance>,
     location: LatLon?,
     onPoiClick: (PoiWithDistance) -> Unit,
+    recenterRequest: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -44,17 +64,28 @@ fun PoiMap(
     val mapView = remember {
         Configuration.getInstance().userAgentValue = context.packageName
         MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
+            setTileSource(CARTO_DARK_MATTER)
             setMultiTouchControls(true)
             controller.setZoom(11.0)
             controller.setCenter(
                 if (location != null) GeoPoint(location.lat, location.lon)
                 else GeoPoint(FALLBACK_LAT, FALLBACK_LON)
             )
+            overlays.add(CopyrightOverlay(context))
         }
     }
     // The overlays currently on the map, so update can replace them cheaply.
     val overlayState = remember { MapOverlayState() }
+
+    // Bumped by the "locate me" FAB; only recenter when it actually changes and a fix is available.
+    var lastHandledRecenter by remember { mutableIntStateOf(0) }
+    LaunchedEffect(recenterRequest, location) {
+        if (recenterRequest != 0 && recenterRequest != lastHandledRecenter && location != null) {
+            mapView.controller.animateTo(GeoPoint(location.lat, location.lon))
+            mapView.controller.setZoom(LOCATE_ME_ZOOM)
+            lastHandledRecenter = recenterRequest
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->

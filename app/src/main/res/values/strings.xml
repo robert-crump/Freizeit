@@ -13,6 +13,7 @@
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>
     <string name="explore_empty">No places yet. Import a POI file in Settings.</string>
+    <string name="explore_locate_me">Locate me</string>
     <string name="explore_unnamed">Unnamed %1$s</string>
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>

@@ -7,16 +7,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -67,29 +72,13 @@ fun ExploreScreen(
     }
 
     var viewIndex by rememberSaveable { mutableIntStateOf(0) }
+    var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            state.categories.forEach { category ->
-                FilterChip(
-                    selected = category in state.selectedCategories,
-                    onClick = { viewModel.toggleCategory(category) },
-                    label = { Text(categoryDisplayName(category)) },
-                    leadingIcon = { CategoryDot(category) }
-                )
-            }
-        }
-
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             listOf(
                 stringResource(R.string.explore_view_map),
@@ -120,20 +109,72 @@ fun ExploreScreen(
                     pois = state.pois,
                     location = state.location,
                     onPoiClick = viewModel::selectPoi,
+                    recenterRequest = recenterRequest,
                     modifier = Modifier.fillMaxSize()
                 )
+                PoiCategoryChipRow(
+                    categories = state.categories,
+                    selectedCategories = state.selectedCategories,
+                    onToggle = viewModel::toggleCategory,
+                    modifier = Modifier.align(Alignment.TopStart)
+                )
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.refreshLocation()
+                        recenterRequest++
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp)
+                ) {
+                    Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.explore_locate_me))
+                }
             } else {
-                PoiList(
-                    pois = state.pois,
-                    onPoiClick = viewModel::selectPoi,
-                    modifier = Modifier.fillMaxSize()
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    PoiCategoryChipRow(
+                        categories = state.categories,
+                        selectedCategories = state.selectedCategories,
+                        onToggle = viewModel::toggleCategory
+                    )
+                    PoiList(
+                        pois = state.pois,
+                        onPoiClick = viewModel::selectPoi,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
 
     selectedPoi?.let { item ->
         PlaceDetailSheet(item = item, onDismiss = { viewModel.selectPoi(null) })
+    }
+}
+
+@Composable
+private fun PoiCategoryChipRow(
+    categories: List<String>,
+    selectedCategories: Set<String>,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        items(categories) { category ->
+            FilterChip(
+                selected = category in selectedCategories,
+                onClick = { onToggle(category) },
+                label = { Text(categoryDisplayName(category)) },
+                leadingIcon = { CategoryDot(category) },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            )
+        }
     }
 }
 
