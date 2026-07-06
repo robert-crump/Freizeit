@@ -12,6 +12,7 @@
     <string name="home_go">Go</string>
     <string name="home_visit_prompt">Were you at %1$s?</string>
     <string name="home_visit_didnt_go">Didn\'t go</string>
+    <string name="home_near_favorite">Near %1$s</string>
     <!-- Explore -->
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>
@@ -33,4 +34,22 @@
     <string name="settings_no_import">No place data imported yet. Import the pois.json produced by the extraction script.</string>
     <string name="settings_last_import">Last import: %1$s</string>
     <string name="settings_missing_flagged">No longer in OSM (kept because of a verdict): %1$d</string>
+    <!-- Settings: favorites -->
+    <string name="settings_favorites_section">Favorite places</string>
+    <string name="settings_favorites_empty">No favorites yet. Add home or a grandparent\'s place so distances make sense.</string>
+    <string name="settings_favorite_add">Add favorite</string>
+    <string name="settings_favorite_name">Name</string>
+    <string name="settings_favorite_address">Address</string>
+    <string name="settings_favorite_save">Save</string>
+    <string name="settings_favorite_cancel">Cancel</string>
+    <string name="settings_favorite_edit">Edit favorite</string>
+    <string name="settings_favorite_delete">Delete favorite</string>
+    <string name="settings_favorite_resolving">Looking up address…</string>
+    <!-- Settings: backup -->
+    <string name="settings_backup_section">Backup</string>
+    <string name="settings_backup_export">Export backup</string>
+    <string name="settings_backup_import">Import backup</string>
+    <string name="settings_backup_working">Working…</string>
+    <string name="settings_backup_export_success">Exported %1$d items.</string>
+    <string name="settings_backup_import_success">Restored %1$d items.</string>
 </resources>

@@ -87,6 +87,14 @@ fun HomeScreen(
 
         WeatherStrip(state.weather)
 
+        state.anchorName?.let { name ->
+            Text(
+                text = stringResource(R.string.home_near_favorite, name),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         if (!state.hasPois) {
             CenteredHint(stringResource(R.string.home_empty))
         } else if (state.cards.isEmpty()) {

@@ -22,6 +22,16 @@ interface VerdictDao {
 
     @Query("SELECT * FROM verdict")
     fun observeAll(): Flow<List<Verdict>>
+
+    @Query("SELECT * FROM verdict")
+    suspend fun getAll(): List<Verdict>
+
+    /** Used by backup restore, which replaces the whole table wholesale. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(verdicts: List<Verdict>)
+
+    @Query("DELETE FROM verdict")
+    suspend fun deleteAll()
 }
 
 /** One tap sets/changes a verdict; passing null clears it. Shared by Home and Explore. */

@@ -45,6 +45,11 @@ android {
     testOptions {
         unitTests {
             includeAndroidResources = true
+            all {
+                // Robolectric's ParcelFileDescriptor shadow reflects into FileDescriptor,
+                // which JDK 17+ blocks by default — needed for backup export's ContentResolver writes.
+                it.jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
+            }
         }
     }
 }

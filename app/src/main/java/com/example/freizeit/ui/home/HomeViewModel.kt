@@ -8,10 +8,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
+import com.example.freizeit.data.dao.FavoriteDao
 import com.example.freizeit.data.dao.PendingVisitDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.setVerdict
+import com.example.freizeit.data.entity.Favorite
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
@@ -20,6 +22,7 @@ import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.domain.weather.WeatherSnapshot
+import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
@@ -40,10 +43,27 @@ private const val VISIT_BANNER_THRESHOLD_MILLIS = 2 * 60 * 60 * 1000L
 fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
+/** Radius within which GPS treats a favorite as "you're here" (carried over from v1). */
+private const val FAVORITE_ANCHOR_RADIUS_METERS = 300.0
+
+/** Nearest favorite within the anchor radius of [location], or null. Pure so the
+ *  anchor-swap logic is unit-testable without touching the ViewModel. */
+fun nearestFavoriteWithin(
+    location: LatLon,
+    favorites: List<Favorite>,
+    radiusMeters: Double = FAVORITE_ANCHOR_RADIUS_METERS
+): Favorite? = favorites
+    .map { it to GeoDistance.metersBetween(location.lat, location.lon, it.lat, it.lon) }
+    .filter { (_, distance) -> distance <= radiusMeters }
+    .minByOrNull { (_, distance) -> distance }
+    ?.first
+
 data class HomeUiState(
     val cards: List<Suggestion> = emptyList(),
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
+    /** Name of the favorite GPS currently anchors to, or null when using raw GPS. */
+    val anchorName: String? = null,
     /** False only once the POI table is confirmed empty — drives the import hint. */
     val hasPois: Boolean = true,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
@@ -56,7 +76,8 @@ class HomeViewModel(
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val pendingVisitDao: PendingVisitDao,
-    private val weatherRepository: WeatherRepository
+    private val weatherRepository: WeatherRepository,
+    favoriteDao: FavoriteDao
 ) : ViewModel() {
 
     private val location = MutableStateFlow<LatLon?>(null)
@@ -71,16 +92,23 @@ class HomeViewModel(
         pois to verdicts.associateBy { it.placeId }
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(
+    private val poisVerdictsAndFavorites = combine(
         poisAndVerdicts,
+        favoriteDao.observeAll()
+    ) { (pois, verdictMap), favorites -> Triple(pois, verdictMap, favorites) }
+
+    val uiState: StateFlow<HomeUiState> = combine(
+        poisVerdictsAndFavorites,
         weatherRepository.snapshot,
         location,
         rerolledIds,
         pendingVisitDao.observe()
-    ) { (pois, verdictMap), weather, loc, excluded, pendingVisit ->
+    ) { (pois, verdictMap, favorites), weather, loc, excluded, pendingVisit ->
+        val anchor = loc?.let { nearestFavoriteWithin(it, favorites) }
+        val effectiveLocation = anchor?.let { LatLon(it.lat, it.lon) } ?: loc
         val context = SuggestionContext(
             now = LocalDateTime.now(),
-            location = loc,
+            location = effectiveLocation,
             weather = weather,
             verdicts = verdictMap
         )
@@ -92,7 +120,8 @@ class HomeViewModel(
         HomeUiState(
             cards = cards,
             weather = weather,
-            location = loc,
+            location = effectiveLocation,
+            anchorName = anchor?.name,
             hasPois = pois.isNotEmpty(),
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = verdictMap
@@ -189,7 +218,8 @@ class HomeViewModel(
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.database.pendingVisitDao(),
-                    app.container.weatherRepository
+                    app.container.weatherRepository,
+                    app.container.database.favoriteDao()
                 )
             }
         }
