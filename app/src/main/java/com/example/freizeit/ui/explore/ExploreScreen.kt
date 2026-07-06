@@ -116,6 +116,8 @@ fun ExploreScreen(
                     categories = state.categories,
                     selectedCategories = state.selectedCategories,
                     onToggle = viewModel::toggleCategory,
+                    lovedOnly = state.lovedOnly,
+                    onToggleLoved = viewModel::toggleLovedOnly,
                     modifier = Modifier.align(Alignment.TopStart)
                 )
                 FloatingActionButton(
@@ -134,7 +136,9 @@ fun ExploreScreen(
                     PoiCategoryChipRow(
                         categories = state.categories,
                         selectedCategories = state.selectedCategories,
-                        onToggle = viewModel::toggleCategory
+                        onToggle = viewModel::toggleCategory,
+                        lovedOnly = state.lovedOnly,
+                        onToggleLoved = viewModel::toggleLovedOnly
                     )
                     PoiList(
                         pois = state.pois,
@@ -147,7 +151,12 @@ fun ExploreScreen(
     }
 
     selectedPoi?.let { item ->
-        PlaceDetailSheet(item = item, onDismiss = { viewModel.selectPoi(null) })
+        PlaceDetailSheet(
+            item = item,
+            verdict = state.verdicts[item.poi.id]?.value,
+            onVerdictChange = { viewModel.setVerdict(item.poi, it) },
+            onDismiss = { viewModel.selectPoi(null) }
+        )
     }
 }
 
@@ -156,6 +165,8 @@ private fun PoiCategoryChipRow(
     categories: List<String>,
     selectedCategories: Set<String>,
     onToggle: (String) -> Unit,
+    lovedOnly: Boolean,
+    onToggleLoved: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -163,6 +174,18 @@ private fun PoiCategoryChipRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
     ) {
+        item {
+            FilterChip(
+                selected = lovedOnly,
+                onClick = onToggleLoved,
+                label = { Text(stringResource(R.string.explore_loved_filter)) },
+                leadingIcon = { Text("❤️") },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            )
+        }
         items(categories) { category ->
             FilterChip(
                 selected = category in selectedCategories,

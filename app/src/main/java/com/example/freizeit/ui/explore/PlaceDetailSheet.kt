@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.explore
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -20,18 +22,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.GeoDistance
 
-/**
- * Shared place detail sheet, opened from map markers and list rows.
- * Verdict buttons (#6) get added below the facts — keep that slot in mind.
- */
+/** Shared place detail sheet, opened from map markers, list rows, and Home cards. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaceDetailSheet(
     item: PoiWithDistance,
+    verdict: String?,
+    onVerdictChange: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
     val poi = item.poi
@@ -83,8 +85,70 @@ fun PlaceDetailSheet(
                 )
             }
 
-            // Verdict buttons (👍 / 👎 / ❤️) land here with #6.
+            VerdictRow(
+                current = verdict,
+                onChange = onVerdictChange,
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
+    }
+}
+
+/** Tapping the active verdict again clears it; tapping another one changes it. */
+@Composable
+private fun VerdictRow(
+    current: String?,
+    onChange: (String?) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        VerdictButton(
+            emoji = "👍",
+            label = stringResource(R.string.detail_verdict_up),
+            selected = current == Verdict.VALUE_UP,
+            onClick = { onChange(if (current == Verdict.VALUE_UP) null else Verdict.VALUE_UP) }
+        )
+        VerdictButton(
+            emoji = "👎",
+            label = stringResource(R.string.detail_verdict_down),
+            selected = current == Verdict.VALUE_DOWN,
+            onClick = { onChange(if (current == Verdict.VALUE_DOWN) null else Verdict.VALUE_DOWN) }
+        )
+        VerdictButton(
+            emoji = "❤️",
+            label = stringResource(R.string.detail_verdict_love),
+            selected = current == Verdict.VALUE_LOVE,
+            onClick = { onChange(if (current == Verdict.VALUE_LOVE) null else Verdict.VALUE_LOVE) }
+        )
+    }
+}
+
+@Composable
+private fun VerdictButton(
+    emoji: String,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerColor)
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp, horizontal = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = emoji, style = MaterialTheme.typography.titleLarge)
+        Text(text = label, style = MaterialTheme.typography.labelSmall)
     }
 }
 

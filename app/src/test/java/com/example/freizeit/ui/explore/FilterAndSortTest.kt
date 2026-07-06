@@ -46,4 +46,18 @@ class FilterAndSortTest {
         assertEquals(listOf("node/2", "node/1", "node/4", "node/3"), result.map { it.poi.id })
         assertNull(result[0].distanceMeters)
     }
+
+    @Test
+    fun `loved filter keeps only the ids in the loved set`() {
+        val result = filterAndSort(
+            pois, setOf("cafe", "park", "playground"), null, lovedIds = setOf("node/2")
+        )
+        assertEquals(listOf("node/2"), result.map { it.poi.id })
+    }
+
+    @Test
+    fun `null loved filter (the default) does not restrict by loved status`() {
+        val result = filterAndSort(pois, setOf("cafe", "park", "playground"), null, lovedIds = null)
+        assertEquals(4, result.size)
+    }
 }

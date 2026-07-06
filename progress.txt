@@ -121,3 +121,61 @@
   diversity, adults-only…), 9 OpeningHours tests, 4 OpenMeteo parse tests.
 - APK installed on the phone (was dozing + locked, so no UI drive per the
   focus-collision rule). On-device smoke test of Home pending Robert.
+
+## 2026-07-06 — Unlogged carry-over: Explore polish (dark map, locate-me, floating chips)
+
+- Found uncommitted, working, tested changes at session start (not mine, no
+  progress.txt entry) — committed separately before starting #6 so it
+  wouldn't get mixed into that diff: CARTO Dark Matter basemap, a locate-me
+  FAB that recenters/zooms on tap, and the category chips moved to float
+  over the map instead of a separate row above the view toggle.
+
+## 2026-07-06 — Issue #6: Verdicts + cooldowns end-to-end
+
+- PendingVisit: new single-row table (same pattern as ImportInfo), snapshots
+  name/coords/category like Verdict does so the banner and the verdict it
+  may produce don't depend on the poi row still existing. This is the
+  first real schema change since #2/#3 seeded v1 — wrote an actual
+  Migration(1, 2) (CREATE TABLE, no data loss) instead of destructive
+  fallback, since the phone already carries real POI/verdict data.
+- VerdictDao: added delete + observeAll, plus a `setVerdict(poi, value)`
+  extension (null clears) shared by Home and Explore — one tap sets,
+  re-tapping the same value clears, tapping another changes it.
+- SuggestionEngine: verdicts flow into SuggestionContext keyed by place id.
+  👎 is a hard filter forever; ❤️/👍 are hard-filtered only inside their
+  cooldown (❤️ 2 days, 👍 2 weeks — kids' rituals are a feature) and get a
+  score boost with a reason line once the cooldown passes. Pure and
+  covered by SuggestionVerdictTest; existing scenario tests untouched
+  since verdicts defaults to empty.
+- PlaceDetailSheet: added the 👍/👎/❤️ row (shared composable, wired from
+  both HomeScreen and ExploreScreen so both surfaces get one-tap set/change
+  for free).
+- Home: "Go" button on each suggestion card writes a PendingVisit. The
+  combine pipeline gates the banner on `wentAt` being ≥2h old
+  (`PendingVisit.isReadyForBanner`, pulled out as a pure top-level function
+  and unit-tested — the ViewModel itself stays thin per this codebase's
+  convention). Answering 👍/👎/❤️ records a verdict from the snapshot and
+  clears the pending visit; "didn't go" just clears it.
+- Explore: ❤️ "Loved" filter chip added to the floating category-chip row
+  (today's other change); `filterAndSort` takes an optional `lovedIds` set
+  so the pure-function contract stays testable.
+- Deliberately out of scope: the issue's prose mentions rerolled-past cards
+  getting "a mild penalty until the next day" as color, but it's not in the
+  acceptance criteria — the existing session-scoped hard reroll-exclusion
+  from #5 already satisfies "no repeats" and I didn't want to add a new
+  persisted RerollEvent table for an untested requirement. Flagging here in
+  case a future issue wants day-scoped (not session-scoped) reroll memory.
+- Not verified: the 1→2 migration against a real on-device v1 database —
+  exportSchema is false (a deliberate #2 choice) so there's no schema
+  fixture to run a MigrationTestHelper against, and adding that
+  infrastructure felt like scope creep for this issue. The CREATE TABLE
+  was hand-checked column-by-column against the PendingVisit entity.
+  Real validation is on-device: install the updated APK over the existing
+  one and confirm POIs/verdicts survive and pending_visit gets created.
+- Tests: 78 total green (was 60). New: SuggestionVerdictTest (6, cooldown +
+  boost + permanent down-filter), HomeVisitBannerTest (4, the 2h gate),
+  VerdictDaoTest (3), PendingVisitDaoTest (3), FilterAndSortTest +2 (loved
+  filter).
+- Not verified on device (same reasons as prior sessions — phone in active
+  use / locked). Go → banner → verdict loop, the ❤️ Explore filter, and the
+  migration itself all need a real run on Robert's phone.

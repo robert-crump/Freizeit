@@ -14,12 +14,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
+import com.example.freizeit.data.entity.PendingVisit
+import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.common.categoryDisplayName
@@ -73,6 +77,14 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        state.pendingVisit?.let { visit ->
+            VisitBanner(
+                visit = visit,
+                onVerdict = { viewModel.resolveVisit(it) },
+                onDidNotGo = { viewModel.resolveVisit(null) }
+            )
+        }
+
         WeatherStrip(state.weather)
 
         if (!state.hasPois) {
@@ -83,7 +95,8 @@ fun HomeScreen(
             state.cards.forEach { suggestion ->
                 SuggestionCard(
                     suggestion = suggestion,
-                    onClick = { viewModel.selectCard(suggestion) }
+                    onClick = { viewModel.selectCard(suggestion) },
+                    onGo = { viewModel.recordGo(suggestion.poi) }
                 )
             }
             OutlinedButton(
@@ -102,8 +115,45 @@ fun HomeScreen(
     selectedCard?.let { card ->
         PlaceDetailSheet(
             item = PoiWithDistance(card.poi, card.distanceMeters),
+            verdict = state.verdicts[card.poi.id]?.value,
+            onVerdictChange = { viewModel.setVerdict(card.poi, it) },
             onDismiss = { viewModel.selectCard(null) }
         )
+    }
+}
+
+@Composable
+private fun VisitBanner(
+    visit: PendingVisit,
+    onVerdict: (String) -> Unit,
+    onDidNotGo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(
+                    R.string.home_visit_prompt,
+                    visit.snapshotName ?: categoryDisplayName(visit.snapshotCategory)
+                ),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = { onVerdict(Verdict.VALUE_UP) }) { Text("👍") }
+                TextButton(onClick = { onVerdict(Verdict.VALUE_DOWN) }) { Text("👎") }
+                TextButton(onClick = { onVerdict(Verdict.VALUE_LOVE) }) { Text("❤️") }
+                TextButton(onClick = onDidNotGo) { Text(stringResource(R.string.home_visit_didnt_go)) }
+            }
+        }
     }
 }
 
@@ -160,6 +210,7 @@ private fun WeatherStrip(weather: WeatherSnapshot?, modifier: Modifier = Modifie
 private fun SuggestionCard(
     suggestion: Suggestion,
     onClick: () -> Unit,
+    onGo: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
@@ -168,10 +219,19 @@ private fun SuggestionCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                text = poi.displayName(),
-                style = MaterialTheme.typography.titleLarge
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = poi.displayName(),
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Button(onClick = onGo) {
+                    Text(stringResource(R.string.home_go))
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

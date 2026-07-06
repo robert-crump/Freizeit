@@ -1,12 +1,14 @@
 package com.example.freizeit.domain.suggestion
 
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.opening.OpeningHours
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.math.ceil
 import kotlin.math.exp
 import kotlin.math.roundToInt
@@ -19,8 +21,12 @@ data class SuggestionContext(
     val timeBudgetMinutes: Int = DEFAULT_TIME_BUDGET_MINUTES,
     val kidsAlong: Boolean = true,
     /** Seed for the small novelty jitter; same seed = same ranking. */
-    val noveltySeed: Long = now.toLocalDate().toEpochDay()
+    val noveltySeed: Long = now.toLocalDate().toEpochDay(),
+    /** Verdicts keyed by place id, for the ranking boost and cooldown filter. */
+    val verdicts: Map<String, Verdict> = emptyMap()
 ) {
+    val nowMillis: Long = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
     companion object {
         const val DEFAULT_TIME_BUDGET_MINUTES = 180
     }
@@ -57,6 +63,10 @@ object SuggestionEngine {
 
     private val OUTDOOR_CATEGORIES = setOf("playground", "park")
 
+    /** Kids' rituals are a feature: a loved place cools down far faster than a merely-liked one. */
+    private const val LOVE_COOLDOWN_MILLIS = 2 * 24 * 60 * 60 * 1000L
+    private const val UP_COOLDOWN_MILLIS = 14 * 24 * 60 * 60 * 1000L
+
     /** Top [count] suggestions with the ≥2-categories diversity rule applied. */
     fun suggest(
         pois: List<Poi>,
@@ -81,6 +91,13 @@ object SuggestionEngine {
     private fun evaluate(poi: Poi, context: SuggestionContext): Suggestion? {
         val categoryWeight = categoryWeight(poi.category, context.kidsAlong)
         if (categoryWeight <= 0.0) return null
+
+        val verdict = context.verdicts[poi.id]
+        if (verdict?.value == Verdict.VALUE_DOWN) return null
+        if (verdict != null) {
+            val cooldown = if (verdict.value == Verdict.VALUE_LOVE) LOVE_COOLDOWN_MILLIS else UP_COOLDOWN_MILLIS
+            if (context.nowMillis - verdict.verdictedAt < cooldown) return null
+        }
 
         val openStatus = OpeningHours.statusAt(poi.openingHours, context.now)
         if (openStatus == OpenStatus.CLOSED) return null
@@ -136,6 +153,18 @@ object SuggestionEngine {
                     reasons += "good for a rainy day"
                 }
             }
+        }
+
+        when (verdict?.value) {
+            Verdict.VALUE_LOVE -> {
+                score += 25.0
+                reasons += "❤️ favorite"
+            }
+            Verdict.VALUE_UP -> {
+                score += 10.0
+                reasons += "👍 liked before"
+            }
+            else -> {}
         }
 
         score += noveltyJitter(context.noveltySeed, poi.id)
