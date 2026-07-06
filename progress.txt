@@ -86,3 +86,38 @@
 - Fix (d87b81a): restructured as if/else; grep confirmed no other return@ inside
   composables. Rule: no early returns inside composable lambdas.
 - Fixed APK installed on the phone; import retry pending Robert.
+
+## 2026-07-06 — Issue #5: Home — three suggestion cards with transparent ranking and weather
+
+- domain/ layer (pure Kotlin, fully unit-tested, no Android deps):
+  - OpeningHours: conservative OSM opening_hours evaluator implementing the #1
+    hybrid decision — only ever returns CLOSED when the value is fully understood
+    (24/7, day ranges/lists, split + overnight spans, "off", ";" rule override,
+    PH rules skipped); anything else is UNKNOWN = never filter by hours.
+  - WeatherSnapshot: current + 12h hourly, WMO code helpers, badWeatherWithin /
+    dryHoursAhead / outlook for the strip.
+  - SuggestionEngine: hard filters (known-closed, outdoor when rain falls inside
+    the outing window, unreachable = 2×bike travel + 30 min stay > budget; bike =
+    Haversine ×1.3 detour at 250 m/min) then transparent soft score (distance
+    decay 40·e^(-min/25), weather-fit bonuses, +6 confirmed-open, deterministic
+    daily novelty jitter 0–8) × who-is-along category weight (kids default
+    neutral; adults-only ready for #7). Diversity: if the top 3 share a category
+    the third is swapped for the best other-category place. rankAll() exposed for
+    tests/reroll; reason line parts ("Open", "4 min by bike", "dry all day",
+    "21° ice-cream weather", "good for a rainy day") built alongside the score.
+- data/weather: OpenMeteoClient (plain HttpURLConnection + Gson, keyless, null on
+  any failure) + WeatherRepository with stale-beats-spinner semantics: disk cache
+  in filesDir served instantly, refetch only when >30 min old, failures keep the
+  cache. Live API response shape verified against the DTO from the desktop.
+- ui/home: HomeViewModel (combine POIs + weather + location + reroll exclusions
+  on Dispatchers.Default; reroll excludes all session-shown ids and wraps when
+  the pool runs dry; Cologne fallback for weather when no location) and the new
+  HomeScreen: weather strip (emoji, temp, condition, outlook), three tappable
+  suggestion cards with reason lines, reroll button, reuse of PlaceDetailSheet.
+  Location permission requested on first entry, degrades gracefully without.
+- Tests: 60 total green (was 25). New: 22-scenario fixture (SuggestionScenariosTest
+  — the "suggestions must not feel dumb" validation: rainy Tuesday, sunny Saturday,
+  night owl 3am, budget shrink/grow, no-location, no-weather, reroll, determinism,
+  diversity, adults-only…), 9 OpeningHours tests, 4 OpenMeteo parse tests.
+- APK installed on the phone (was dozing + locked, so no UI drive per the
+  focus-collision rule). On-device smoke test of Home pending Robert.

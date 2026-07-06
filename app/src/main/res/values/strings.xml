@@ -3,7 +3,12 @@
     <string name="tab_home">Home</string>
     <string name="tab_explore">Explore</string>
     <string name="tab_settings">Settings</string>
-    <string name="placeholder_home">Suggestions will appear here.</string>
+    <!-- Home -->
+    <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
+    <string name="home_no_suggestions">Nothing fits right now — bad weather or everything closed. Try Explore instead.</string>
+    <string name="home_reroll">Show me others</string>
+    <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
+    <string name="home_weather_temp">%1$d°</string>
     <!-- Explore -->
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>

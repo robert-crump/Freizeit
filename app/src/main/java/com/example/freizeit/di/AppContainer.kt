@@ -3,6 +3,7 @@ package com.example.freizeit.di
 import android.content.Context
 import com.example.freizeit.data.FreizeitDatabase
 import com.example.freizeit.data.repository.PoiRepository
+import com.example.freizeit.data.weather.WeatherRepository
 
 /**
  * Manual dependency container. New dependencies (repositories, services)
@@ -16,5 +17,9 @@ class AppContainer(private val context: Context) {
 
     val poiRepository: PoiRepository by lazy {
         PoiRepository(context, database)
+    }
+
+    val weatherRepository: WeatherRepository by lazy {
+        WeatherRepository(context)
     }
 }
