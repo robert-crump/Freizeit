@@ -2,7 +2,9 @@ package com.example.freizeit.util
 
 import java.util.Locale
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -20,8 +22,14 @@ object GeoDistance {
         return EARTH_RADIUS_M * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    /** "340 m" below 1 km, "1.2 km" above. */
-    fun format(meters: Double): String =
-        if (meters < 1000) "${meters.toInt()} m"
-        else String.format(Locale.getDefault(), "%.1f km", meters / 1000)
+    /**
+     * "740 m" below 1 km (rounded to the nearest 10 m), "1.2 km" up to 10 km, and "11 km"
+     * beyond that (rounded up to the next whole km — precision below 1 km isn't useful
+     * once you're that far out).
+     */
+    fun format(meters: Double): String = when {
+        meters < 1000 -> "${(meters / 10).roundToInt() * 10} m"
+        meters > 10_000 -> "${ceil(meters / 1000).toInt()} km"
+        else -> String.format(Locale.getDefault(), "%.1f km", meters / 1000)
+    }
 }
