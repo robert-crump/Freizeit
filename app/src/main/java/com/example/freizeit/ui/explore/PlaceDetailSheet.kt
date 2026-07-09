@@ -11,11 +11,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,10 +47,14 @@ fun PlaceDetailSheet(
     item: PoiWithDistance,
     verdict: String?,
     onVerdictChange: (String?) -> Unit,
+    customName: String?,
+    onCustomNameChange: (String?) -> Unit,
     onDismiss: () -> Unit,
     location: LatLon? = null
 ) {
     val poi = item.poi
+    var showEditNameDialog by remember { mutableStateOf(false) }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -47,10 +62,16 @@ fun PlaceDetailSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = poi.displayName(),
-                style = MaterialTheme.typography.headlineSmall
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = poi.displayName(customName),
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                IconButton(onClick = { showEditNameDialog = true }) {
+                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.detail_edit_name))
+                }
+            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -104,9 +125,53 @@ fun PlaceDetailSheet(
             )
         }
     }
+
+    if (showEditNameDialog) {
+        CustomNameDialog(
+            initialName = customName ?: "",
+            onSave = {
+                onCustomNameChange(it)
+                showEditNameDialog = false
+            },
+            onDismiss = { showEditNameDialog = false }
+        )
+    }
 }
 
-/** Tapping the active verdict again clears it; tapping another one changes it. */
+/** Empty input clears the custom name, reverting display to the OSM name/fallback. */
+@Composable
+private fun CustomNameDialog(
+    initialName: String,
+    onSave: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.detail_custom_name_title)) },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(R.string.detail_custom_name_label)) },
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name.trim().ifBlank { null }) }) {
+                Text(stringResource(R.string.detail_custom_name_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.detail_custom_name_cancel))
+            }
+        }
+    )
+}
+
+/** Tapping the active verdict again clears it; tapping the other one changes it. */
 @Composable
 private fun VerdictRow(
     current: String?,
@@ -118,12 +183,6 @@ private fun VerdictRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         VerdictButton(
-            emoji = "👍",
-            label = stringResource(R.string.detail_verdict_up),
-            selected = current == Verdict.VALUE_UP,
-            onClick = { onChange(if (current == Verdict.VALUE_UP) null else Verdict.VALUE_UP) }
-        )
-        VerdictButton(
             emoji = "👎",
             label = stringResource(R.string.detail_verdict_down),
             selected = current == Verdict.VALUE_DOWN,
@@ -131,9 +190,9 @@ private fun VerdictRow(
         )
         VerdictButton(
             emoji = "❤️",
-            label = stringResource(R.string.detail_verdict_love),
-            selected = current == Verdict.VALUE_LOVE,
-            onClick = { onChange(if (current == Verdict.VALUE_LOVE) null else Verdict.VALUE_LOVE) }
+            label = stringResource(R.string.detail_verdict_favorite),
+            selected = current == Verdict.VALUE_FAVORITE,
+            onClick = { onChange(if (current == Verdict.VALUE_FAVORITE) null else Verdict.VALUE_FAVORITE) }
         )
     }
 }
@@ -175,8 +234,8 @@ fun CategoryDot(category: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Poi.displayName(): String =
-    name ?: stringResource(R.string.explore_unnamed, categoryDisplayName(category).lowercase())
+fun Poi.displayName(customName: String? = null): String =
+    customName ?: name ?: stringResource(R.string.explore_unnamed, categoryDisplayName(category).lowercase())
 
 /** "Marktplatz 8, 4750 Bütgenbach" from whichever address parts exist. */
 fun Poi.addressLine(): String? {

@@ -111,7 +111,7 @@ class PoiImportTest {
         db.verdictDao().upsert(
             Verdict(
                 placeId = "node/2",
-                value = Verdict.VALUE_LOVE,
+                value = Verdict.VALUE_FAVORITE,
                 verdictedAt = System.currentTimeMillis(),
                 snapshotName = "Place node/2",
                 snapshotLat = 50.5,

@@ -16,13 +16,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -31,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -73,23 +78,49 @@ fun ExploreScreen(
 
     var viewIndex by rememberSaveable { mutableIntStateOf(0) }
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
+    var searchActive by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        SingleChoiceSegmentedButtonRow(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf(
-                stringResource(R.string.explore_view_map),
-                stringResource(R.string.explore_view_list)
-            ).forEachIndexed { index, label ->
-                SegmentedButton(
-                    selected = viewIndex == index,
-                    onClick = { viewIndex = index },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = 2)
+            if (searchActive) {
+                OutlinedTextField(
+                    value = state.searchQuery,
+                    onValueChange = viewModel::setSearchQuery,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+                    singleLine = true
+                )
+                IconButton(
+                    onClick = {
+                        searchActive = false
+                        viewModel.clearSearch()
+                    }
                 ) {
-                    Text(label)
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_search_close))
+                }
+            } else {
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.weight(1f)) {
+                    listOf(
+                        stringResource(R.string.explore_view_map),
+                        stringResource(R.string.explore_view_list)
+                    ).forEachIndexed { index, label ->
+                        SegmentedButton(
+                            selected = viewIndex == index,
+                            onClick = { viewIndex = index },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = 2)
+                        ) {
+                            Text(label)
+                        }
+                    }
+                }
+                IconButton(onClick = { searchActive = true }) {
+                    Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.explore_search_icon))
                 }
             }
         }
@@ -109,6 +140,7 @@ fun ExploreScreen(
                     pois = state.pois,
                     location = state.location,
                     onPoiClick = viewModel::selectPoi,
+                    customNames = state.customNames,
                     recenterRequest = recenterRequest,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -116,8 +148,8 @@ fun ExploreScreen(
                     categories = state.categories,
                     selectedCategory = state.selectedCategory,
                     onSelect = viewModel::selectCategory,
-                    lovedOnly = state.lovedOnly,
-                    onToggleLoved = viewModel::toggleLovedOnly,
+                    favoritesOnly = state.favoritesOnly,
+                    onToggleFavoritesOnly = viewModel::toggleFavoritesOnly,
                     modifier = Modifier.align(Alignment.TopStart)
                 )
                 FloatingActionButton(
@@ -137,11 +169,12 @@ fun ExploreScreen(
                         categories = state.categories,
                         selectedCategory = state.selectedCategory,
                         onSelect = viewModel::selectCategory,
-                        lovedOnly = state.lovedOnly,
-                        onToggleLoved = viewModel::toggleLovedOnly
+                        favoritesOnly = state.favoritesOnly,
+                        onToggleFavoritesOnly = viewModel::toggleFavoritesOnly
                     )
                     PoiList(
                         pois = state.pois,
+                        customNames = state.customNames,
                         onPoiClick = viewModel::selectPoi,
                         modifier = Modifier.weight(1f)
                     )
@@ -155,6 +188,8 @@ fun ExploreScreen(
             item = item,
             verdict = state.verdicts[item.poi.id]?.value,
             onVerdictChange = { viewModel.setVerdict(item.poi, it) },
+            customName = state.customNames[item.poi.id],
+            onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
             onDismiss = { viewModel.selectPoi(null) },
             location = state.location
         )
@@ -166,8 +201,8 @@ private fun PoiCategoryChipRow(
     categories: List<String>,
     selectedCategory: String?,
     onSelect: (String) -> Unit,
-    lovedOnly: Boolean,
-    onToggleLoved: () -> Unit,
+    favoritesOnly: Boolean,
+    onToggleFavoritesOnly: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
@@ -177,9 +212,9 @@ private fun PoiCategoryChipRow(
     ) {
         item {
             FilterChip(
-                selected = lovedOnly,
-                onClick = onToggleLoved,
-                label = { Text(stringResource(R.string.explore_loved_filter)) },
+                selected = favoritesOnly,
+                onClick = onToggleFavoritesOnly,
+                label = { Text(stringResource(R.string.explore_favorites_filter)) },
                 leadingIcon = { Text("❤️") },
                 colors = FilterChipDefaults.filterChipColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -205,6 +240,7 @@ private fun PoiCategoryChipRow(
 @Composable
 private fun PoiList(
     pois: List<PoiWithDistance>,
+    customNames: Map<String, String>,
     onPoiClick: (PoiWithDistance) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -221,7 +257,7 @@ private fun PoiList(
                 CategoryDot(item.poi.category)
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.poi.displayName(),
+                        text = item.poi.displayName(customNames[item.poi.id]),
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Text(

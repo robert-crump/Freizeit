@@ -8,8 +8,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
+import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
+import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
@@ -35,24 +37,36 @@ data class ExploreUiState(
     val selectedCategory: String? = null,
     val location: LatLon? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
-    val lovedOnly: Boolean = false
+    val customNames: Map<String, String> = emptyMap(),
+    val favoritesOnly: Boolean = false,
+    val searchQuery: String = ""
 )
 
 /**
  * Pure filter+sort so the semantics are unit-testable. Exactly one filter is ever
- * active: [lovedIds] (non-null) restricts to loved places across all categories,
- * otherwise [selectedCategory] restricts to that one category; with neither set,
- * nothing matches. With a location, sorts nearest first, otherwise by name
+ * active, in priority order: a non-blank [searchQuery] matches custom-or-OSM name
+ * substrings across all categories; otherwise [favoriteIds] (non-null) restricts to
+ * favorited places; otherwise [selectedCategory] restricts to that one category; with
+ * none set, nothing matches. With a location, sorts nearest first, otherwise by name
  * (unnamed places last).
  */
 fun filterAndSort(
     pois: List<Poi>,
     selectedCategory: String?,
     location: LatLon?,
-    lovedIds: Set<String>? = null
+    favoriteIds: Set<String>? = null,
+    searchQuery: String? = null,
+    customNames: Map<String, String> = emptyMap()
 ): List<PoiWithDistance> {
     val filtered = pois.filter {
-        if (lovedIds != null) it.id in lovedIds else it.category == selectedCategory
+        when {
+            !searchQuery.isNullOrBlank() -> {
+                val name = customNames[it.id] ?: it.name
+                name != null && name.contains(searchQuery, ignoreCase = true)
+            }
+            favoriteIds != null -> it.id in favoriteIds
+            else -> it.category == selectedCategory
+        }
     }
     return if (location != null) {
         filtered
@@ -73,41 +87,55 @@ fun filterAndSort(
 class ExploreViewModel(
     private val appContext: Context,
     poiDao: PoiDao,
-    private val verdictDao: VerdictDao
+    private val verdictDao: VerdictDao,
+    private val poiCustomNameDao: PoiCustomNameDao
 ) : ViewModel() {
 
     // null = no category chosen yet, so the map/list starts empty until the user taps a chip
     private val selectedCategory = MutableStateFlow<String?>(null)
     private val location = MutableStateFlow<LatLon?>(null)
-    private val lovedOnly = MutableStateFlow(false)
+    private val favoritesOnly = MutableStateFlow(false)
+    private val searchQuery = MutableStateFlow("")
 
     private val _selectedPoi = MutableStateFlow<PoiWithDistance?>(null)
     val selectedPoi: StateFlow<PoiWithDistance?> = _selectedPoi
 
-    private val poisAndVerdicts = combine(poiDao.observeAll(), verdictDao.observeAll()) { pois, verdicts ->
-        pois to verdicts.associateBy { it.placeId }
+    private val poisVerdictsAndNames = combine(
+        poiDao.observeAll(),
+        verdictDao.observeAll(),
+        poiCustomNameDao.observeAll()
+    ) { pois, verdicts, customNames ->
+        Triple(
+            pois,
+            verdicts.associateBy { it.placeId },
+            customNames.associate { it.placeId to it.customName }
+        )
     }
 
     val uiState: StateFlow<ExploreUiState> = combine(
-        poisAndVerdicts,
+        poisVerdictsAndNames,
         selectedCategory,
         location,
-        lovedOnly
-    ) { (pois, verdictMap), selectedCat, loc, loved ->
+        favoritesOnly,
+        searchQuery
+    ) { poisVerdictsNames, selectedCat, loc, favOnly, query ->
+        val (pois, verdictMap, customNames) = poisVerdictsNames
         val categories = pois.map { it.category }.distinct()
             .sortedWith(compareBy({ categoryOrderIndex(it) }, { it }))
-        val lovedIds = if (loved) {
-            verdictMap.values.filter { it.value == Verdict.VALUE_LOVE }.map { it.placeId }.toSet()
+        val favoriteIds = if (favOnly) {
+            verdictMap.values.filter { it.value == Verdict.VALUE_FAVORITE }.map { it.placeId }.toSet()
         } else {
             null
         }
         ExploreUiState(
-            pois = filterAndSort(pois, selectedCat, loc, lovedIds),
+            pois = filterAndSort(pois, selectedCat, loc, favoriteIds, query.ifBlank { null }, customNames),
             categories = categories,
             selectedCategory = selectedCat,
             location = loc,
             verdicts = verdictMap,
-            lovedOnly = loved
+            customNames = customNames,
+            favoritesOnly = favOnly,
+            searchQuery = query
         )
     }
         .flowOn(Dispatchers.Default)
@@ -117,16 +145,35 @@ class ExploreViewModel(
         refreshLocation()
     }
 
-    /** Category chips are mutually exclusive with each other and with "loved only". */
+    /** Category chips are mutually exclusive with "favorites only" and search. */
     fun selectCategory(category: String) {
         selectedCategory.value = if (selectedCategory.value == category) null else category
-        if (selectedCategory.value != null) lovedOnly.value = false
+        if (selectedCategory.value != null) {
+            favoritesOnly.value = false
+            searchQuery.value = ""
+        }
     }
 
-    /** Mutually exclusive with category chips — see [selectCategory]. */
-    fun toggleLovedOnly() {
-        lovedOnly.value = !lovedOnly.value
-        if (lovedOnly.value) selectedCategory.value = null
+    /** Mutually exclusive with category chips and search — see [selectCategory]. */
+    fun toggleFavoritesOnly() {
+        favoritesOnly.value = !favoritesOnly.value
+        if (favoritesOnly.value) {
+            selectedCategory.value = null
+            searchQuery.value = ""
+        }
+    }
+
+    /** Mutually exclusive with category chips and "favorites only" — see [selectCategory]. */
+    fun setSearchQuery(query: String) {
+        searchQuery.value = query
+        if (query.isNotBlank()) {
+            selectedCategory.value = null
+            favoritesOnly.value = false
+        }
+    }
+
+    fun clearSearch() {
+        searchQuery.value = ""
     }
 
     fun refreshLocation() {
@@ -145,11 +192,20 @@ class ExploreViewModel(
         viewModelScope.launch(Dispatchers.IO) { verdictDao.setVerdict(poi, value) }
     }
 
+    fun setCustomName(poiId: String, customName: String?) {
+        viewModelScope.launch(Dispatchers.IO) { poiCustomNameDao.setCustomName(poiId, customName) }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as FreizeitApplication
-                ExploreViewModel(app, app.container.database.poiDao(), app.container.database.verdictDao())
+                ExploreViewModel(
+                    app,
+                    app.container.database.poiDao(),
+                    app.container.database.verdictDao(),
+                    app.container.database.poiCustomNameDao()
+                )
             }
         }
     }

@@ -66,9 +66,12 @@ object SuggestionEngine {
 
     private val OUTDOOR_CATEGORIES = setOf("playground", "park")
 
-    /** Kids' rituals are a feature: a loved place cools down far faster than a merely-liked one. */
-    private const val LOVE_COOLDOWN_MILLIS = 2 * 24 * 60 * 60 * 1000L
-    private const val UP_COOLDOWN_MILLIS = 14 * 24 * 60 * 60 * 1000L
+    /** Kids' rituals are a feature: a favorite should resurface soon, not cool down for weeks. */
+    private const val FAVORITE_COOLDOWN_MILLIS = 2 * 24 * 60 * 60 * 1000L
+
+    /** Extra edge for a favorite that's also genuinely close by, on top of the flat bonus below. */
+    private const val FAVORITE_PROXIMITY_BONUS = 15.0
+    private const val FAVORITE_PROXIMITY_DECAY_MINUTES = 25.0
 
     /** Top [count] suggestions with the ≥2-categories diversity rule applied. */
     fun suggest(
@@ -97,9 +100,8 @@ object SuggestionEngine {
 
         val verdict = context.verdicts[poi.id]
         if (verdict?.value == Verdict.VALUE_DOWN) return null
-        if (verdict != null) {
-            val cooldown = if (verdict.value == Verdict.VALUE_LOVE) LOVE_COOLDOWN_MILLIS else UP_COOLDOWN_MILLIS
-            if (context.nowMillis - verdict.verdictedAt < cooldown) return null
+        if (verdict != null && context.nowMillis - verdict.verdictedAt < FAVORITE_COOLDOWN_MILLIS) {
+            return null
         }
 
         val openStatus = OpeningHours.statusAt(poi.openingHours, context.now)
@@ -158,16 +160,12 @@ object SuggestionEngine {
             }
         }
 
-        when (verdict?.value) {
-            Verdict.VALUE_LOVE -> {
-                score += 25.0
-                reasons += "❤️ favorite"
+        if (verdict?.value == Verdict.VALUE_FAVORITE) {
+            score += 25.0
+            reasons += "❤️ favorite"
+            if (travelMinutes != null) {
+                score += FAVORITE_PROXIMITY_BONUS * exp(-travelMinutes / FAVORITE_PROXIMITY_DECAY_MINUTES)
             }
-            Verdict.VALUE_UP -> {
-                score += 10.0
-                reasons += "👍 liked before"
-            }
-            else -> {}
         }
 
         score += noveltyJitter(context.noveltySeed, poi.id)
