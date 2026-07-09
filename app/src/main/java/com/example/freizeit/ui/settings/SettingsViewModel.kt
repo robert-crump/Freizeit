@@ -11,11 +11,8 @@ import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.BackupParseException
 import com.example.freizeit.data.PoiParseException
 import com.example.freizeit.data.dao.CategoryCount
-import com.example.freizeit.data.entity.Favorite
 import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.repository.BackupRepository
-import com.example.freizeit.data.repository.FavoriteRepository
-import com.example.freizeit.data.repository.FavoriteResolveException
 import com.example.freizeit.data.repository.PoiRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -37,13 +34,6 @@ sealed interface ImportStatus {
     data class Error(val message: String) : ImportStatus
 }
 
-sealed interface FavoriteStatus {
-    data object Idle : FavoriteStatus
-    data object Saving : FavoriteStatus
-    data object Saved : FavoriteStatus
-    data class Error(val message: String) : FavoriteStatus
-}
-
 sealed interface BackupStatus {
     data object Idle : BackupStatus
     data object Working : BackupStatus
@@ -54,7 +44,6 @@ sealed interface BackupStatus {
 
 class SettingsViewModel(
     private val poiRepository: PoiRepository,
-    private val favoriteRepository: FavoriteRepository,
     private val backupRepository: BackupRepository
 ) : ViewModel() {
 
@@ -68,12 +57,6 @@ class SettingsViewModel(
     ) { counts, missing, info ->
         PoiSummary(counts, missing, info)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    val favorites: StateFlow<List<Favorite>> = favoriteRepository.favorites
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    private val _favoriteStatus = MutableStateFlow<FavoriteStatus>(FavoriteStatus.Idle)
-    val favoriteStatus: StateFlow<FavoriteStatus> = _favoriteStatus
 
     private val _backupStatus = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
     val backupStatus: StateFlow<BackupStatus> = _backupStatus
@@ -89,38 +72,6 @@ class SettingsViewModel(
                 ImportStatus.Error("Import failed: ${e.message ?: e.javaClass.simpleName}")
             }
         }
-    }
-
-    fun addFavorite(name: String, address: String) {
-        viewModelScope.launch {
-            _favoriteStatus.value = FavoriteStatus.Saving
-            _favoriteStatus.value = try {
-                favoriteRepository.add(name, address)
-                FavoriteStatus.Saved
-            } catch (e: FavoriteResolveException) {
-                FavoriteStatus.Error(e.message ?: "Couldn't resolve that address")
-            }
-        }
-    }
-
-    fun updateFavorite(favorite: Favorite, name: String, address: String) {
-        viewModelScope.launch {
-            _favoriteStatus.value = FavoriteStatus.Saving
-            _favoriteStatus.value = try {
-                favoriteRepository.update(favorite, name, address)
-                FavoriteStatus.Saved
-            } catch (e: FavoriteResolveException) {
-                FavoriteStatus.Error(e.message ?: "Couldn't resolve that address")
-            }
-        }
-    }
-
-    fun deleteFavorite(favorite: Favorite) {
-        viewModelScope.launch { favoriteRepository.delete(favorite) }
-    }
-
-    fun clearFavoriteStatus() {
-        _favoriteStatus.value = FavoriteStatus.Idle
     }
 
     fun exportBackup(uri: Uri) {
@@ -153,7 +104,6 @@ class SettingsViewModel(
                 val app = this[APPLICATION_KEY] as FreizeitApplication
                 SettingsViewModel(
                     app.container.poiRepository,
-                    app.container.favoriteRepository,
                     app.container.backupRepository
                 )
             }

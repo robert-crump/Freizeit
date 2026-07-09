@@ -12,25 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
-import com.example.freizeit.data.entity.Favorite
 import com.example.freizeit.ui.common.categoryDisplayName
 import java.time.Instant
 import java.time.ZoneId
@@ -52,20 +39,7 @@ fun SettingsScreen(
 ) {
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
-    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
-    val favoriteStatus by viewModel.favoriteStatus.collectAsStateWithLifecycle()
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
-
-    var showAddFavoriteDialog by remember { mutableStateOf(false) }
-    var editingFavorite by remember { mutableStateOf<Favorite?>(null) }
-
-    LaunchedEffect(favoriteStatus) {
-        if (favoriteStatus is FavoriteStatus.Saved) {
-            showAddFavoriteDialog = false
-            editingFavorite = null
-            viewModel.clearFavoriteStatus()
-        }
-    }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -131,31 +105,6 @@ fun SettingsScreen(
         ImportSummaryCard(summary)
 
         Text(
-            text = stringResource(R.string.settings_favorites_section),
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        if (favorites.isEmpty()) {
-            Text(
-                text = stringResource(R.string.settings_favorites_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            favorites.forEach { favorite ->
-                FavoriteRow(
-                    favorite = favorite,
-                    onEdit = { editingFavorite = favorite },
-                    onDelete = { viewModel.deleteFavorite(favorite) }
-                )
-            }
-        }
-
-        Button(onClick = { showAddFavoriteDialog = true }) {
-            Text(stringResource(R.string.settings_favorite_add))
-        }
-
-        Text(
             text = stringResource(R.string.settings_backup_section),
             style = MaterialTheme.typography.titleMedium
         )
@@ -198,116 +147,6 @@ fun SettingsScreen(
             )
         }
     }
-
-    if (showAddFavoriteDialog) {
-        FavoriteDialog(
-            initialName = "",
-            initialAddress = "",
-            status = favoriteStatus,
-            onSave = { name, address -> viewModel.addFavorite(name, address) },
-            onDismiss = {
-                showAddFavoriteDialog = false
-                viewModel.clearFavoriteStatus()
-            }
-        )
-    }
-
-    editingFavorite?.let { favorite ->
-        FavoriteDialog(
-            initialName = favorite.name,
-            initialAddress = favorite.address ?: "",
-            status = favoriteStatus,
-            onSave = { name, address -> viewModel.updateFavorite(favorite, name, address) },
-            onDismiss = {
-                editingFavorite = null
-                viewModel.clearFavoriteStatus()
-            }
-        )
-    }
-}
-
-@Composable
-private fun FavoriteRow(favorite: Favorite, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(favorite.name, style = MaterialTheme.typography.bodyLarge)
-            favorite.address?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.settings_favorite_edit))
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.settings_favorite_delete))
-        }
-    }
-}
-
-@Composable
-private fun FavoriteDialog(
-    initialName: String,
-    initialAddress: String,
-    status: FavoriteStatus,
-    onSave: (name: String, address: String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var name by remember { mutableStateOf(initialName) }
-    var address by remember { mutableStateOf(initialAddress) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_favorite_add)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.settings_favorite_name)) },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = address,
-                    onValueChange = { address = it },
-                    label = { Text(stringResource(R.string.settings_favorite_address)) },
-                    singleLine = true
-                )
-                if (status is FavoriteStatus.Saving) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
-                        Text(stringResource(R.string.settings_favorite_resolving))
-                    }
-                }
-                if (status is FavoriteStatus.Error) {
-                    Text(status.message, color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onSave(name.trim(), address.trim()) },
-                enabled = name.isNotBlank() && address.isNotBlank() && status !is FavoriteStatus.Saving
-            ) {
-                Text(stringResource(R.string.settings_favorite_save))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.settings_favorite_cancel))
-            }
-        }
-    )
 }
 
 @Composable

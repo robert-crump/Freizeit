@@ -22,8 +22,7 @@ data class Verdict(
     val snapshotCategory: String
 ) {
     companion object {
-        const val VALUE_UP = "up"
         const val VALUE_DOWN = "down"
-        const val VALUE_LOVE = "love"
+        const val VALUE_FAVORITE = "favorite"
     }
 }

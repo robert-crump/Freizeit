@@ -90,14 +90,6 @@ fun HomeScreen(
 
         WeatherStrip(state.weather)
 
-        state.anchorName?.let { name ->
-            Text(
-                text = stringResource(R.string.home_near_favorite, name),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
         OverrideChipsRow(
             timeBudgetMinutes = state.timeBudgetMinutes,
             kidsAlong = state.kidsAlong,
@@ -115,8 +107,9 @@ fun HomeScreen(
             state.cards.forEach { suggestion ->
                 SuggestionCard(
                     suggestion = suggestion,
+                    customName = state.customNames[suggestion.poi.id],
                     onClick = { viewModel.selectCard(suggestion) },
-                    onGo = { viewModel.recordGo(suggestion.poi) }
+                    onGo = { viewModel.recordGo(suggestion.poi, state.customNames[suggestion.poi.id]) }
                 )
             }
             OutlinedButton(
@@ -137,6 +130,8 @@ fun HomeScreen(
             item = PoiWithDistance(card.poi, card.distanceMeters),
             verdict = state.verdicts[card.poi.id]?.value,
             onVerdictChange = { viewModel.setVerdict(card.poi, it) },
+            customName = state.customNames[card.poi.id],
+            onCustomNameChange = { viewModel.setCustomName(card.poi.id, it) },
             onDismiss = { viewModel.selectCard(null) },
             location = state.location
         )
@@ -169,9 +164,8 @@ private fun VisitBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                TextButton(onClick = { onVerdict(Verdict.VALUE_UP) }) { Text("👍") }
                 TextButton(onClick = { onVerdict(Verdict.VALUE_DOWN) }) { Text("👎") }
-                TextButton(onClick = { onVerdict(Verdict.VALUE_LOVE) }) { Text("❤️") }
+                TextButton(onClick = { onVerdict(Verdict.VALUE_FAVORITE) }) { Text("❤️") }
                 TextButton(onClick = onDidNotGo) { Text(stringResource(R.string.home_visit_didnt_go)) }
             }
         }
@@ -275,6 +269,7 @@ private fun nextTimeBudget(current: Int): Int = when {
 @Composable
 private fun SuggestionCard(
     suggestion: Suggestion,
+    customName: String?,
     onClick: () -> Unit,
     onGo: () -> Unit,
     modifier: Modifier = Modifier
@@ -291,7 +286,7 @@ private fun SuggestionCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = poi.displayName(),
+                    text = poi.displayName(customName),
                     style = MaterialTheme.typography.titleLarge
                 )
                 Button(onClick = onGo) {

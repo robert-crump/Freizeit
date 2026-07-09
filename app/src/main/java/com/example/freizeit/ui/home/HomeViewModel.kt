@@ -8,12 +8,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
-import com.example.freizeit.data.dao.FavoriteDao
 import com.example.freizeit.data.dao.PendingVisitDao
+import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
+import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
-import com.example.freizeit.data.entity.Favorite
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
@@ -22,7 +22,6 @@ import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.domain.weather.WeatherSnapshot
-import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
@@ -43,32 +42,16 @@ private const val VISIT_BANNER_THRESHOLD_MILLIS = 2 * 60 * 60 * 1000L
 fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
-/** Radius within which GPS treats a favorite as "you're here" (carried over from v1). */
-private const val FAVORITE_ANCHOR_RADIUS_METERS = 300.0
-
-/** Nearest favorite within the anchor radius of [location], or null. Pure so the
- *  anchor-swap logic is unit-testable without touching the ViewModel. */
-fun nearestFavoriteWithin(
-    location: LatLon,
-    favorites: List<Favorite>,
-    radiusMeters: Double = FAVORITE_ANCHOR_RADIUS_METERS
-): Favorite? = favorites
-    .map { it to GeoDistance.metersBetween(location.lat, location.lon, it.lat, it.lon) }
-    .filter { (_, distance) -> distance <= radiusMeters }
-    .minByOrNull { (_, distance) -> distance }
-    ?.first
-
 data class HomeUiState(
     val cards: List<Suggestion> = emptyList(),
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
-    /** Name of the favorite GPS currently anchors to, or null when using raw GPS. */
-    val anchorName: String? = null,
     /** False only once the POI table is confirmed empty — drives the import hint. */
     val hasPois: Boolean = true,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
     val pendingVisit: PendingVisit? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
+    val customNames: Map<String, String> = emptyMap(),
     /** Active chip overrides (issue #7); reset to defaults on next app open. */
     val timeBudgetMinutes: Int = SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES,
     val kidsAlong: Boolean = true,
@@ -82,7 +65,7 @@ class HomeViewModel(
     private val verdictDao: VerdictDao,
     private val pendingVisitDao: PendingVisitDao,
     private val weatherRepository: WeatherRepository,
-    favoriteDao: FavoriteDao
+    private val poiCustomNameDao: PoiCustomNameDao
 ) : ViewModel() {
 
     private val location = MutableStateFlow<LatLon?>(null)
@@ -101,27 +84,29 @@ class HomeViewModel(
     private val _selectedCard = MutableStateFlow<Suggestion?>(null)
     val selectedCard: StateFlow<Suggestion?> = _selectedCard
 
-    private val poisAndVerdicts = combine(poiDao.observeAll(), verdictDao.observeAll()) { pois, verdicts ->
-        pois to verdicts.associateBy { it.placeId }
+    private val poisVerdictsAndNames = combine(
+        poiDao.observeAll(),
+        verdictDao.observeAll(),
+        poiCustomNameDao.observeAll()
+    ) { pois, verdicts, customNames ->
+        Triple(
+            pois,
+            verdicts.associateBy { it.placeId },
+            customNames.associate { it.placeId to it.customName }
+        )
     }
 
-    private val poisVerdictsAndFavorites = combine(
-        poisAndVerdicts,
-        favoriteDao.observeAll()
-    ) { (pois, verdictMap), favorites -> Triple(pois, verdictMap, favorites) }
-
     val uiState: StateFlow<HomeUiState> = combine(
-        poisVerdictsAndFavorites,
+        poisVerdictsAndNames,
         weatherRepository.snapshot,
         locationAndOverrides,
         rerolledIds,
         pendingVisitDao.observe()
-    ) { (pois, verdictMap, favorites), weather, (loc, budget, kids), excluded, pendingVisit ->
-        val anchor = loc?.let { nearestFavoriteWithin(it, favorites) }
-        val effectiveLocation = anchor?.let { LatLon(it.lat, it.lon) } ?: loc
+    ) { poisVerdictsNames, weather, (loc, budget, kids), excluded, pendingVisit ->
+        val (pois, verdictMap, customNames) = poisVerdictsNames
         val context = SuggestionContext(
             now = LocalDateTime.now(),
-            location = effectiveLocation,
+            location = loc,
             weather = weather,
             timeBudgetMinutes = budget,
             kidsAlong = kids,
@@ -135,11 +120,11 @@ class HomeViewModel(
         HomeUiState(
             cards = cards,
             weather = weather,
-            location = effectiveLocation,
-            anchorName = anchor?.name,
+            location = loc,
             hasPois = pois.isNotEmpty(),
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = verdictMap,
+            customNames = customNames,
             timeBudgetMinutes = budget,
             kidsAlong = kids,
             isLoading = false
@@ -194,13 +179,17 @@ class HomeViewModel(
         viewModelScope.launch(Dispatchers.IO) { verdictDao.setVerdict(poi, value) }
     }
 
+    fun setCustomName(poiId: String, customName: String?) {
+        viewModelScope.launch(Dispatchers.IO) { poiCustomNameDao.setCustomName(poiId, customName) }
+    }
+
     /** Tapping "Go" on a card records intent; the banner appears next open, 2h+ later. */
-    fun recordGo(poi: Poi) {
+    fun recordGo(poi: Poi, customName: String?) {
         viewModelScope.launch(Dispatchers.IO) {
             pendingVisitDao.set(
                 PendingVisit(
                     placeId = poi.id,
-                    snapshotName = poi.name,
+                    snapshotName = customName ?: poi.name,
                     snapshotCategory = poi.category,
                     snapshotLat = poi.lat,
                     snapshotLon = poi.lon,
@@ -245,7 +234,7 @@ class HomeViewModel(
                     app.container.database.verdictDao(),
                     app.container.database.pendingVisitDao(),
                     app.container.weatherRepository,
-                    app.container.database.favoriteDao()
+                    app.container.database.poiCustomNameDao()
                 )
             }
         }

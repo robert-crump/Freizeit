@@ -12,7 +12,6 @@
     <string name="home_go">Go</string>
     <string name="home_visit_prompt">Were you at %1$s?</string>
     <string name="home_visit_didnt_go">Didn\'t go</string>
-    <string name="home_near_favorite">Near %1$s</string>
     <string name="home_time_budget_short">1 h</string>
     <string name="home_time_budget_default">3 h</string>
     <string name="home_time_budget_long">All day</string>
@@ -24,13 +23,20 @@
     <string name="explore_empty">No places yet. Import a POI file in Settings.</string>
     <string name="explore_locate_me">Locate me</string>
     <string name="explore_unnamed">Unnamed %1$s</string>
-    <string name="explore_loved_filter">Loved</string>
+    <string name="explore_favorites_filter">Favorites</string>
+    <string name="explore_search_icon">Search</string>
+    <string name="explore_search_close">Close search</string>
+    <string name="explore_search_placeholder">Search places by name</string>
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>
-    <string name="detail_verdict_up">Liked</string>
     <string name="detail_verdict_down">Not for us</string>
-    <string name="detail_verdict_love">Favorite</string>
+    <string name="detail_verdict_favorite">Favorite</string>
+    <string name="detail_edit_name">Edit name</string>
+    <string name="detail_custom_name_title">Custom name</string>
+    <string name="detail_custom_name_label">Name</string>
+    <string name="detail_custom_name_save">Save</string>
+    <string name="detail_custom_name_cancel">Cancel</string>
     <!-- Settings: POI import -->
     <string name="settings_poi_section">Place data</string>
     <string name="settings_import_button">Import POI file</string>
@@ -39,17 +45,6 @@
     <string name="settings_no_import">No place data imported yet. Import the pois.json produced by the extraction script.</string>
     <string name="settings_last_import">Last import: %1$s</string>
     <string name="settings_missing_flagged">No longer in OSM (kept because of a verdict): %1$d</string>
-    <!-- Settings: favorites -->
-    <string name="settings_favorites_section">Favorite places</string>
-    <string name="settings_favorites_empty">No favorites yet. Add home or a grandparent\'s place so distances make sense.</string>
-    <string name="settings_favorite_add">Add favorite</string>
-    <string name="settings_favorite_name">Name</string>
-    <string name="settings_favorite_address">Address</string>
-    <string name="settings_favorite_save">Save</string>
-    <string name="settings_favorite_cancel">Cancel</string>
-    <string name="settings_favorite_edit">Edit favorite</string>
-    <string name="settings_favorite_delete">Delete favorite</string>
-    <string name="settings_favorite_resolving">Looking up address…</string>
     <!-- Settings: backup -->
     <string name="settings_backup_section">Backup</string>
     <string name="settings_backup_export">Export backup</string>

@@ -48,14 +48,38 @@ class FilterAndSortTest {
     }
 
     @Test
-    fun `loved filter keeps only the ids in the loved set regardless of category`() {
-        val result = filterAndSort(pois, null, null, lovedIds = setOf("node/2"))
+    fun `favorites filter keeps only the ids in the favorite set regardless of category`() {
+        val result = filterAndSort(pois, null, null, favoriteIds = setOf("node/2"))
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }
 
     @Test
-    fun `null loved filter falls back to the selected category`() {
-        val result = filterAndSort(pois, "cafe", null, lovedIds = null)
+    fun `null favorites filter falls back to the selected category`() {
+        val result = filterAndSort(pois, "cafe", null, favoriteIds = null)
         assertEquals(2, result.size)
+    }
+
+    @Test
+    fun `search matches a substring of the name case-insensitively across categories`() {
+        val result = filterAndSort(pois, null, null, searchQuery = "HAR")
+        assertEquals(listOf("node/4"), result.map { it.poi.id }) // "Charlie"
+    }
+
+    @Test
+    fun `search takes priority over category and favorites filters`() {
+        val result = filterAndSort(
+            pois, selectedCategory = "playground", location = null,
+            favoriteIds = setOf("node/1"), searchQuery = "alpha"
+        )
+        assertEquals(listOf("node/2"), result.map { it.poi.id })
+    }
+
+    @Test
+    fun `search matches a custom name even when the OSM name differs`() {
+        val result = filterAndSort(
+            pois, null, null, searchQuery = "hidden gem",
+            customNames = mapOf("node/3" to "Our Hidden Gem")
+        )
+        assertEquals(listOf("node/3"), result.map { it.poi.id })
     }
 }

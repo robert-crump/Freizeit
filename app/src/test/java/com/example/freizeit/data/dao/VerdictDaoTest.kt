@@ -36,17 +36,17 @@ class VerdictDaoTest {
 
     @Test
     fun `setVerdict creates a verdict snapshotting the poi`() = runTest {
-        db.verdictDao().setVerdict(poi, Verdict.VALUE_LOVE)
+        db.verdictDao().setVerdict(poi, Verdict.VALUE_FAVORITE)
 
         val stored = db.verdictDao().getByPlaceId("node/1")
-        assertEquals(Verdict.VALUE_LOVE, stored?.value)
+        assertEquals(Verdict.VALUE_FAVORITE, stored?.value)
         assertEquals("Café Sonne", stored?.snapshotName)
         assertEquals("cafe", stored?.snapshotCategory)
     }
 
     @Test
     fun `setVerdict again changes the value in place`() = runTest {
-        db.verdictDao().setVerdict(poi, Verdict.VALUE_UP)
+        db.verdictDao().setVerdict(poi, Verdict.VALUE_FAVORITE)
         db.verdictDao().setVerdict(poi, Verdict.VALUE_DOWN)
 
         assertEquals(Verdict.VALUE_DOWN, db.verdictDao().getByPlaceId("node/1")?.value)
@@ -55,7 +55,7 @@ class VerdictDaoTest {
 
     @Test
     fun `setVerdict with null clears the verdict`() = runTest {
-        db.verdictDao().setVerdict(poi, Verdict.VALUE_LOVE)
+        db.verdictDao().setVerdict(poi, Verdict.VALUE_FAVORITE)
         db.verdictDao().setVerdict(poi, null)
 
         assertNull(db.verdictDao().getByPlaceId("node/1"))

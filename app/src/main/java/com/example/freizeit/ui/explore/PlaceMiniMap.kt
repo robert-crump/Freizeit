@@ -41,6 +41,7 @@ fun PlaceMiniMap(
     val lifecycleOwner = LocalLifecycleOwner.current
     val poiColor = categoryColor(poi.category).toArgb()
     val locationColor = MaterialTheme.colorScheme.primary.toArgb()
+    val density = context.resources.displayMetrics.density
 
     val mapView = remember {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -69,11 +70,11 @@ fun PlaceMiniMap(
     LaunchedEffect(poi.id, location?.lat, location?.lon) {
         val poiPoint = GeoPoint(poi.lat, poi.lon)
         mapView.overlays.removeAll { it is DotOverlay }
-        mapView.overlays.add(DotOverlay(poiPoint, poiColor))
+        mapView.overlays.add(DotOverlay(poiPoint, poiColor, density = density))
 
         val userPoint = location?.let { GeoPoint(it.lat, it.lon) }
         if (userPoint != null) {
-            mapView.overlays.add(DotOverlay(userPoint, locationColor, location.accuracyMeters))
+            mapView.overlays.add(DotOverlay(userPoint, locationColor, location.accuracyMeters, density))
         }
         mapView.invalidate()
 

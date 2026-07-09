@@ -57,12 +57,14 @@ fun PoiMap(
     pois: List<PoiWithDistance>,
     location: LatLon?,
     onPoiClick: (PoiWithDistance) -> Unit,
+    customNames: Map<String, String> = emptyMap(),
     recenterRequest: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val locationDotColor = MaterialTheme.colorScheme.primary.toArgb()
+    val density = context.resources.displayMetrics.density
 
     val mapView = remember {
         Configuration.getInstance().userAgentValue = context.packageName
@@ -110,12 +112,15 @@ fun PoiMap(
         modifier = modifier.clipToBounds(),
         update = { view ->
             var changed = false
-            if (overlayState.renderedPois !== pois) {
+            if (overlayState.renderedPois !== pois || overlayState.renderedCustomNames !== customNames) {
                 overlayState.renderedPois = pois
+                overlayState.renderedCustomNames = customNames
                 view.overlays.removeAll(overlayState.poiOverlays)
                 overlayState.poiOverlays.clear()
                 pois.groupBy { p -> p.poi.category }.forEach { (category, group) ->
-                    overlayState.poiOverlays += buildCategoryOverlay(category, group, onPoiClick)
+                    overlayState.poiOverlays += buildCategoryOverlay(
+                        category, group, density, customNames, onPoiClick
+                    )
                 }
                 view.overlays.addAll(overlayState.poiOverlays)
                 changed = true
@@ -124,7 +129,7 @@ fun PoiMap(
                 overlayState.renderedLocation = location
                 overlayState.locationOverlay?.let(view.overlays::remove)
                 overlayState.locationOverlay = location?.let { loc ->
-                    DotOverlay(GeoPoint(loc.lat, loc.lon), locationDotColor, loc.accuracyMeters)
+                    DotOverlay(GeoPoint(loc.lat, loc.lon), locationDotColor, loc.accuracyMeters, density)
                 }
                 changed = true
             } else if (changed) {
@@ -141,6 +146,7 @@ fun PoiMap(
 
 private class MapOverlayState {
     var renderedPois: List<PoiWithDistance>? = null
+    var renderedCustomNames: Map<String, String>? = null
     val poiOverlays = mutableListOf<SimpleFastPointOverlay>()
     var renderedLocation: LatLon? = null
     var locationOverlay: DotOverlay? = null
@@ -149,13 +155,19 @@ private class MapOverlayState {
 private fun buildCategoryOverlay(
     category: String,
     pois: List<PoiWithDistance>,
+    density: Float,
+    customNames: Map<String, String>,
     onPoiClick: (PoiWithDistance) -> Unit
 ): SimpleFastPointOverlay {
-    val points = pois.map { LabelledGeoPoint(it.poi.lat, it.poi.lon, it.poi.name ?: "") }
+    val points = pois.map {
+        LabelledGeoPoint(it.poi.lat, it.poi.lon, customNames[it.poi.id] ?: it.poi.name ?: "")
+    }
     val style = Paint().apply {
         style = Paint.Style.FILL
         color = categoryColor(category).toArgb()
     }
+    // osmdroid draws in raw physical pixels, not dp, so scale by density to keep POI
+    // circles a consistent on-screen size instead of shrinking on high-density screens.
     val options = SimpleFastPointOverlayOptions.getDefaultStyle()
         .setAlgorithm(
             if (points.size > 5000) SimpleFastPointOverlayOptions.RenderingAlgorithm.MAXIMUM_OPTIMIZATION
@@ -163,9 +175,9 @@ private fun buildCategoryOverlay(
         )
         .setSymbol(SimpleFastPointOverlayOptions.Shape.CIRCLE)
         .setPointStyle(style)
-        .setRadius(9f)
+        .setRadius(13f * density)
         .setIsClickable(true)
-        .setCellSize(12)
+        .setCellSize((16 * density).toInt())
     return SimpleFastPointOverlay(SimplePointTheme(points, false), options).apply {
         setOnClickListener { _, pointIndex -> onPoiClick(pois[pointIndex]) }
     }
