@@ -24,12 +24,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
+
+private const val SEARCH_DEBOUNCE_MS = 250L
 
 data class ExploreUiState(
     val pois: List<PoiWithDistance> = emptyList(),
@@ -117,7 +120,9 @@ class ExploreViewModel(
         selectedCategory,
         location,
         favoritesOnly,
-        searchQuery
+        // Debounced so a filter+sort pass (and the map's full overlay rebuild) runs once
+        // typing pauses, instead of on every keystroke.
+        searchQuery.debounce(SEARCH_DEBOUNCE_MS)
     ) { poisVerdictsNames, selectedCat, loc, favOnly, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
         val categories = pois.map { it.category }.distinct()
