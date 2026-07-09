@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.maplibre.android.MapLibre
 
 class FreizeitApplication : Application() {
 
@@ -16,6 +17,7 @@ class FreizeitApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        MapLibre.getInstance(this)
         container = AppContainer(this)
         // Open the database off the main thread so schema creation
         // happens at startup rather than on first query.
