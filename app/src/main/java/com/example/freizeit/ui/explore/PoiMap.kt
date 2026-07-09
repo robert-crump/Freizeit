@@ -1,7 +1,6 @@
 package com.example.freizeit.ui.explore
 
-import android.graphics.Paint
-import android.graphics.Point
+import android.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,49 +17,50 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.util.LatLon
-import org.osmdroid.config.Configuration
-import org.osmdroid.events.MapListener
-import org.osmdroid.events.ScrollEvent
-import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.tilesource.XYTileSource
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.CopyrightOverlay
-import org.osmdroid.views.overlay.simplefastpoint.LabelledGeoPoint
-import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlay
-import org.osmdroid.views.overlay.simplefastpoint.SimpleFastPointOverlayOptions
-import org.osmdroid.views.overlay.simplefastpoint.SimplePointTheme
+import com.google.gson.JsonObject
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonOptions
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.Point
+import kotlin.math.cos
+import kotlin.math.pow
 
 private const val FALLBACK_LAT = 50.94 // Cologne area, center of the extract coverage
 private const val FALLBACK_LON = 6.96
 private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
 
-/** Below this zoom, individual POIs are grouped into count-badged clusters instead of pins. */
-private const val CLUSTER_ZOOM_THRESHOLD = 14.0
-private const val CLUSTER_GRID_DP = 60
+/** Below this zoom, MapLibre's built-in GeoJSON clustering groups POIs into count-badged bubbles. */
+private const val CLUSTER_MAX_ZOOM = 14
+private const val CLUSTER_RADIUS = 60
 private const val CLUSTER_TAP_ZOOM_STEP = 3.0
 
-/** CARTO's dark basemap, raster tiles so it drops straight into osmdroid's tile source API. */
-val CARTO_DARK_MATTER = XYTileSource(
-    "CartoDarkMatter",
-    0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/dark_all/",
-        "https://b.basemaps.cartocdn.com/dark_all/",
-        "https://c.basemaps.cartocdn.com/dark_all/",
-        "https://d.basemaps.cartocdn.com/dark_all/"
-    ),
-    "© OpenStreetMap contributors © CARTO"
-)
+private const val POI_SOURCE_ID = "pois"
+private const val POI_LAYER_ID = "pois-points"
+private const val CLUSTER_LAYER_SMALL = "pois-cluster-small"
+private const val CLUSTER_LAYER_MEDIUM = "pois-cluster-medium"
+private const val CLUSTER_LAYER_LARGE = "pois-cluster-large"
+private const val CLUSTER_COUNT_LAYER_ID = "pois-cluster-count"
+private const val LOCATION_SOURCE_ID = "location"
+private const val LOCATION_ACCURACY_LAYER_ID = "location-accuracy"
+private const val LOCATION_DOT_LAYER_ID = "location-dot"
 
 /**
- * osmdroid map showing the filtered POIs as fast point overlays, one per category so
- * each keeps its color — grouped into count-badged clusters below [CLUSTER_ZOOM_THRESHOLD]
- * so the map stays readable when zoomed out. POIs come from Room; only the tiles need
+ * MapLibre map showing the filtered POIs as a clustered GeoJSON layer, one circle layer
+ * per category color plus MapLibre's native clustering below [CLUSTER_MAX_ZOOM] so the
+ * map stays readable when zoomed out. POIs come from Room; only the basemap tiles need
  * network.
  */
 @Composable
@@ -75,42 +75,65 @@ fun PoiMap(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val locationDotColor = MaterialTheme.colorScheme.primary.toArgb()
-    val density = context.resources.displayMetrics.density
+    val clusterColor = MaterialTheme.colorScheme.secondary.toArgb()
 
-    // The overlays currently on the map, so update can replace them cheaply.
-    val overlayState = remember { MapOverlayState() }
+    val state = remember { PoiMapState() }
+    state.onPoiClick = onPoiClick
 
     val mapView = remember {
-        Configuration.getInstance().userAgentValue = context.packageName
-        MapView(context).apply {
-            setTileSource(CARTO_DARK_MATTER)
-            setMultiTouchControls(true)
-            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-            controller.setZoom(DEFAULT_ZOOM)
-            controller.setCenter(
-                if (location != null) GeoPoint(location.lat, location.lon)
-                else GeoPoint(FALLBACK_LAT, FALLBACK_LON)
-            )
-            overlays.add(CopyrightOverlay(context))
-            addMapListener(object : MapListener {
-                override fun onScroll(event: ScrollEvent?): Boolean = false
-                override fun onZoom(event: ZoomEvent?): Boolean {
-                    refreshPoiOverlays(this@apply, overlayState)
-                    return false
-                }
-            })
-            // Clustering needs real screen-pixel projection math, which isn't valid
-            // until the view has been measured — redo the initial grouping once it has.
-            addOnFirstLayoutListener { _, _, _, _, _ -> refreshPoiOverlays(this@apply, overlayState) }
+        MapView(context).apply { onCreate(null) }
+    }
+
+    DisposableEffect(mapView) {
+        mapView.getMapAsync { map ->
+            state.map = map
+            map.cameraPosition = CameraPosition.Builder()
+                .target(
+                    if (location != null) LatLng(location.lat, location.lon)
+                    else LatLng(FALLBACK_LAT, FALLBACK_LON)
+                )
+                .zoom(DEFAULT_ZOOM)
+                .build()
+
+            map.setStyle(
+                Style.Builder()
+                    .withSource(cartoDarkMatterSource())
+                    .withLayer(cartoDarkMatterLayer())
+                    .withSource(
+                        GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
+                    )
+                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, clusterColor, upperBound = 20))
+                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, clusterColor, lowerBound = 20, upperBound = 100))
+                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
+                    .withLayer(clusterCountLayer())
+                    .withLayer(poiCircleLayer())
+                    .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
+                    .withLayer(locationAccuracyLayer(locationDotColor))
+                    .withLayer(locationDotLayer(locationDotColor))
+            ) { style ->
+                state.style = style
+                state.poiSource = style.getSourceAs(POI_SOURCE_ID)
+                state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
+                state.ready = true
+                applyPois(state, pois)
+                applyLocation(state, location)
+            }
+
+            map.addOnMapClickListener { latLng ->
+                handleMapClick(state, map, latLng)
+            }
+            map.addOnCameraIdleListener { applyLocation(state, state.renderedLocation) }
         }
+        onDispose { }
     }
 
     // Bumped by the "locate me" FAB; only recenter when it actually changes and a fix is available.
     var lastHandledRecenter by remember { mutableIntStateOf(0) }
     LaunchedEffect(recenterRequest, location) {
         if (recenterRequest != 0 && recenterRequest != lastHandledRecenter && location != null) {
-            mapView.controller.animateTo(GeoPoint(location.lat, location.lon))
-            mapView.controller.setZoom(LOCATE_ME_ZOOM)
+            state.map?.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(LatLng(location.lat, location.lon), LOCATE_ME_ZOOM)
+            )
             lastHandledRecenter = recenterRequest
         }
     }
@@ -118,155 +141,167 @@ fun PoiMap(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
+                Lifecycle.Event.ON_START -> mapView.onStart()
                 Lifecycle.Event.ON_RESUME -> mapView.onResume()
                 Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_STOP -> mapView.onStop()
                 else -> {}
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            mapView.onDetach()
+            mapView.onDestroy()
         }
     }
 
     AndroidView(
         factory = { mapView },
         modifier = modifier.clipToBounds(),
-        update = { view ->
-            var changed = false
-            if (overlayState.renderedPois != pois || overlayState.renderedCustomNames != customNames) {
-                overlayState.renderedPois = pois
-                overlayState.renderedCustomNames = customNames
-                overlayState.density = density
-                overlayState.onPoiClick = onPoiClick
-                refreshPoiOverlays(view, overlayState)
-                changed = true
+        update = {
+            if (state.renderedPois != pois) {
+                applyPois(state, pois)
             }
-            if (overlayState.renderedLocation != location) {
-                overlayState.renderedLocation = location
-                overlayState.locationOverlay?.let(view.overlays::remove)
-                overlayState.locationOverlay = location?.let { loc ->
-                    DotOverlay(GeoPoint(loc.lat, loc.lon), locationDotColor, loc.accuracyMeters, density)
-                }
-                changed = true
-            } else if (changed) {
-                // POI overlays were just rebuilt underneath; re-append the dot so it stays on top.
-                overlayState.locationOverlay?.let(view.overlays::remove)
-            }
-            if (changed) {
-                overlayState.locationOverlay?.let(view.overlays::add)
-                view.invalidate()
+            if (state.renderedLocation != location) {
+                applyLocation(state, location)
             }
         }
     )
 }
 
-private class MapOverlayState {
-    var renderedPois: List<PoiWithDistance>? = null
-    var renderedCustomNames: Map<String, String>? = null
-    var density: Float = 1f
-    var onPoiClick: (PoiWithDistance) -> Unit = {}
-    val poiOverlays = mutableListOf<SimpleFastPointOverlay>()
-    var clusterOverlay: ClusterOverlay? = null
+private class PoiMapState {
+    var map: MapLibreMap? = null
+    var style: Style? = null
+    var ready: Boolean = false
+    var poiSource: GeoJsonSource? = null
+    var locationSource: GeoJsonSource? = null
+    var renderedPois: List<PoiWithDistance> = emptyList()
     var renderedLocation: LatLon? = null
-    var locationOverlay: DotOverlay? = null
+    var poiById: Map<String, PoiWithDistance> = emptyMap()
+    var onPoiClick: (PoiWithDistance) -> Unit = {}
 }
 
-/**
- * Swaps between individual per-category pins and grid-clustered bubbles depending on
- * the map's current zoom. Called both when the POI set changes and, imperatively via
- * [MapListener], whenever the zoom level changes — clustering has to react to zoom
- * even though that isn't Compose state.
- */
-private fun refreshPoiOverlays(mapView: MapView, state: MapOverlayState) {
-    mapView.overlays.removeAll(state.poiOverlays)
-    state.poiOverlays.clear()
-    state.clusterOverlay?.let(mapView.overlays::remove)
-    state.clusterOverlay = null
+private fun poiClusterOptions(): GeoJsonOptions =
+    GeoJsonOptions().withCluster(true).withClusterMaxZoom(CLUSTER_MAX_ZOOM).withClusterRadius(CLUSTER_RADIUS)
 
-    val pois = state.renderedPois ?: emptyList()
-    if (mapView.zoomLevelDouble < CLUSTER_ZOOM_THRESHOLD) {
-        val cellPx = (CLUSTER_GRID_DP * state.density).toInt().coerceAtLeast(1)
-        val clusters = clusterPois(pois, mapView, cellPx)
-        val overlay = ClusterOverlay(clusters, state.density) { point ->
-            mapView.controller.animateTo(point)
-            mapView.controller.setZoom(mapView.zoomLevelDouble + CLUSTER_TAP_ZOOM_STEP)
-        }
-        state.clusterOverlay = overlay
-        mapView.overlays.add(overlay)
-    } else {
-        pois.groupBy { p -> p.poi.category }.forEach { (category, group) ->
-            state.poiOverlays += buildCategoryOverlay(
-                category, group, state.density, state.renderedCustomNames ?: emptyMap(), state.onPoiClick
-            )
-        }
-        mapView.overlays.addAll(state.poiOverlays)
-    }
-    // POI overlays were just rebuilt underneath; re-append the dot so it stays on top.
-    state.locationOverlay?.let(mapView.overlays::remove)
-    state.locationOverlay?.let(mapView.overlays::add)
-    mapView.invalidate()
-}
-
-/**
- * Grid-buckets POIs in screen-pixel space (so the grouping radius reads the same on
- * every device) and collapses each bucket to its centroid, colored by whichever
- * category is most common in that bucket.
- */
-private fun clusterPois(
-    pois: List<PoiWithDistance>,
-    mapView: MapView,
-    cellSizePx: Int
-): List<ClusterOverlay.Cluster> {
-    if (pois.isEmpty()) return emptyList()
-    val projection = mapView.projection
-    val screenPoint = Point()
-    val buckets = LinkedHashMap<Pair<Int, Int>, MutableList<PoiWithDistance>>()
-    pois.forEach { p ->
-        projection.toPixels(GeoPoint(p.poi.lat, p.poi.lon), screenPoint)
-        val key = Math.floorDiv(screenPoint.x, cellSizePx) to Math.floorDiv(screenPoint.y, cellSizePx)
-        buckets.getOrPut(key) { mutableListOf() }.add(p)
-    }
-    return buckets.values.map { group ->
-        val avgLat = group.sumOf { it.poi.lat } / group.size
-        val avgLon = group.sumOf { it.poi.lon } / group.size
-        val dominantCategory = group.groupingBy { it.poi.category }.eachCount().maxByOrNull { it.value }!!.key
-        ClusterOverlay.Cluster(
-            GeoPoint(avgLat, avgLon),
-            group.size,
-            categoryColor(dominantCategory).toArgb()
+private fun poiCircleLayer(): CircleLayer =
+    CircleLayer(POI_LAYER_ID, POI_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.circleColor(categoryColorExpression()),
+            PropertyFactory.circleRadius(7f),
+            PropertyFactory.circleStrokeWidth(1.5f),
+            PropertyFactory.circleStrokeColor(Color.WHITE)
         )
+        .withFilter(Expression.not(Expression.has("point_count")))
+
+private fun clusterCircleLayer(
+    layerId: String,
+    color: Int,
+    lowerBound: Int? = null,
+    upperBound: Int? = null
+): CircleLayer {
+    val pointCount = Expression.toNumber(Expression.get("point_count"))
+    val filters = buildList {
+        add(Expression.has("point_count"))
+        lowerBound?.let { add(Expression.gte(pointCount, Expression.literal(it))) }
+        upperBound?.let { add(Expression.lt(pointCount, Expression.literal(it))) }
     }
+    val radius = when {
+        upperBound == null -> 27f // largest tier (100+)
+        lowerBound == null -> 18f // smallest tier (< 20)
+        else -> 22f // middle tier (20-99)
+    }
+    return CircleLayer(layerId, POI_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.circleColor(color),
+            PropertyFactory.circleRadius(radius),
+            PropertyFactory.circleStrokeWidth(1.5f),
+            PropertyFactory.circleStrokeColor(Color.WHITE)
+        )
+        .withFilter(Expression.all(*filters.toTypedArray()))
 }
 
-private fun buildCategoryOverlay(
-    category: String,
-    pois: List<PoiWithDistance>,
-    density: Float,
-    customNames: Map<String, String>,
-    onPoiClick: (PoiWithDistance) -> Unit
-): SimpleFastPointOverlay {
-    val points = pois.map {
-        LabelledGeoPoint(it.poi.lat, it.poi.lon, customNames[it.poi.id] ?: it.poi.name ?: "")
-    }
-    val style = Paint().apply {
-        style = Paint.Style.FILL
-        color = categoryColor(category).toArgb()
-    }
-    // osmdroid draws in raw physical pixels, not dp, so scale by density to keep POI
-    // circles a consistent on-screen size instead of shrinking on high-density screens.
-    val options = SimpleFastPointOverlayOptions.getDefaultStyle()
-        .setAlgorithm(
-            if (points.size > 5000) SimpleFastPointOverlayOptions.RenderingAlgorithm.MAXIMUM_OPTIMIZATION
-            else SimpleFastPointOverlayOptions.RenderingAlgorithm.MEDIUM_OPTIMIZATION
+private fun clusterCountLayer(): SymbolLayer =
+    SymbolLayer(CLUSTER_COUNT_LAYER_ID, POI_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.textField(Expression.get("point_count")),
+            PropertyFactory.textColor(Color.WHITE),
+            PropertyFactory.textSize(13f),
+            PropertyFactory.textAllowOverlap(true),
+            PropertyFactory.textIgnorePlacement(true)
         )
-        .setSymbol(SimpleFastPointOverlayOptions.Shape.CIRCLE)
-        .setPointStyle(style)
-        .setRadius(13f * density)
-        .setIsClickable(true)
-        .setCellSize((16 * density).toInt())
-    return SimpleFastPointOverlay(SimplePointTheme(points, false), options).apply {
-        setOnClickListener { _, pointIndex -> onPoiClick(pois[pointIndex]) }
+        .withFilter(Expression.has("point_count"))
+
+private fun locationAccuracyLayer(color: Int): CircleLayer =
+    CircleLayer(LOCATION_ACCURACY_LAYER_ID, LOCATION_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.circleColor(color),
+            PropertyFactory.circleOpacity(0.2f),
+            PropertyFactory.circleRadius(Expression.toNumber(Expression.get("accuracyRadius")))
+        )
+        .withFilter(Expression.has("accuracyRadius"))
+
+private fun locationDotLayer(color: Int): CircleLayer =
+    CircleLayer(LOCATION_DOT_LAYER_ID, LOCATION_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.circleColor(color),
+            PropertyFactory.circleRadius(9f),
+            PropertyFactory.circleStrokeWidth(2f),
+            PropertyFactory.circleStrokeColor(Color.WHITE)
+        )
+
+private fun applyPois(state: PoiMapState, pois: List<PoiWithDistance>) {
+    state.renderedPois = pois
+    state.poiById = pois.associateBy { it.poi.id }
+    if (!state.ready) return
+    val features = pois.map { p ->
+        val props = JsonObject().apply {
+            addProperty("id", p.poi.id)
+            addProperty("category", p.poi.category)
+        }
+        Feature.fromGeometry(Point.fromLngLat(p.poi.lon, p.poi.lat), props)
     }
+    state.poiSource?.setGeoJson(FeatureCollection.fromFeatures(features))
+}
+
+private fun applyLocation(state: PoiMapState, location: LatLon?) {
+    state.renderedLocation = location
+    if (!state.ready) return
+    val source = state.locationSource ?: return
+    if (location == null) {
+        source.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+        return
+    }
+    val accuracyMeters = location.accuracyMeters
+    val zoom = state.map?.cameraPosition?.zoom ?: DEFAULT_ZOOM
+    val props = JsonObject()
+    if (accuracyMeters != null) {
+        props.addProperty("accuracyRadius", metersToRadiusPx(accuracyMeters, location.lat, zoom))
+    }
+    val feature = Feature.fromGeometry(Point.fromLngLat(location.lon, location.lat), props)
+    source.setGeoJson(FeatureCollection.fromFeatures(arrayOf(feature)))
+}
+
+private fun metersToRadiusPx(meters: Float, latitude: Double, zoom: Double): Float {
+    val metersPerPixel = 156543.03392 * cos(Math.toRadians(latitude)) / 2.0.pow(zoom)
+    return (meters / metersPerPixel).toFloat()
+}
+
+private fun handleMapClick(state: PoiMapState, map: MapLibreMap, latLng: LatLng): Boolean {
+    val screenPoint = map.projection.toScreenLocation(latLng)
+    val clusterFeatures = map.queryRenderedFeatures(
+        screenPoint, CLUSTER_LAYER_SMALL, CLUSTER_LAYER_MEDIUM, CLUSTER_LAYER_LARGE
+    )
+    val clusterPoint = clusterFeatures.firstOrNull()?.geometry() as? Point
+    if (clusterPoint != null) {
+        val zoom = (map.cameraPosition.zoom) + CLUSTER_TAP_ZOOM_STEP
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(LatLng(clusterPoint.latitude(), clusterPoint.longitude()), zoom)
+        )
+        return true
+    }
+    val poiFeature = map.queryRenderedFeatures(screenPoint, POI_LAYER_ID).firstOrNull() ?: return false
+    val id = poiFeature.getStringProperty("id") ?: return false
+    state.poiById[id]?.let(state.onPoiClick)
+    return true
 }

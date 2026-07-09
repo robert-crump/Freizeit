@@ -79,8 +79,8 @@ dependencies {
     // POI file parsing
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // Map (OpenStreetMap)
-    implementation 'org.osmdroid:osmdroid-android:6.1.18'
+    // Map (OpenStreetMap tiles rendered via MapLibre)
+    implementation 'org.maplibre.gl:android-sdk:11.5.1'
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
