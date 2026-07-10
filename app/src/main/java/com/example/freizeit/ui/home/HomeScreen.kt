@@ -426,7 +426,7 @@ private fun SuggestionCard(
     val poi = suggestion.poi
     Card(modifier = modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(start = 24.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(
