@@ -97,72 +97,67 @@ fun HomeScreen(
         }
     }
 
-    LazyColumn(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Column(
-                modifier = Modifier.onGloballyPositioned { topContentHeightPx = it.size.height },
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                state.pendingVisit?.let { visit ->
-                    VisitBanner(
-                        visit = visit,
-                        onVerdict = { viewModel.resolveVisit(it) },
-                        onDidNotGo = { viewModel.resolveVisit(null) }
-                    )
-                }
-
-                WeatherStrip(state.weather)
-
-                OverrideChipsRow(
-                    timeBudgetMinutes = state.timeBudgetMinutes,
-                    kidsAlong = state.kidsAlong,
-                    onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
-                    onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
+        Column(
+            modifier = Modifier.onGloballyPositioned { topContentHeightPx = it.size.height },
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            state.pendingVisit?.let { visit ->
+                VisitBanner(
+                    visit = visit,
+                    onVerdict = { viewModel.resolveVisit(it) },
+                    onDidNotGo = { viewModel.resolveVisit(null) }
                 )
             }
+
+            WeatherStrip(state.weather)
+
+            OverrideChipsRow(
+                timeBudgetMinutes = state.timeBudgetMinutes,
+                kidsAlong = state.kidsAlong,
+                onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
+                onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
+            )
         }
 
         if (state.isLoading) {
-            item { CenteredLoading() }
+            CenteredLoading()
         } else if (!state.hasPois) {
-            item { CenteredHint(stringResource(R.string.home_empty)) }
+            CenteredHint(stringResource(R.string.home_empty))
         } else if (state.cards.isEmpty()) {
-            item { CenteredHint(stringResource(R.string.home_no_suggestions)) }
+            CenteredHint(stringResource(R.string.home_no_suggestions))
         } else {
-            item {
-                val topContentHeight = with(density) { topContentHeightPx.toDp() }
-                val mapHeight = ((screenHeightDp - topContentHeight) / 2).coerceAtLeast(MIN_MAP_HEIGHT)
+            val topContentHeight = with(density) { topContentHeightPx.toDp() }
+            val carouselMinHeight = 300.dp
+            val mapHeight = screenHeightDp - topContentHeight - carouselMinHeight - 16.dp * 2 - (12.dp * 4)
 
-                SuggestionCarouselWithMap(
-                    suggestions = state.cards,
-                    customNames = state.customNames,
-                    location = state.location,
-                    mapHeight = mapHeight,
-                    onCardClick = { viewModel.selectCard(it) },
-                    onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+            SuggestionCarouselWithMap(
+                suggestions = state.cards,
+                customNames = state.customNames,
+                location = state.location,
+                mapHeight = mapHeight.coerceAtLeast(MIN_MAP_HEIGHT),
+                onCardClick = { viewModel.selectCard(it) },
+                onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
+                modifier = Modifier.fillMaxWidth()
+            )
 
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                OutlinedButton(
+                    onClick = viewModel::reroll
                 ) {
-                    OutlinedButton(
-                        onClick = viewModel::reroll
-                    ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
-                        Text(
-                            text = stringResource(R.string.home_reroll),
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                    Text(
+                        text = stringResource(R.string.home_reroll),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
                 }
             }
         }
@@ -429,7 +424,7 @@ private fun SuggestionCard(
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
-    Card(modifier = modifier.fillMaxWidth(), onClick = onClick) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
