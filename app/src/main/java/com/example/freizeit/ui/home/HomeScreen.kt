@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -96,64 +97,73 @@ fun HomeScreen(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.onGloballyPositioned { topContentHeightPx = it.size.height },
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            state.pendingVisit?.let { visit ->
-                VisitBanner(
-                    visit = visit,
-                    onVerdict = { viewModel.resolveVisit(it) },
-                    onDidNotGo = { viewModel.resolveVisit(null) }
+        item {
+            Column(
+                modifier = Modifier.onGloballyPositioned { topContentHeightPx = it.size.height },
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                state.pendingVisit?.let { visit ->
+                    VisitBanner(
+                        visit = visit,
+                        onVerdict = { viewModel.resolveVisit(it) },
+                        onDidNotGo = { viewModel.resolveVisit(null) }
+                    )
+                }
+
+                WeatherStrip(state.weather)
+
+                OverrideChipsRow(
+                    timeBudgetMinutes = state.timeBudgetMinutes,
+                    kidsAlong = state.kidsAlong,
+                    onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
+                    onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
                 )
             }
-
-            WeatherStrip(state.weather)
-
-            OverrideChipsRow(
-                timeBudgetMinutes = state.timeBudgetMinutes,
-                kidsAlong = state.kidsAlong,
-                onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
-                onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
-            )
         }
 
         if (state.isLoading) {
-            CenteredLoading()
+            item { CenteredLoading() }
         } else if (!state.hasPois) {
-            CenteredHint(stringResource(R.string.home_empty))
+            item { CenteredHint(stringResource(R.string.home_empty)) }
         } else if (state.cards.isEmpty()) {
-            CenteredHint(stringResource(R.string.home_no_suggestions))
+            item { CenteredHint(stringResource(R.string.home_no_suggestions)) }
         } else {
-            val topContentHeight = with(density) { topContentHeightPx.toDp() }
-            val mapHeight = ((screenHeightDp - topContentHeight) / 2).coerceAtLeast(MIN_MAP_HEIGHT)
+            item {
+                val topContentHeight = with(density) { topContentHeightPx.toDp() }
+                val mapHeight = ((screenHeightDp - topContentHeight) / 2).coerceAtLeast(MIN_MAP_HEIGHT)
 
-            SuggestionCarouselWithMap(
-                suggestions = state.cards,
-                customNames = state.customNames,
-                location = state.location,
-                mapHeight = mapHeight,
-                onCardClick = { viewModel.selectCard(it) },
-                onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedButton(
-                onClick = viewModel::reroll,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            ) {
-                Icon(Icons.Filled.Refresh, contentDescription = null)
-                Text(
-                    text = stringResource(R.string.home_reroll),
-                    modifier = Modifier.padding(start = 8.dp)
+                SuggestionCarouselWithMap(
+                    suggestions = state.cards,
+                    customNames = state.customNames,
+                    location = state.location,
+                    mapHeight = mapHeight,
+                    onCardClick = { viewModel.selectCard(it) },
+                    onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
+                    modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    OutlinedButton(
+                        onClick = viewModel::reroll
+                    ) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Text(
+                            text = stringResource(R.string.home_reroll),
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
             }
         }
     }
