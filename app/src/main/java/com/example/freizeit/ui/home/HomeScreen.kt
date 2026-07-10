@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -209,6 +210,8 @@ private fun SuggestionCarouselWithMap(
     val coroutineScope = rememberCoroutineScope()
     val activeIndex = listState.firstVisibleItemIndex.coerceIn(0, count - 1)
     val activePoi = suggestions[activeIndex].poi
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+    val cardWidth = screenWidthDp - 32.dp
 
     Column(modifier = modifier) {
         SuggestionsMiniMap(
@@ -231,7 +234,7 @@ private fun SuggestionCarouselWithMap(
 
         Text(
             text = stringResource(R.string.home_suggestions_header),
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
         )
 
@@ -240,21 +243,17 @@ private fun SuggestionCarouselWithMap(
             modifier = Modifier.fillMaxWidth(),
             flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
+            contentPadding = PaddingValues(start = 16.dp, end = 0.dp)
         ) {
             items(count) { index ->
                 val suggestion = suggestions[index]
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    SuggestionCard(
-                        suggestion = suggestion,
-                        customName = customNames[suggestion.poi.id],
-                        onClick = { onCardClick(suggestion) },
-                        onGo = { onGo(suggestion) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp)
-                    )
-                }
+                SuggestionCard(
+                    suggestion = suggestion,
+                    customName = customNames[suggestion.poi.id],
+                    onClick = { onCardClick(suggestion) },
+                    onGo = { onGo(suggestion) },
+                    modifier = Modifier.width(cardWidth)
+                )
             }
         }
 
