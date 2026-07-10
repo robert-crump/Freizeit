@@ -271,8 +271,7 @@ fun ExploreScreen(
             onVerdictChange = { viewModel.setVerdict(item.poi, it) },
             customName = state.customNames[item.poi.id],
             onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
-            onDismiss = { viewModel.selectPoi(null) },
-            location = state.location
+            onDismiss = { viewModel.selectPoi(null) }
         )
     }
 }

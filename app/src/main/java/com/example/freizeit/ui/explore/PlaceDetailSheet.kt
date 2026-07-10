@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -38,7 +37,6 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.GeoDistance
-import com.example.freizeit.util.LatLon
 
 /** Shared place detail sheet, opened from map markers, list rows, and Home cards. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,8 +47,7 @@ fun PlaceDetailSheet(
     onVerdictChange: (String?) -> Unit,
     customName: String?,
     onCustomNameChange: (String?) -> Unit,
-    onDismiss: () -> Unit,
-    location: LatLon? = null
+    onDismiss: () -> Unit
 ) {
     val poi = item.poi
     var showEditNameDialog by remember { mutableStateOf(false) }
@@ -89,15 +86,6 @@ fun PlaceDetailSheet(
                     )
                 }
             }
-
-            PlaceMiniMap(
-                poi = poi,
-                location = location,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-                    .clip(RoundedCornerShape(12.dp))
-            )
 
             item.distanceMeters?.let {
                 Text(

@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.explore
 
 import android.graphics.Color
+import android.graphics.RectF
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.pow
 
 private const val FALLBACK_LAT = 50.94 // Cologne area, center of the extract coverage
@@ -46,6 +48,9 @@ private const val LOCATE_ME_ZOOM = 16.0
 private const val CLUSTER_MAX_ZOOM = 14
 private const val CLUSTER_RADIUS = 60
 private const val CLUSTER_TAP_ZOOM_STEP = 3.0
+
+/** Screen-space tolerance around a tap so near-misses on a small dot still register. */
+private const val POI_TAP_TOLERANCE_PX = 16f
 
 private const val POI_SOURCE_ID = "pois"
 private const val POI_LAYER_ID = "pois-points"
@@ -188,7 +193,7 @@ private fun poiCircleLayer(): CircleLayer =
     CircleLayer(POI_LAYER_ID, POI_SOURCE_ID)
         .withProperties(
             PropertyFactory.circleColor(categoryColorExpression()),
-            PropertyFactory.circleRadius(7f),
+            PropertyFactory.circleRadius(12f),
             PropertyFactory.circleStrokeWidth(1.5f),
             PropertyFactory.circleStrokeColor(Color.WHITE)
         )
@@ -300,7 +305,22 @@ private fun handleMapClick(state: PoiMapState, map: MapLibreMap, latLng: LatLng)
         )
         return true
     }
-    val poiFeature = map.queryRenderedFeatures(screenPoint, POI_LAYER_ID).firstOrNull() ?: return false
+    val tapArea = RectF(
+        screenPoint.x - POI_TAP_TOLERANCE_PX,
+        screenPoint.y - POI_TAP_TOLERANCE_PX,
+        screenPoint.x + POI_TAP_TOLERANCE_PX,
+        screenPoint.y + POI_TAP_TOLERANCE_PX
+    )
+    val poiFeature = map.queryRenderedFeatures(tapArea, POI_LAYER_ID)
+        .minByOrNull { feature ->
+            val point = feature.geometry() as? Point
+            if (point == null) {
+                Float.MAX_VALUE
+            } else {
+                val featureScreen = map.projection.toScreenLocation(LatLng(point.latitude(), point.longitude()))
+                hypot(featureScreen.x - screenPoint.x, featureScreen.y - screenPoint.y)
+            }
+        } ?: return false
     val id = poiFeature.getStringProperty("id") ?: return false
     state.poiById[id]?.let(state.onPoiClick)
     return true

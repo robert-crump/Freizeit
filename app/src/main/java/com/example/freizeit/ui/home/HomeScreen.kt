@@ -3,14 +3,22 @@ package com.example.freizeit.ui.home
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
@@ -27,9 +35,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,10 +60,13 @@ import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.explore.CategoryDot
 import com.example.freizeit.ui.explore.PlaceDetailSheet
 import com.example.freizeit.ui.explore.PoiWithDistance
+import com.example.freizeit.ui.explore.SuggestionsMiniMap
 import com.example.freizeit.ui.explore.displayName
+import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeScreen(
@@ -57,6 +76,9 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedCard by viewModel.selectedCard.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val density = LocalDensity.current
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+    var topContentHeightPx by remember { mutableIntStateOf(0) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -80,22 +102,27 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        state.pendingVisit?.let { visit ->
-            VisitBanner(
-                visit = visit,
-                onVerdict = { viewModel.resolveVisit(it) },
-                onDidNotGo = { viewModel.resolveVisit(null) }
+        Column(
+            modifier = Modifier.onGloballyPositioned { topContentHeightPx = it.size.height },
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            state.pendingVisit?.let { visit ->
+                VisitBanner(
+                    visit = visit,
+                    onVerdict = { viewModel.resolveVisit(it) },
+                    onDidNotGo = { viewModel.resolveVisit(null) }
+                )
+            }
+
+            WeatherStrip(state.weather)
+
+            OverrideChipsRow(
+                timeBudgetMinutes = state.timeBudgetMinutes,
+                kidsAlong = state.kidsAlong,
+                onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
+                onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
             )
         }
-
-        WeatherStrip(state.weather)
-
-        OverrideChipsRow(
-            timeBudgetMinutes = state.timeBudgetMinutes,
-            kidsAlong = state.kidsAlong,
-            onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
-            onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
-        )
 
         if (state.isLoading) {
             CenteredLoading()
@@ -104,14 +131,21 @@ fun HomeScreen(
         } else if (state.cards.isEmpty()) {
             CenteredHint(stringResource(R.string.home_no_suggestions))
         } else {
-            state.cards.forEach { suggestion ->
-                SuggestionCard(
-                    suggestion = suggestion,
-                    customName = state.customNames[suggestion.poi.id],
-                    onClick = { viewModel.selectCard(suggestion) },
-                    onGo = { viewModel.recordGo(suggestion.poi, state.customNames[suggestion.poi.id]) }
-                )
-            }
+            val topContentHeight = with(density) { topContentHeightPx.toDp() }
+            val remainingHeight = (screenHeightDp - topContentHeight)
+                .coerceAtLeast(MIN_MAP_CAROUSEL_HEIGHT * 2)
+
+            SuggestionCarouselWithMap(
+                suggestions = state.cards,
+                customNames = state.customNames,
+                location = state.location,
+                onCardClick = { viewModel.selectCard(it) },
+                onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(remainingHeight)
+            )
+
             OutlinedButton(
                 onClick = viewModel::reroll,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -132,9 +166,114 @@ fun HomeScreen(
             onVerdictChange = { viewModel.setVerdict(card.poi, it) },
             customName = state.customNames[card.poi.id],
             onCustomNameChange = { viewModel.setCustomName(card.poi.id, it) },
-            onDismiss = { viewModel.selectCard(null) },
-            location = state.location
+            onDismiss = { viewModel.selectCard(null) }
         )
+    }
+}
+
+/** Floor for the map+carousel block so a first-frame measurement of 0 doesn't collapse it. */
+private val MIN_MAP_CAROUSEL_HEIGHT = 160.dp
+
+/**
+ * The mini-map (top half) and swipeable carousel + dots (bottom half) share one
+ * [androidx.compose.foundation.pager.PagerState] so tapping a map dot scrolls the
+ * carousel to match, and swiping the carousel re-highlights the matching map dot.
+ * Wraps around: swiping past the last card returns to the first, and vice versa.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SuggestionCarouselWithMap(
+    suggestions: List<Suggestion>,
+    customNames: Map<String, String>,
+    location: LatLon?,
+    onCardClick: (Suggestion) -> Unit,
+    onGo: (Suggestion) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val count = suggestions.size
+    if (count == 0) return
+
+    val startPage = remember(count) {
+        if (count > 1) (Int.MAX_VALUE / 2).let { it - it % count } else 0
+    }
+    val virtualPageCount = if (count > 1) Int.MAX_VALUE else 1
+    val pagerState = rememberPagerState(initialPage = startPage) { virtualPageCount }
+    val coroutineScope = rememberCoroutineScope()
+    val activeIndex = pagerState.currentPage.mod(count)
+    val activePoi = suggestions[activeIndex].poi
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SuggestionsMiniMap(
+            pois = suggestions.map { it.poi },
+            selectedPoiId = activePoi.id,
+            location = location,
+            onPoiClick = { poi ->
+                val targetIndex = suggestions.indexOfFirst { it.poi.id == poi.id }
+                if (targetIndex >= 0 && targetIndex != activeIndex) {
+                    val delta = shortestVirtualDelta(activeIndex, targetIndex, count)
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(pagerState.currentPage + delta)
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clip(RoundedCornerShape(12.dp))
+        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) { page ->
+                val suggestion = suggestions[page.mod(count)]
+                SuggestionCard(
+                    suggestion = suggestion,
+                    customName = customNames[suggestion.poi.id],
+                    onClick = { onCardClick(suggestion) },
+                    onGo = { onGo(suggestion) },
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+            if (count > 1) {
+                CarouselDots(
+                    count = count,
+                    activeIndex = activeIndex,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
+            }
+        }
+    }
+}
+
+/** Which wrap direction (forward or backward around the ring) is the shorter hop. */
+private fun shortestVirtualDelta(fromIndex: Int, toIndex: Int, count: Int): Int {
+    val forward = (toIndex - fromIndex).mod(count)
+    val backward = forward - count
+    return if (forward <= -backward) forward else backward
+}
+
+@Composable
+private fun CarouselDots(count: Int, activeIndex: Int, modifier: Modifier = Modifier) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        repeat(count) { i ->
+            val active = i == activeIndex
+            Box(
+                modifier = Modifier
+                    .size(if (active) 8.dp else 6.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (active) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.outlineVariant
+                    )
+            )
+        }
     }
 }
 
