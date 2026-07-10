@@ -3,20 +3,23 @@ package com.example.freizeit.ui.home
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -188,7 +191,7 @@ private val MIN_MAP_HEIGHT = 160.dp
  * ([PagerState.settledPage]), not mid-drag — using the live [PagerState.currentPage]
  * there made the map highlight flicker between suggestions while dragging.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun SuggestionCarouselWithMap(
     suggestions: List<Suggestion>,
@@ -202,13 +205,9 @@ private fun SuggestionCarouselWithMap(
     val count = suggestions.size
     if (count == 0) return
 
-    val startPage = remember(count) {
-        if (count > 1) (Int.MAX_VALUE / 2).let { it - it % count } else 0
-    }
-    val virtualPageCount = if (count > 1) Int.MAX_VALUE else 1
-    val pagerState = rememberPagerState(initialPage = startPage) { virtualPageCount }
+    val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    val activeIndex = pagerState.settledPage.mod(count)
+    val activeIndex = listState.firstVisibleItemIndex.coerceIn(0, count - 1)
     val activePoi = suggestions[activeIndex].poi
 
     Column(modifier = modifier) {
@@ -219,9 +218,8 @@ private fun SuggestionCarouselWithMap(
             onPoiClick = { poi ->
                 val targetIndex = suggestions.indexOfFirst { it.poi.id == poi.id }
                 if (targetIndex >= 0 && targetIndex != activeIndex) {
-                    val delta = shortestVirtualDelta(activeIndex, targetIndex, count)
                     coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.settledPage + delta)
+                        listState.animateScrollToItem(targetIndex)
                     }
                 }
             },
@@ -237,23 +235,38 @@ private fun SuggestionCarouselWithMap(
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
         )
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxWidth()
-        ) { page ->
-            val suggestion = suggestions[page.mod(count)]
-            SuggestionCard(
-                suggestion = suggestion,
-                customName = customNames[suggestion.poi.id],
-                onClick = { onCardClick(suggestion) },
-                onGo = { onGo(suggestion) },
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
+        LazyRow(
+            state = listState,
+            modifier = Modifier.fillMaxWidth(),
+            flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 4.dp)
+        ) {
+            items(count) { index ->
+                val suggestion = suggestions[index]
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    SuggestionCard(
+                        suggestion = suggestion,
+                        customName = customNames[suggestion.poi.id],
+                        onClick = { onCardClick(suggestion) },
+                        onGo = { onGo(suggestion) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                    )
+                }
+            }
         }
+
         if (count > 1) {
             CarouselDots(
                 count = count,
                 activeIndex = activeIndex,
+                onDotClick = { index ->
+                    coroutineScope.launch {
+                        listState.animateScrollToItem(index)
+                    }
+                },
                 modifier = Modifier
                     .padding(top = 8.dp)
                     .align(Alignment.CenterHorizontally)
@@ -262,15 +275,13 @@ private fun SuggestionCarouselWithMap(
     }
 }
 
-/** Which wrap direction (forward or backward around the ring) is the shorter hop. */
-private fun shortestVirtualDelta(fromIndex: Int, toIndex: Int, count: Int): Int {
-    val forward = (toIndex - fromIndex).mod(count)
-    val backward = forward - count
-    return if (forward <= -backward) forward else backward
-}
-
 @Composable
-private fun CarouselDots(count: Int, activeIndex: Int, modifier: Modifier = Modifier) {
+private fun CarouselDots(
+    count: Int,
+    activeIndex: Int,
+    onDotClick: (Int) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         repeat(count) { i ->
             val active = i == activeIndex
@@ -282,6 +293,7 @@ private fun CarouselDots(count: Int, activeIndex: Int, modifier: Modifier = Modi
                         if (active) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.outlineVariant
                     )
+                    .clickable { onDotClick(i) }
             )
         }
     }
