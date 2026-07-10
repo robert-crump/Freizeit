@@ -27,6 +27,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -85,6 +86,7 @@ fun SuggestionsMiniMap(
                     .withLayer(cartoDarkMatterLayer())
                     .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
                     .withLayer(poiDotLayer(defaultColor, highlightColor))
+                    .withLayer(poiNumberLayer())
                     .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
                     .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, locationColor))
             ) { style ->
@@ -164,6 +166,18 @@ private fun poiDotLayer(defaultColor: Int, highlightColor: Int): CircleLayer {
         )
 }
 
+private fun poiNumberLayer(): SymbolLayer {
+    return SymbolLayer("suggestions-poi-numbers", POI_DOT_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.textField(Expression.get("number")),
+            PropertyFactory.textSize(12f),
+            PropertyFactory.textColor(Color.WHITE),
+            PropertyFactory.textFont(arrayOf("Open Sans Regular")),
+            PropertyFactory.textAllowOverlap(true),
+            PropertyFactory.textIgnorePlacement(true)
+        )
+}
+
 private fun renderSuggestions(
     state: SuggestionsMapState,
     mapView: MapView,
@@ -172,10 +186,11 @@ private fun renderSuggestions(
     location: LatLon?
 ) {
     if (!state.ready) return
-    val features = pois.map { poi ->
+    val features = pois.mapIndexed { index, poi ->
         val props = JsonObject().apply {
             addProperty("id", poi.id)
             addProperty("selected", poi.id == selectedPoiId)
+            addProperty("number", (index + 1).toString())
         }
         Feature.fromGeometry(Point.fromLngLat(poi.lon, poi.lat), props)
     }
