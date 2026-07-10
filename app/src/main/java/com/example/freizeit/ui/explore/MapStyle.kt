@@ -31,8 +31,8 @@ fun cartoDarkMatterLayer(): RasterLayer = RasterLayer(BASEMAP_LAYER_ID, BASEMAP_
 /** Data-driven `circle-color` expression matching [categoryColor] for every known category. */
 fun categoryColorExpression(): Expression {
     val fallback = Expression.color(categoryColor("").toArgb())
-    val stops = CATEGORY_ORDER.flatMap { category ->
-        listOf(Expression.literal(category), Expression.color(categoryColor(category).toArgb()))
+    val stops = CATEGORY_ORDER.map { category ->
+        Expression.stop(category, Expression.color(categoryColor(category).toArgb()))
     }.toTypedArray()
     return Expression.match(Expression.get("category"), fallback, *stops)
 }

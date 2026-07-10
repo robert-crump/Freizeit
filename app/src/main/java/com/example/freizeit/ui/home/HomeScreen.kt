@@ -1,6 +1,8 @@
 package com.example.freizeit.ui.home
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -146,7 +148,13 @@ fun HomeScreen(
                 location = state.location,
                 mapHeight = mapHeight.coerceAtLeast(MIN_MAP_HEIGHT),
                 onCardClick = { viewModel.selectCard(it) },
-                onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
+                onGo = { suggestion ->
+                    val poi = suggestion.poi
+                    viewModel.recordGo(poi, state.customNames[poi.id])
+                    val label = Uri.encode(state.customNames[poi.id] ?: poi.name ?: poi.category)
+                    val navUri = Uri.parse("geo:${poi.lat},${poi.lon}?q=${poi.lat},${poi.lon}($label)")
+                    context.startActivity(Intent(Intent.ACTION_VIEW, navUri))
+                },
                 modifier = Modifier.fillMaxWidth()
             )
 
