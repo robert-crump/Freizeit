@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -132,18 +133,16 @@ fun HomeScreen(
             CenteredHint(stringResource(R.string.home_no_suggestions))
         } else {
             val topContentHeight = with(density) { topContentHeightPx.toDp() }
-            val remainingHeight = (screenHeightDp - topContentHeight)
-                .coerceAtLeast(MIN_MAP_CAROUSEL_HEIGHT * 2)
+            val mapHeight = ((screenHeightDp - topContentHeight) / 2).coerceAtLeast(MIN_MAP_HEIGHT)
 
             SuggestionCarouselWithMap(
                 suggestions = state.cards,
                 customNames = state.customNames,
                 location = state.location,
+                mapHeight = mapHeight,
                 onCardClick = { viewModel.selectCard(it) },
                 onGo = { viewModel.recordGo(it.poi, state.customNames[it.poi.id]) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(remainingHeight)
+                modifier = Modifier.fillMaxWidth()
             )
 
             OutlinedButton(
@@ -171,14 +170,18 @@ fun HomeScreen(
     }
 }
 
-/** Floor for the map+carousel block so a first-frame measurement of 0 doesn't collapse it. */
-private val MIN_MAP_CAROUSEL_HEIGHT = 160.dp
+/** Floor for the map so a first-frame measurement of 0 doesn't collapse it. */
+private val MIN_MAP_HEIGHT = 160.dp
 
 /**
- * The mini-map (top half) and swipeable carousel + dots (bottom half) share one
+ * The mini-map and the swipeable carousel + dots below it share one
  * [androidx.compose.foundation.pager.PagerState] so tapping a map dot scrolls the
  * carousel to match, and swiping the carousel re-highlights the matching map dot.
  * Wraps around: swiping past the last card returns to the first, and vice versa.
+ *
+ * The highlighted dot/card only changes once a swipe fully settles on a new page
+ * ([PagerState.settledPage]), not mid-drag — using the live [PagerState.currentPage]
+ * there made the map highlight flicker between suggestions while dragging.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -186,6 +189,7 @@ private fun SuggestionCarouselWithMap(
     suggestions: List<Suggestion>,
     customNames: Map<String, String>,
     location: LatLon?,
+    mapHeight: Dp,
     onCardClick: (Suggestion) -> Unit,
     onGo: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
@@ -199,10 +203,10 @@ private fun SuggestionCarouselWithMap(
     val virtualPageCount = if (count > 1) Int.MAX_VALUE else 1
     val pagerState = rememberPagerState(initialPage = startPage) { virtualPageCount }
     val coroutineScope = rememberCoroutineScope()
-    val activeIndex = pagerState.currentPage.mod(count)
+    val activeIndex = pagerState.settledPage.mod(count)
     val activePoi = suggestions[activeIndex].poi
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier) {
         SuggestionsMiniMap(
             pois = suggestions.map { it.poi },
             selectedPoiId = activePoi.id,
@@ -212,42 +216,43 @@ private fun SuggestionCarouselWithMap(
                 if (targetIndex >= 0 && targetIndex != activeIndex) {
                     val delta = shortestVirtualDelta(activeIndex, targetIndex, count)
                     coroutineScope.launch {
-                        pagerState.animateScrollToPage(pagerState.currentPage + delta)
+                        pagerState.animateScrollToPage(pagerState.settledPage + delta)
                     }
                 }
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .height(mapHeight)
                 .clip(RoundedCornerShape(12.dp))
         )
 
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            HorizontalPager(
-                state = pagerState,
+        Text(
+            text = stringResource(R.string.home_suggestions_header),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+        )
+
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxWidth()
+        ) { page ->
+            val suggestion = suggestions[page.mod(count)]
+            SuggestionCard(
+                suggestion = suggestion,
+                customName = customNames[suggestion.poi.id],
+                onClick = { onCardClick(suggestion) },
+                onGo = { onGo(suggestion) },
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+        if (count > 1) {
+            CarouselDots(
+                count = count,
+                activeIndex = activeIndex,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) { page ->
-                val suggestion = suggestions[page.mod(count)]
-                SuggestionCard(
-                    suggestion = suggestion,
-                    customName = customNames[suggestion.poi.id],
-                    onClick = { onCardClick(suggestion) },
-                    onGo = { onGo(suggestion) },
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-            }
-            if (count > 1) {
-                CarouselDots(
-                    count = count,
-                    activeIndex = activeIndex,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-            }
+                    .padding(top = 8.dp)
+                    .align(Alignment.CenterHorizontally)
+            )
         }
     }
 }

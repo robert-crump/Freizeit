@@ -17,6 +17,7 @@
     <string name="home_time_budget_long">All day</string>
     <string name="home_who_kids">Kids along</string>
     <string name="home_who_adults">Adults only</string>
+    <string name="home_suggestions_header">Suggestions</string>
     <!-- Explore -->
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>
