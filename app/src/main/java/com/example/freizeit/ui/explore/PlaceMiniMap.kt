@@ -16,14 +16,15 @@ import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.freizeit.data.entity.Poi
-import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.util.LatLon
+import com.google.gson.JsonObject
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -33,28 +34,36 @@ import org.maplibre.geojson.Point
 
 private const val MINI_MAP_ZOOM = 15.0
 private const val MINI_MAP_BORDER_PX = 90
-private const val POI_DOT_SOURCE_ID = "mini-poi"
-private const val POI_DOT_LAYER_ID = "mini-poi-layer"
-private const val USER_DOT_SOURCE_ID = "mini-user"
-private const val USER_DOT_LAYER_ID = "mini-user-layer"
+private const val POI_DOT_RADIUS = 9f
+private const val POI_DOT_HIGHLIGHT_RADIUS = 14f
+private const val POI_DOT_SOURCE_ID = "suggestions-poi"
+private const val POI_DOT_LAYER_ID = "suggestions-poi-layer"
+private const val USER_DOT_SOURCE_ID = "suggestions-user"
+private const val USER_DOT_LAYER_ID = "suggestions-user-layer"
 
 /**
- * Small, mostly-static map for the place detail sheet: shows the place and, when
- * known, the user's current location, framed with enough border that neither
- * point sits on the map's edge.
+ * Static, non-interactive overview map for the Home carousel: shows every suggestion POI
+ * plus the user's current location, camera fit once to include all of them. The POI whose
+ * id matches [selectedPoiId] renders larger and in the accent color; tapping any dot reports
+ * it via [onPoiClick] so the caller can keep the carousel in sync.
  */
 @Composable
-fun PlaceMiniMap(
-    poi: Poi,
+fun SuggestionsMiniMap(
+    pois: List<Poi>,
+    selectedPoiId: String?,
     location: LatLon?,
+    onPoiClick: (Poi) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val poiColor = categoryColor(poi.category).toArgb()
+    val defaultColor = MaterialTheme.colorScheme.secondary.toArgb()
+    val highlightColor = MaterialTheme.colorScheme.tertiary.toArgb()
     val locationColor = MaterialTheme.colorScheme.primary.toArgb()
 
-    val state = remember { MiniMapState() }
+    val state = remember { SuggestionsMapState() }
+    state.poiById = pois.associateBy { it.id }
+    state.onPoiClick = onPoiClick
 
     val mapView = remember {
         MapView(context).apply { onCreate(null) }
@@ -63,12 +72,19 @@ fun PlaceMiniMap(
     DisposableEffect(mapView) {
         mapView.getMapAsync { map ->
             state.map = map
+            map.uiSettings.apply {
+                isScrollGesturesEnabled = false
+                isZoomGesturesEnabled = false
+                isRotateGesturesEnabled = false
+                isTiltGesturesEnabled = false
+                isDoubleTapGesturesEnabled = false
+            }
             map.setStyle(
                 Style.Builder()
                     .withSource(cartoDarkMatterSource())
                     .withLayer(cartoDarkMatterLayer())
                     .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
-                    .withLayer(dotLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID, poiColor))
+                    .withLayer(poiDotLayer(defaultColor, highlightColor))
                     .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
                     .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, locationColor))
             ) { style ->
@@ -76,14 +92,15 @@ fun PlaceMiniMap(
                 state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
                 state.userSource = style.getSourceAs(USER_DOT_SOURCE_ID)
                 state.ready = true
-                render(state, mapView, poi, location)
+                renderSuggestions(state, mapView, pois, selectedPoiId, location)
             }
+            map.addOnMapClickListener { latLng -> handleSuggestionsMapClick(state, map, latLng) }
         }
         onDispose { }
     }
 
-    LaunchedEffect(poi.id, location?.lat, location?.lon) {
-        render(state, mapView, poi, location)
+    LaunchedEffect(pois, selectedPoiId, location?.lat, location?.lon) {
+        renderSuggestions(state, mapView, pois, selectedPoiId, location)
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -109,26 +126,60 @@ fun PlaceMiniMap(
     )
 }
 
-private class MiniMapState {
+private class SuggestionsMapState {
     var map: MapLibreMap? = null
     var style: Style? = null
     var ready: Boolean = false
     var poiSource: GeoJsonSource? = null
     var userSource: GeoJsonSource? = null
+    var poiById: Map<String, Poi> = emptyMap()
+    var onPoiClick: (Poi) -> Unit = {}
 }
 
 private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer =
     CircleLayer(layerId, sourceId)
         .withProperties(
             PropertyFactory.circleColor(color),
-            PropertyFactory.circleRadius(9f),
+            PropertyFactory.circleRadius(POI_DOT_RADIUS),
             PropertyFactory.circleStrokeWidth(2f),
             PropertyFactory.circleStrokeColor(Color.WHITE)
         )
 
-private fun render(state: MiniMapState, mapView: MapView, poi: Poi, location: LatLon?) {
+private fun poiDotLayer(defaultColor: Int, highlightColor: Int): CircleLayer {
+    val selected = Expression.toBool(Expression.get("selected"))
+    return CircleLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.circleColor(
+                Expression.switchCase(selected, Expression.color(highlightColor), Expression.color(defaultColor))
+            ),
+            PropertyFactory.circleRadius(
+                Expression.switchCase(
+                    selected,
+                    Expression.literal(POI_DOT_HIGHLIGHT_RADIUS),
+                    Expression.literal(POI_DOT_RADIUS)
+                )
+            ),
+            PropertyFactory.circleStrokeWidth(2f),
+            PropertyFactory.circleStrokeColor(Color.WHITE)
+        )
+}
+
+private fun renderSuggestions(
+    state: SuggestionsMapState,
+    mapView: MapView,
+    pois: List<Poi>,
+    selectedPoiId: String?,
+    location: LatLon?
+) {
     if (!state.ready) return
-    state.poiSource?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(poi.lon, poi.lat)))
+    val features = pois.map { poi ->
+        val props = JsonObject().apply {
+            addProperty("id", poi.id)
+            addProperty("selected", poi.id == selectedPoiId)
+        }
+        Feature.fromGeometry(Point.fromLngLat(poi.lon, poi.lat), props)
+    }
+    state.poiSource?.setGeoJson(FeatureCollection.fromFeatures(features))
 
     if (location != null) {
         state.userSource?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(location.lon, location.lat)))
@@ -136,16 +187,24 @@ private fun render(state: MiniMapState, mapView: MapView, poi: Poi, location: La
         state.userSource?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
     }
 
+    if (pois.isEmpty()) return
     mapView.doOnLayout {
         val map = state.map ?: return@doOnLayout
-        if (location != null) {
-            val bounds = LatLngBounds.Builder()
-                .include(LatLng(poi.lat, poi.lon))
-                .include(LatLng(location.lat, location.lon))
-                .build()
-            map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, MINI_MAP_BORDER_PX))
+        val points = pois.map { LatLng(it.lat, it.lon) } +
+            listOfNotNull(location?.let { LatLng(it.lat, it.lon) })
+        if (points.size <= 1) {
+            map.moveCamera(CameraUpdateFactory.newLatLngZoom(points.first(), MINI_MAP_ZOOM))
         } else {
-            map.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(poi.lat, poi.lon), MINI_MAP_ZOOM))
+            val bounds = LatLngBounds.Builder().apply { points.forEach(::include) }.build()
+            map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds, MINI_MAP_BORDER_PX))
         }
     }
+}
+
+private fun handleSuggestionsMapClick(state: SuggestionsMapState, map: MapLibreMap, latLng: LatLng): Boolean {
+    val screenPoint = map.projection.toScreenLocation(latLng)
+    val feature = map.queryRenderedFeatures(screenPoint, POI_DOT_LAYER_ID).firstOrNull() ?: return false
+    val id = feature.getStringProperty("id") ?: return false
+    state.poiById[id]?.let(state.onPoiClick)
+    return true
 }
