@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -126,8 +128,8 @@ fun HomeScreen(
             OverrideChipsRow(
                 timeBudgetMinutes = state.timeBudgetMinutes,
                 kidsAlong = state.kidsAlong,
-                onTimeBudgetClick = { viewModel.setTimeBudget(nextTimeBudget(state.timeBudgetMinutes)) },
-                onKidsAlongClick = { viewModel.setKidsAlong(!state.kidsAlong) }
+                onTimeBudgetSelect = { viewModel.setTimeBudget(it) },
+                onKidsAlongSelect = { viewModel.setKidsAlong(it) }
             )
         }
 
@@ -246,22 +248,25 @@ private fun SuggestionCarouselWithMap(
             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
         )
 
-        LazyRow(
-            state = listState,
-            modifier = Modifier.fillMaxWidth(),
-            flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(start = 16.dp, end = 0.dp)
-        ) {
-            items(count) { index ->
-                val suggestion = suggestions[index]
-                SuggestionCard(
-                    suggestion = suggestion,
-                    customName = customNames[suggestion.poi.id],
-                    onClick = { onCardClick(suggestion) },
-                    onGo = { onGo(suggestion) },
-                    modifier = Modifier.width(cardWidth)
-                )
+        // Disabled so dragging past the first/last card doesn't stretch-bounce before snapping back.
+        CompositionLocalProvider(LocalOverscrollConfiguration provides null) {
+            LazyRow(
+                state = listState,
+                modifier = Modifier.fillMaxWidth(),
+                flingBehavior = rememberSnapFlingBehavior(lazyListState = listState),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 0.dp)
+            ) {
+                items(count) { index ->
+                    val suggestion = suggestions[index]
+                    SuggestionCard(
+                        suggestion = suggestion,
+                        customName = customNames[suggestion.poi.id],
+                        onClick = { onCardClick(suggestion) },
+                        onGo = { onGo(suggestion) },
+                        modifier = Modifier.width(cardWidth)
+                    )
+                }
             }
         }
 
@@ -389,49 +394,63 @@ private fun WeatherStrip(weather: WeatherSnapshot?, modifier: Modifier = Modifie
     }
 }
 
-/** Two tap-to-cycle chips (issue #7): time budget and who's along, both optional overrides. */
+/**
+ * Two rows of directly-selectable filter chips (issue #11 rework of #7's tap-to-cycle chips):
+ * time budget (1 h / 3 h / all day) and who's along (kids along / adults only). Every option is
+ * always visible so the active choice — and what else is available — is explicit at a glance,
+ * rather than hidden behind repeated taps on a single cycling chip.
+ */
 @Composable
 private fun OverrideChipsRow(
     timeBudgetMinutes: Int,
     kidsAlong: Boolean,
-    onTimeBudgetClick: () -> Unit,
-    onKidsAlongClick: () -> Unit,
+    onTimeBudgetSelect: (Int) -> Unit,
+    onKidsAlongSelect: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SegmentedChipGroup(
+            options = listOf(
+                SuggestionContext.SHORT_TIME_BUDGET_MINUTES to R.string.home_time_budget_short,
+                SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES to R.string.home_time_budget_default,
+                SuggestionContext.LONG_TIME_BUDGET_MINUTES to R.string.home_time_budget_long
+            ),
+            selected = timeBudgetMinutes,
+            onSelect = onTimeBudgetSelect
+        )
+        SegmentedChipGroup(
+            options = listOf(
+                true to R.string.home_who_kids,
+                false to R.string.home_who_adults
+            ),
+            selected = kidsAlong,
+            onSelect = onKidsAlongSelect
+        )
+    }
+}
+
+@Composable
+private fun <T> SegmentedChipGroup(
+    options: List<Pair<T, Int>>,
+    selected: T,
+    onSelect: (T) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        FilterChip(
-            selected = timeBudgetMinutes != SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES,
-            onClick = onTimeBudgetClick,
-            label = { Text(stringResource(timeBudgetLabelRes(timeBudgetMinutes))) }
-        )
-        FilterChip(
-            selected = !kidsAlong,
-            onClick = onKidsAlongClick,
-            label = {
-                Text(
-                    stringResource(
-                        if (kidsAlong) R.string.home_who_kids else R.string.home_who_adults
-                    )
-                )
-            }
-        )
+        options.forEach { (value, labelRes) ->
+            FilterChip(
+                selected = value == selected,
+                onClick = { onSelect(value) },
+                label = { Text(stringResource(labelRes)) }
+            )
+        }
     }
-}
-
-private fun timeBudgetLabelRes(minutes: Int): Int = when {
-    minutes <= SuggestionContext.SHORT_TIME_BUDGET_MINUTES -> R.string.home_time_budget_short
-    minutes >= SuggestionContext.LONG_TIME_BUDGET_MINUTES -> R.string.home_time_budget_long
-    else -> R.string.home_time_budget_default
-}
-
-/** 1 h → 3 h → all day → 1 h. */
-private fun nextTimeBudget(current: Int): Int = when {
-    current <= SuggestionContext.SHORT_TIME_BUDGET_MINUTES -> SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES
-    current >= SuggestionContext.LONG_TIME_BUDGET_MINUTES -> SuggestionContext.SHORT_TIME_BUDGET_MINUTES
-    else -> SuggestionContext.LONG_TIME_BUDGET_MINUTES
 }
 
 @Composable
