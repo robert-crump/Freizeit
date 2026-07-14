@@ -77,7 +77,6 @@ fun PoiMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val locationDotColor = MaterialTheme.colorScheme.primary.toArgb()
     val clusterColor = MaterialTheme.colorScheme.secondary.toArgb()
 
     val state = remember { PoiMapState() }
@@ -110,8 +109,8 @@ fun PoiMap(
                     .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
                     .withLayer(poiCircleLayer())
                     .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
-                    .withLayer(locationAccuracyLayer(locationDotColor))
-                    .withLayer(locationDotLayer(locationDotColor))
+                    .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
+                    .withLayer(locationDotLayer(POSITION_DOT_COLOR))
             ) { style ->
                 state.style = style
                 state.poiSource = style.getSourceAs(POI_SOURCE_ID)

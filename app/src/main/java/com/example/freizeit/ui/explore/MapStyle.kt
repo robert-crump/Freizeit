@@ -12,6 +12,10 @@ private const val BASEMAP_SOURCE_ID = "carto-dark-matter"
 private const val BASEMAP_LAYER_ID = "carto-dark-matter-layer"
 private const val BASEMAP_TILE_SIZE = 256
 
+/** Fixed dark blue for the "you are here" marker — deliberately not theme-derived so it stays a
+ *  consistent, recognizable color distinct from any POI category color, in both light and dark mode. */
+const val POSITION_DOT_COLOR: Int = 0xFF0D47A1.toInt()
+
 /** CARTO's dark basemap, raster tiles — same source used before the MapLibre migration. */
 fun cartoDarkMatterSource(): RasterSource {
     val tileSet = TileSet(

@@ -1,14 +1,12 @@
 package com.example.freizeit.ui.explore
 
 import android.graphics.Color
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
@@ -43,9 +41,9 @@ private const val USER_DOT_LAYER_ID = "suggestions-user-layer"
 
 /**
  * Static, non-interactive overview map for the Home carousel: shows every suggestion POI
- * plus the user's current location, camera fit once to include all of them. The POI whose
- * id matches [selectedPoiId] renders larger and in the accent color; tapping any dot reports
- * it via [onPoiClick] so the caller can keep the carousel in sync.
+ * plus the user's current location, camera fit once to include all of them. Every POI dot is
+ * colored by its category; the one whose id matches [selectedPoiId] renders larger. Tapping
+ * any dot reports it via [onPoiClick] so the caller can keep the carousel in sync.
  */
 @Composable
 fun SuggestionsMiniMap(
@@ -57,9 +55,6 @@ fun SuggestionsMiniMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val defaultColor = MaterialTheme.colorScheme.secondary.toArgb()
-    val highlightColor = MaterialTheme.colorScheme.tertiary.toArgb()
-    val locationColor = MaterialTheme.colorScheme.primary.toArgb()
 
     val state = remember { SuggestionsMapState() }
     state.poiById = pois.associateBy { it.id }
@@ -84,9 +79,9 @@ fun SuggestionsMiniMap(
                     .withSource(cartoDarkMatterSource())
                     .withLayer(cartoDarkMatterLayer())
                     .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
-                    .withLayer(poiDotLayer(defaultColor, highlightColor))
+                    .withLayer(poiDotLayer())
                     .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
-                    .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, locationColor))
+                    .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, POSITION_DOT_COLOR))
             ) { style ->
                 state.style = style
                 state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
@@ -145,13 +140,11 @@ private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer
             PropertyFactory.circleStrokeColor(Color.WHITE)
         )
 
-private fun poiDotLayer(defaultColor: Int, highlightColor: Int): CircleLayer {
+private fun poiDotLayer(): CircleLayer {
     val selected = Expression.toBool(Expression.get("selected"))
     return CircleLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
         .withProperties(
-            PropertyFactory.circleColor(
-                Expression.switchCase(selected, Expression.color(highlightColor), Expression.color(defaultColor))
-            ),
+            PropertyFactory.circleColor(categoryColorExpression()),
             PropertyFactory.circleRadius(
                 Expression.switchCase(
                     selected,
@@ -175,6 +168,7 @@ private fun renderSuggestions(
     val features = pois.map { poi ->
         val props = JsonObject().apply {
             addProperty("id", poi.id)
+            addProperty("category", poi.category)
             addProperty("selected", poi.id == selectedPoiId)
         }
         Feature.fromGeometry(Point.fromLngLat(poi.lon, poi.lat), props)
