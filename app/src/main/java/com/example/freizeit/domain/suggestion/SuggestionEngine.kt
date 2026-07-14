@@ -99,7 +99,6 @@ object SuggestionEngine {
         if (categoryWeight <= 0.0) return null
 
         val verdict = context.verdicts[poi.id]
-        if (verdict?.value == Verdict.VALUE_DOWN) return null
         if (verdict != null && context.nowMillis - verdict.verdictedAt < FAVORITE_COOLDOWN_MILLIS) {
             return null
         }

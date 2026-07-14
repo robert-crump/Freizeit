@@ -69,7 +69,7 @@ class BackupRepositoryTest {
     @Test
     fun `round trip preserves verdicts and custom names, including cooldown-relevant fields`() = runTest {
         db.verdictDao().upsert(verdict("node/1", value = Verdict.VALUE_FAVORITE, verdictedAt = 12_345L))
-        db.verdictDao().upsert(verdict("node/2", value = Verdict.VALUE_DOWN, verdictedAt = 67_890L))
+        db.verdictDao().upsert(verdict("node/2", value = "other", verdictedAt = 67_890L))
         db.poiCustomNameDao().upsert(customName("node/3", "Home playground"))
         db.poiCustomNameDao().upsert(customName("node/4", "Oma's park"))
 
@@ -90,7 +90,7 @@ class BackupRepositoryTest {
         val verdicts = db.verdictDao().getAll().associateBy { it.placeId }
         assertEquals(Verdict.VALUE_FAVORITE, verdicts["node/1"]?.value)
         assertEquals(12_345L, verdicts["node/1"]?.verdictedAt)
-        assertEquals(Verdict.VALUE_DOWN, verdicts["node/2"]?.value)
+        assertEquals("other", verdicts["node/2"]?.value)
 
         val customNames = db.poiCustomNameDao().getAll()
         assertEquals(setOf("Home playground", "Oma's park"), customNames.map { it.customName }.toSet())

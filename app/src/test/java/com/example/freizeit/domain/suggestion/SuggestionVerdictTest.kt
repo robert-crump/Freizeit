@@ -14,10 +14,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The family-favorites rewrite's ranking rules: 👎 is a permanent hard filter,
- * ❤️ boosts the score once its 2-day cooldown has passed (kids' rituals are a
- * feature — a favorite should resurface soon), and a nearby favorite gets an
- * extra edge on top of the flat bonus.
+ * The family-favorites rewrite's ranking rules: ❤️ boosts the score once its
+ * 2-day cooldown has passed (kids' rituals are a feature — a favorite should
+ * resurface soon), and a nearby favorite gets an extra edge on top of the
+ * flat bonus.
  */
 class SuggestionVerdictTest {
 
@@ -44,14 +44,6 @@ class SuggestionVerdictTest {
         lon = HOME.lon,
         name = "Test $id"
     )
-
-    @Test
-    fun `a downvoted place never appears, no matter how fresh or stale the verdict`() {
-        val fresh = mapOf(cafe.id to verdict(cafe.id, Verdict.VALUE_DOWN, ageMillis = 0))
-        val old = mapOf(cafe.id to verdict(cafe.id, Verdict.VALUE_DOWN, Duration.ofDays(365).toMillis()))
-        assertFalse(cafe.id in SuggestionEngine.rankAll(allPois, ctx(fresh)).map { it.poi.id })
-        assertFalse(cafe.id in SuggestionEngine.rankAll(allPois, ctx(old)).map { it.poi.id })
-    }
 
     @Test
     fun `a favorited place is suppressed within its 2-day cooldown`() {
