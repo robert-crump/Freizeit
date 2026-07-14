@@ -275,3 +275,44 @@
   "resets on next app open" behavior are structurally guaranteed (plain
   ViewModel field, no persistence) but untested by an actual app restart
   on Robert's phone.
+
+## 2026-07-14 — Issue #11: Home minor changes (position dot, POI color, filter chips, carousel bounce)
+
+- Position dot: added `POSITION_DOT_COLOR` (fixed 0xFF0D47A1, not theme-derived)
+  to MapStyle.kt, applied to both Home's `PlaceMiniMap`/`SuggestionsMiniMap` and
+  Explore's `PoiMap`, replacing the old `colorScheme.primary`-tinted dot so the
+  "you are here" marker reads the same regardless of theme or POI category colors.
+- Home mini-map POI dots: `poiDotLayer()` now uses the existing
+  `categoryColorExpression()` (already used by Explore's `PoiMap`) instead of a
+  flat secondary/tertiary switch — added a `category` GeoJSON property in
+  `renderSuggestions` for the expression to key on. `selected` now controls only
+  radius (9f → 14f), not color, so Home and Explore share one coloring scheme and
+  the highlight doesn't look like a color glitch.
+- OverrideChipsRow (from #7) reworked: replaced the two tap-to-cycle single
+  FilterChips with a generic `SegmentedChipGroup<T>` — 3 always-visible chips for
+  time budget (1h/3h/All day) and 2 for who's-along (Kids/Adults), each directly
+  tappable/selectable. Addresses "currently implicit" filtering: previously the
+  other 2 states were invisible until you cycled through them. `HomeViewModel`
+  untouched — `setTimeBudget(Int)`/`setKidsAlong(Boolean)` already took direct
+  values, cycling logic was purely presentational.
+- Carousel overscroll: wrapped the suggestion `LazyRow` in
+  `CompositionLocalProvider(LocalOverscrollConfiguration provides null)` so
+  dragging past the first/last card no longer stretch-bounces before snapping
+  back.
+- Concurrent-session complication: a second agent session was working issue #10
+  (dark vector basemap, POI clustering, drawer heart icon) in this same working
+  directory (not a separate git worktree) at the same time, with overlapping
+  in-progress edits to MapStyle.kt/PoiMap.kt/PlaceMiniMap.kt/HomeScreen.kt.
+  Rather than `git add` the whole (mixed) working-tree files, reconstructed
+  HEAD-plus-my-changes-only versions of the 4 files in scratch, staged them via
+  `git hash-object -w` + `git update-index --cacheinfo` (bypassing the working
+  tree), and committed that — leaving the other session's uncommitted edits on
+  disk completely untouched. `git diff --stat` after the commit confirmed their
+  remaining delta was exactly their own work. Full `testDebugUnitTest` was red
+  at commit time only because of the other session's unrelated, incomplete
+  Verdict.VALUE_DOWN removal (BackupRepositoryTest.kt not yet updated by them) —
+  not a regression from this change; `compileDebugKotlin` passed both before and
+  after isolating my diff.
+- Not verified on device: color/size/chip changes are Compose/MapLibre
+  declarative code with no new branchy logic: not screenshotted on Robert's
+  phone this session.
