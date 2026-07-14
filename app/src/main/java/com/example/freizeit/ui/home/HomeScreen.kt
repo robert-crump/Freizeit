@@ -337,7 +337,6 @@ private fun VisitBanner(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                TextButton(onClick = { onVerdict(Verdict.VALUE_DOWN) }) { Text("👎") }
                 TextButton(onClick = { onVerdict(Verdict.VALUE_FAVORITE) }) { Text("❤️") }
                 TextButton(onClick = onDidNotGo) { Text(stringResource(R.string.home_visit_didnt_go)) }
             }

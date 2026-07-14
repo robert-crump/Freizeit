@@ -47,9 +47,9 @@ class VerdictDaoTest {
     @Test
     fun `setVerdict again changes the value in place`() = runTest {
         db.verdictDao().setVerdict(poi, Verdict.VALUE_FAVORITE)
-        db.verdictDao().setVerdict(poi, Verdict.VALUE_DOWN)
+        db.verdictDao().setVerdict(poi, "other")
 
-        assertEquals(Verdict.VALUE_DOWN, db.verdictDao().getByPlaceId("node/1")?.value)
+        assertEquals("other", db.verdictDao().getByPlaceId("node/1")?.value)
         assertEquals(1, db.verdictDao().observeAll().first().size)
     }
 

@@ -31,7 +31,6 @@
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>
-    <string name="detail_verdict_down">Not for us</string>
     <string name="detail_verdict_favorite">Favorite</string>
     <string name="detail_edit_name">Edit name</string>
     <string name="detail_custom_name_title">Custom name</string>

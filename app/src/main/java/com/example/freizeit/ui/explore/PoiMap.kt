@@ -29,6 +29,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
@@ -44,7 +45,7 @@ private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
 
 /** Below this zoom, MapLibre's built-in GeoJSON clustering groups POIs into size-tiered bubbles. */
-private const val CLUSTER_MAX_ZOOM = 14
+private const val CLUSTER_MAX_ZOOM = 11
 private const val CLUSTER_RADIUS = 60
 private const val CLUSTER_TAP_ZOOM_STEP = 3.0
 
@@ -56,6 +57,7 @@ private const val POI_LAYER_ID = "pois-points"
 private const val CLUSTER_LAYER_SMALL = "pois-cluster-small"
 private const val CLUSTER_LAYER_MEDIUM = "pois-cluster-medium"
 private const val CLUSTER_LAYER_LARGE = "pois-cluster-large"
+private const val CLUSTER_COUNT_LAYER_ID = "pois-cluster-count"
 private const val LOCATION_SOURCE_ID = "location"
 private const val LOCATION_ACCURACY_LAYER_ID = "location-accuracy"
 private const val LOCATION_DOT_LAYER_ID = "location-dot"
@@ -99,14 +101,14 @@ fun PoiMap(
 
             map.setStyle(
                 Style.Builder()
-                    .withSource(cartoDarkMatterSource())
-                    .withLayer(cartoDarkMatterLayer())
+                    .fromUri(DARK_MATTER_STYLE_URL)
                     .withSource(
                         GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
                     )
                     .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, clusterColor, upperBound = 20))
                     .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, clusterColor, lowerBound = 20, upperBound = 100))
                     .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
+                    .withLayer(clusterCountLayer())
                     .withLayer(poiCircleLayer())
                     .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
                     .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
@@ -221,6 +223,17 @@ private fun clusterCircleLayer(
         )
         .withFilter(Expression.all(*filters.toTypedArray()))
 }
+
+private fun clusterCountLayer(): SymbolLayer =
+    SymbolLayer(CLUSTER_COUNT_LAYER_ID, POI_SOURCE_ID)
+        .withProperties(
+            PropertyFactory.textField(Expression.toString(Expression.get("point_count"))),
+            PropertyFactory.textColor(Color.WHITE),
+            PropertyFactory.textSize(13f),
+            PropertyFactory.textIgnorePlacement(true),
+            PropertyFactory.textAllowOverlap(true)
+        )
+        .withFilter(Expression.has("point_count"))
 
 private fun locationAccuracyLayer(color: Int): CircleLayer =
     CircleLayer(LOCATION_ACCURACY_LAYER_ID, LOCATION_SOURCE_ID)

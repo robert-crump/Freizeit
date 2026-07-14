@@ -22,7 +22,6 @@ data class Verdict(
     val snapshotCategory: String
 ) {
     companion object {
-        const val VALUE_DOWN = "down"
         const val VALUE_FAVORITE = "favorite"
     }
 }

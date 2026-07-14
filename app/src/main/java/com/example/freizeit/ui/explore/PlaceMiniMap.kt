@@ -76,8 +76,7 @@ fun SuggestionsMiniMap(
             }
             map.setStyle(
                 Style.Builder()
-                    .withSource(cartoDarkMatterSource())
-                    .withLayer(cartoDarkMatterLayer())
+                    .fromUri(DARK_MATTER_STYLE_URL)
                     .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
                     .withLayer(poiDotLayer())
                     .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))

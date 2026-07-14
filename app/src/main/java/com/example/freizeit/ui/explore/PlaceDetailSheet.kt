@@ -1,7 +1,6 @@
 package com.example.freizeit.ui.explore
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +8,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -59,7 +60,7 @@ fun PlaceDetailSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) {
                 Text(
                     text = poi.displayName(customName),
                     style = MaterialTheme.typography.headlineSmall,
@@ -68,6 +69,12 @@ fun PlaceDetailSheet(
                 IconButton(onClick = { showEditNameDialog = true }) {
                     Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.detail_edit_name))
                 }
+                FavoriteButton(
+                    isFavorite = verdict == Verdict.VALUE_FAVORITE,
+                    onClick = {
+                        onVerdictChange(if (verdict == Verdict.VALUE_FAVORITE) null else Verdict.VALUE_FAVORITE)
+                    }
+                )
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -105,12 +112,6 @@ fun PlaceDetailSheet(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            VerdictRow(
-                current = verdict,
-                onChange = onVerdictChange,
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
     }
 
@@ -159,55 +160,19 @@ private fun CustomNameDialog(
     )
 }
 
-/** Tapping the active verdict again clears it; tapping the other one changes it. */
+/** Tapping the heart again clears the favorite; tapping it while unset sets it. */
 @Composable
-private fun VerdictRow(
-    current: String?,
-    onChange: (String?) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        VerdictButton(
-            emoji = "👎",
-            label = stringResource(R.string.detail_verdict_down),
-            selected = current == Verdict.VALUE_DOWN,
-            onClick = { onChange(if (current == Verdict.VALUE_DOWN) null else Verdict.VALUE_DOWN) }
-        )
-        VerdictButton(
-            emoji = "❤️",
-            label = stringResource(R.string.detail_verdict_favorite),
-            selected = current == Verdict.VALUE_FAVORITE,
-            onClick = { onChange(if (current == Verdict.VALUE_FAVORITE) null else Verdict.VALUE_FAVORITE) }
-        )
-    }
-}
-
-@Composable
-private fun VerdictButton(
-    emoji: String,
-    label: String,
-    selected: Boolean,
+private fun FavoriteButton(
+    isFavorite: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val containerColor = if (selected) {
-        MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceContainer
-    }
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(containerColor)
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(text = emoji, style = MaterialTheme.typography.titleLarge)
-        Text(text = label, style = MaterialTheme.typography.labelSmall)
+    IconButton(onClick = onClick, modifier = modifier) {
+        Icon(
+            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = stringResource(R.string.detail_verdict_favorite),
+            tint = if (isFavorite) MaterialTheme.colorScheme.error else LocalContentColor.current
+        )
     }
 }
 
