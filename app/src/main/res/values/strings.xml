@@ -25,6 +25,10 @@
     <string name="explore_locate_me">Locate me</string>
     <string name="explore_unnamed">Unnamed %1$s</string>
     <string name="explore_favorites_filter">Favorites</string>
+    <string name="explore_all_pois_filter">All POIs</string>
+    <string name="explore_layers_button">Layers</string>
+    <string name="explore_layers_title">Layers</string>
+    <string name="explore_layers_close">Close layers panel</string>
     <string name="explore_search_icon">Search</string>
     <string name="explore_search_close">Close search</string>
     <string name="explore_search_placeholder">Search places by name</string>

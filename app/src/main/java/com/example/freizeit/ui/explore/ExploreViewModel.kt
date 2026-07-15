@@ -42,6 +42,7 @@ data class ExploreUiState(
     val verdicts: Map<String, Verdict> = emptyMap(),
     val customNames: Map<String, String> = emptyMap(),
     val favoritesOnly: Boolean = false,
+    val showAllPois: Boolean = false,
     val searchQuery: String = ""
 )
 
@@ -49,9 +50,9 @@ data class ExploreUiState(
  * Pure filter+sort so the semantics are unit-testable. Exactly one filter is ever
  * active, in priority order: a non-blank [searchQuery] matches custom-or-OSM name
  * substrings across all categories; otherwise [favoriteIds] (non-null) restricts to
- * favorited places; otherwise [selectedCategory] restricts to that one category; with
- * none set, nothing matches. With a location, sorts nearest first, otherwise by name
- * (unnamed places last).
+ * favorited places; otherwise [showAll] passes every category through; otherwise
+ * [selectedCategory] restricts to that one category; with none set, nothing matches.
+ * With a location, sorts nearest first, otherwise by name (unnamed places last).
  */
 fun filterAndSort(
     pois: List<Poi>,
@@ -59,7 +60,8 @@ fun filterAndSort(
     location: LatLon?,
     favoriteIds: Set<String>? = null,
     searchQuery: String? = null,
-    customNames: Map<String, String> = emptyMap()
+    customNames: Map<String, String> = emptyMap(),
+    showAll: Boolean = false
 ): List<PoiWithDistance> {
     val filtered = pois.filter {
         when {
@@ -68,6 +70,7 @@ fun filterAndSort(
                 name != null && name.contains(searchQuery, ignoreCase = true)
             }
             favoriteIds != null -> it.id in favoriteIds
+            showAll -> true
             else -> it.category == selectedCategory
         }
     }
@@ -94,10 +97,11 @@ class ExploreViewModel(
     private val poiCustomNameDao: PoiCustomNameDao
 ) : ViewModel() {
 
-    // null = no category chosen yet, so the map/list starts empty until the user taps a chip
+    // null = no category chosen yet, so the map/list starts empty until the user picks a layer
     private val selectedCategory = MutableStateFlow<String?>(null)
     private val location = MutableStateFlow<LatLon?>(null)
     private val favoritesOnly = MutableStateFlow(false)
+    private val showAllPois = MutableStateFlow(false)
     private val searchQuery = MutableStateFlow("")
 
     private val _selectedPoi = MutableStateFlow<PoiWithDistance?>(null)
@@ -115,16 +119,23 @@ class ExploreViewModel(
         )
     }
 
+    // Folded into one flow because the outer combine below is already at the stdlib 5-flow
+    // arity limit (see #8's note) — selectedCategory/favoritesOnly/showAllPois are mutually
+    // exclusive anyway, so they travel together.
+    private val layerSelection = combine(
+        selectedCategory, favoritesOnly, showAllPois
+    ) { category, favOnly, allPois -> Triple(category, favOnly, allPois) }
+
     val uiState: StateFlow<ExploreUiState> = combine(
         poisVerdictsAndNames,
-        selectedCategory,
+        layerSelection,
         location,
-        favoritesOnly,
         // Debounced so a filter+sort pass (and the map's full overlay rebuild) runs once
         // typing pauses, instead of on every keystroke.
         searchQuery.debounce(SEARCH_DEBOUNCE_MS)
-    ) { poisVerdictsNames, selectedCat, loc, favOnly, query ->
+    ) { poisVerdictsNames, layer, loc, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
+        val (selectedCat, favOnly, allPois) = layer
         val categories = pois.map { it.category }.distinct()
             .sortedWith(compareBy({ categoryOrderIndex(it) }, { it }))
         val favoriteIds = if (favOnly) {
@@ -133,13 +144,14 @@ class ExploreViewModel(
             null
         }
         ExploreUiState(
-            pois = filterAndSort(pois, selectedCat, loc, favoriteIds, query.ifBlank { null }, customNames),
+            pois = filterAndSort(pois, selectedCat, loc, favoriteIds, query.ifBlank { null }, customNames, allPois),
             categories = categories,
             selectedCategory = selectedCat,
             location = loc,
             verdicts = verdictMap,
             customNames = customNames,
             favoritesOnly = favOnly,
+            showAllPois = allPois,
             searchQuery = query
         )
     }
@@ -150,30 +162,43 @@ class ExploreViewModel(
         refreshLocation()
     }
 
-    /** Category chips are mutually exclusive with "favorites only" and search. */
+    /** Layer rows (category/favorites/all-POIs/search) are all mutually exclusive. */
     fun selectCategory(category: String) {
         selectedCategory.value = if (selectedCategory.value == category) null else category
         if (selectedCategory.value != null) {
+            favoritesOnly.value = false
+            showAllPois.value = false
+            searchQuery.value = ""
+        }
+    }
+
+    /** Mutually exclusive with the other layer rows and search — see [selectCategory]. */
+    fun toggleFavoritesOnly() {
+        favoritesOnly.value = !favoritesOnly.value
+        if (favoritesOnly.value) {
+            selectedCategory.value = null
+            showAllPois.value = false
+            searchQuery.value = ""
+        }
+    }
+
+    /** Mutually exclusive with the other layer rows and search — see [selectCategory]. */
+    fun selectAllPois() {
+        showAllPois.value = !showAllPois.value
+        if (showAllPois.value) {
+            selectedCategory.value = null
             favoritesOnly.value = false
             searchQuery.value = ""
         }
     }
 
-    /** Mutually exclusive with category chips and search — see [selectCategory]. */
-    fun toggleFavoritesOnly() {
-        favoritesOnly.value = !favoritesOnly.value
-        if (favoritesOnly.value) {
-            selectedCategory.value = null
-            searchQuery.value = ""
-        }
-    }
-
-    /** Mutually exclusive with category chips and "favorites only" — see [selectCategory]. */
+    /** Mutually exclusive with the layer rows — see [selectCategory]. */
     fun setSearchQuery(query: String) {
         searchQuery.value = query
         if (query.isNotBlank()) {
             selectedCategory.value = null
             favoritesOnly.value = false
+            showAllPois.value = false
         }
     }
 
