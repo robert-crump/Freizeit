@@ -82,4 +82,29 @@ class FilterAndSortTest {
         )
         assertEquals(listOf("node/3"), result.map { it.poi.id })
     }
+
+    @Test
+    fun `showAll passes every category through regardless of selectedCategory`() {
+        val result = filterAndSort(pois, selectedCategory = null, location = null, showAll = true)
+        assertEquals(pois.map { it.id }.toSet(), result.map { it.poi.id }.toSet())
+        assertEquals(pois.size, result.size)
+    }
+
+    @Test
+    fun `favorites filter takes priority over showAll`() {
+        val result = filterAndSort(
+            pois, selectedCategory = null, location = null,
+            favoriteIds = setOf("node/2"), showAll = true
+        )
+        assertEquals(listOf("node/2"), result.map { it.poi.id })
+    }
+
+    @Test
+    fun `search takes priority over showAll`() {
+        val result = filterAndSort(
+            pois, selectedCategory = null, location = null,
+            searchQuery = "alpha", showAll = true
+        )
+        assertEquals(listOf("node/2"), result.map { it.poi.id })
+    }
 }

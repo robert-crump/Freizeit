@@ -1,31 +1,45 @@
 # Freizeit v2 progress log
 
-## 2026-07-05 — Issue #3: POI import end-to-end (extraction file → Room, keep+flag)
+## 2026-07-15 — Issue #13: Layers FAB + panel: replace category chips with single-select overlay
 
-- Schema (still Room v1 — no installed devices exist, so no migration needed):
-  - Poi evolved: String id ("node/123") PK, category, lat/lon, optional
-    name/opening_hours/address fields, missingFromOsm flag.
-  - Verdict table added now (storage/UI lands in #6) because the import's keep+flag
-    rule depends on it; snapshots name/coords/category, deliberately no FK to poi.
-  - ImportInfo single-row table (importedAt, fileGeneratedAt); per-category counts
-    are queried live (GROUP BY), not stored.
-- PoiJsonParser (Gson): strict validation of the tools/poi_extraction format;
-  whole file parses before any DB write.
-- PoiRepository.importFrom(uri) in one transaction:
-  markAllMissing → upsert file contents (clears flag) → delete missing-without-verdict.
-  Malformed/unreadable file throws PoiParseException, database untouched.
-- Settings screen: SAF file picker (OpenDocument), import progress/success/error
-  states, summary card with per-category counts, last-import timestamp, and
-  kept-but-missing count. SettingsViewModel with manual DI factory.
-- Tests (17 total, all green): parser unit tests + Robolectric in-memory-Room tests
-  covering all five acceptance criteria (all categories import, idempotent re-import,
-  unverdicted vanished place dropped, verdicted one kept+flagged and un-flagged on
-  return, malformed file leaves DB untouched).
-- Gotcha: Room @Upsert breaks under Robolectric's legacy SQLite shadow (Windows) —
-  switched DAOs to @Insert(onConflict = REPLACE), which is also the semantics the
-  import wants (full-row replace).
-- Device still disconnected; on-device SAF-picker flow untested. Build + full test
-  suite green.
+- Picked over #14 (also unblocked) because it's fully self-contained in this repo —
+  #14 needs the Ride-Graph .pbf sources + osmium venv on this machine, and #15/#16
+  both need #13 done regardless of which root ships first.
+- ExploreScreen.kt: `PoiCategoryChipRow` deleted. New `Icons.Default.Layers`
+  `FloatingActionButton` (same default size as the locate-me FAB): stacked above
+  locate-me at bottom-end in Map view (a `Column` with 12dp spacing), shown alone
+  at bottom-end in List view (locate-me only ever existed in Map view). Tapping it
+  opens `LayersPanel` — a scrim (32% black) + centered `Card` that swallows its own
+  clicks, mirroring Velometrics' `MapViewScreen.kt` layers-FAB shell exactly (same
+  scrim alpha, same `clickable(indication = null, interactionSource = remember {
+  MutableInteractionSource() })` swallow trick) since the issue asked to reuse that
+  pattern. Panel body is a single-select row list (Favorites, All POIs, then each
+  category via the existing `CategoryDot`), not Velometrics' toggle-`Switch` rows,
+  since this issue's filter model is mutually-exclusive-select, not independent
+  layers. Selecting a row applies it and closes the panel; scrim/close-button
+  dismiss without changing the filter.
+- ExploreViewModel.kt: new `showAllPois` `MutableStateFlow<Boolean>`, mutually
+  exclusive with `selectedCategory`/`favoritesOnly`/`searchQuery` exactly like the
+  existing three were with each other (`selectAllPois()` mirrors `toggleFavoritesOnly()`).
+  `filterAndSort` gained a `showAll: Boolean = false` param, checked after the
+  search/favorites branches and before the category-equality fallback, so "All
+  POIs" surfaces every category on one map source and in one list, per the issue's
+  acceptance criteria. The outer `combine()` was already at the stdlib 5-flow arity
+  limit (per #8's note) — folded `selectedCategory`/`favoritesOnly`/`showAllPois`
+  into one `layerSelection = combine(...) { Triple(...) }` stage first, same
+  workaround Home used.
+- Cold start unchanged: nothing selected → `filterAndSort`'s fallback branch
+  (`it.category == null`) still matches nothing, same empty map/list as the old
+  chip row's initial state.
+- Tests: 97 total (was 94), 0 new failures — added 3 `FilterAndSortTest` cases for
+  `showAll` (passes everything through, search and favorites still take priority
+  over it). The pre-existing 21 Robolectric `UnsatisfiedLinkError` failures (MapLibre
+  native init under the JVM test env, flagged unrelated as far back as #10) are
+  still exactly 21, confirmed via the HTML report's per-class failure counts —
+  `FilterAndSortTest` itself shows 0 failures.
+- Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
+  gestures are declarative Compose with no new branchy logic, but not screenshotted
+  on Robert's phone this session.
 
 ## 2026-07-05 — Issue #4: Explore (map + filterable list + place detail sheet)
 

@@ -3,27 +3,27 @@ package com.example.freizeit.ui.explore
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -91,6 +92,7 @@ fun ExploreScreen(
 
     var viewIndex by rememberSaveable { mutableIntStateOf(0) }
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
+    var showLayersPanel by rememberSaveable { mutableStateOf(false) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter+sort
@@ -187,52 +189,41 @@ fun ExploreScreen(
                         recenterRequest = recenterRequest,
                         modifier = Modifier.fillMaxSize()
                     )
-                    PoiCategoryChipRow(
-                        categories = state.categories,
-                        selectedCategory = state.selectedCategory,
-                        onSelect = { category ->
-                            if (searchActive) closeSearch()
-                            viewModel.selectCategory(category)
-                        },
-                        favoritesOnly = state.favoritesOnly,
-                        onToggleFavoritesOnly = {
-                            if (searchActive) closeSearch()
-                            viewModel.toggleFavoritesOnly()
-                        },
-                        modifier = Modifier.align(Alignment.TopStart)
-                    )
-                    FloatingActionButton(
-                        onClick = {
-                            viewModel.refreshLocation()
-                            recenterRequest++
-                        },
+                    Column(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(16.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.End
                     ) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.explore_locate_me))
+                        FloatingActionButton(onClick = { showLayersPanel = true }) {
+                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.explore_layers_button))
+                        }
+                        FloatingActionButton(
+                            onClick = {
+                                viewModel.refreshLocation()
+                                recenterRequest++
+                            }
+                        ) {
+                            Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.explore_locate_me))
+                        }
                     }
                 } else {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        PoiCategoryChipRow(
-                            categories = state.categories,
-                            selectedCategory = state.selectedCategory,
-                            onSelect = { category ->
-                                if (searchActive) closeSearch()
-                                viewModel.selectCategory(category)
-                            },
-                            favoritesOnly = state.favoritesOnly,
-                            onToggleFavoritesOnly = {
-                                if (searchActive) closeSearch()
-                                viewModel.toggleFavoritesOnly()
-                            }
-                        )
+                    Box(modifier = Modifier.fillMaxSize()) {
                         PoiList(
                             pois = state.pois,
                             customNames = state.customNames,
                             onPoiClick = viewModel::selectPoi,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxSize()
                         )
+                        FloatingActionButton(
+                            onClick = { showLayersPanel = true },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(16.dp)
+                        ) {
+                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.explore_layers_button))
+                        }
                     }
                 }
             }
@@ -262,6 +253,31 @@ fun ExploreScreen(
                 }
             }
         }
+
+        if (showLayersPanel) {
+            LayersPanel(
+                categories = state.categories,
+                selectedCategory = state.selectedCategory,
+                favoritesOnly = state.favoritesOnly,
+                showAllPois = state.showAllPois,
+                onSelectCategory = { category ->
+                    if (searchActive) closeSearch()
+                    viewModel.selectCategory(category)
+                    showLayersPanel = false
+                },
+                onSelectFavorites = {
+                    if (searchActive) closeSearch()
+                    viewModel.toggleFavoritesOnly()
+                    showLayersPanel = false
+                },
+                onSelectAllPois = {
+                    if (searchActive) closeSearch()
+                    viewModel.selectAllPois()
+                    showLayersPanel = false
+                },
+                onDismiss = { showLayersPanel = false }
+            )
+        }
     }
 
     selectedPoi?.let { item ->
@@ -276,44 +292,100 @@ fun ExploreScreen(
     }
 }
 
+/**
+ * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell) presenting a
+ * single-select list of layers. Tapping a row applies it as the sole active filter and
+ * dismisses the panel via the caller's on-select callback; tapping the scrim or the
+ * close button dismisses without changing the filter.
+ */
 @Composable
-private fun PoiCategoryChipRow(
+private fun LayersPanel(
     categories: List<String>,
     selectedCategory: String?,
-    onSelect: (String) -> Unit,
     favoritesOnly: Boolean,
-    onToggleFavoritesOnly: () -> Unit,
+    showAllPois: Boolean,
+    onSelectCategory: (String) -> Unit,
+    onSelectFavorites: () -> Unit,
+    onSelectAllPois: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.32f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onDismiss
+            )
     ) {
-        item {
-            FilterChip(
-                selected = favoritesOnly,
-                onClick = onToggleFavoritesOnly,
-                label = { Text(stringResource(R.string.explore_favorites_filter)) },
-                leadingIcon = { Text("❤️") },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+        Card(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 24.dp)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) {}
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(stringResource(R.string.explore_layers_title), style = MaterialTheme.typography.titleMedium)
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_layers_close))
+                    }
+                }
+                LayerRow(
+                    label = stringResource(R.string.explore_favorites_filter),
+                    selected = favoritesOnly,
+                    onClick = onSelectFavorites,
+                    leadingIcon = { Text("❤️") }
                 )
-            )
-        }
-        items(categories) { category ->
-            FilterChip(
-                selected = category == selectedCategory,
-                onClick = { onSelect(category) },
-                label = { Text(categoryDisplayName(category)) },
-                leadingIcon = { CategoryDot(category) },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer
+                LayerRow(
+                    label = stringResource(R.string.explore_all_pois_filter),
+                    selected = showAllPois,
+                    onClick = onSelectAllPois,
+                    leadingIcon = { Icon(Icons.Filled.Layers, contentDescription = null) }
                 )
-            )
+                categories.forEach { category ->
+                    LayerRow(
+                        label = categoryDisplayName(category),
+                        selected = category == selectedCategory,
+                        onClick = { onSelectCategory(category) },
+                        leadingIcon = { CategoryDot(category) }
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun LayerRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    leadingIcon: @Composable () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        leadingIcon()
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 
