@@ -1,5 +1,43 @@
 # Freizeit v2 progress log
 
+## 2026-07-15 — Issue #14: Widen POI extraction to shop/tourism/leisure_other/office/craft/historic
+
+- Picked over #15/#16 since both are blocked transitively on this one (#15
+  directly, #16 via #15) — this was the only unblocked ready-for-agent issue,
+  and this machine has the Ride-Graph `.pbf` sources + `osmium` venv the
+  issue's note flags as a hard requirement.
+- `extract_pois.py`: split the old single `CATEGORIES` dict into
+  `EXACT_CATEGORIES` (the original 5 — playground/park/cafe/restaurant/
+  ice_cream, unchanged key=value matching, no name requirement) and a new
+  `COARSE_CATEGORIES` (shop/tourism/leisure_other/office/craft/historic —
+  matches any object carrying the given top-level OSM key regardless of
+  value, but only when it also has a non-empty `name` tag). `categorize()`
+  checks exact first, then coarse, so e.g. `leisure=playground` still
+  resolves to "playground" and never falls into `leisure_other`
+  (`_LEISURE_EXACT_VALUES` exclusion). The name requirement was in the
+  issue's acceptance criteria, to keep the coarse keys from pulling in
+  unnamed street furniture (benches, vacant shops, etc.) — confirmed
+  necessary by the coverage report below.
+  `filter_keys` for `osmium`'s `KeyFilter` widened to the union of both
+  dicts' keys so the new categories actually get read from the .pbf stream.
+- `README.md` updated: documents the exact-vs-coarse split, the name-tag
+  rule and why it exists, and the expanded `categories` field in the output
+  example.
+- Ran via the Ride-Graph venv against the real full extracts (koeln-regbez,
+  limburg, wallonia_french/german — not `precut/`). `data/pois.json`
+  regenerated in place (git-ignored, not committed). Coverage report:
+  playground 9635 (14.1% named), park 4466 (28.5%), cafe 3037 (94.7%),
+  restaurant 10145 (97.6%), ice_cream 612 (96.4%) — all five unchanged in
+  shape from before this issue, confirming the exact-match path wasn't
+  touched. New categories, all 100% named by construction: shop 45772,
+  tourism 16904, leisure_other 9004, office 11450, craft 3745, historic
+  15955. 130725 POIs total (2749 cross-extract duplicates dropped), up from
+  ~28k pre-#14.
+- No test harness exists for this Python tool (none did before either) and
+  no app/Kotlin code was touched, so no Gradle run — this issue is data/
+  tooling-only. #15 (Room import/query) and #16 (map pin styling) are the
+  ready-for-agent issues that consume this new data next.
+
 ## 2026-07-15 — Issue #13: Layers FAB + panel: replace category chips with single-select overlay
 
 - Picked over #14 (also unblocked) because it's fully self-contained in this repo —
@@ -40,35 +78,6 @@
 - Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
   gestures are declarative Compose with no new branchy logic, but not screenshotted
   on Robert's phone this session.
-
-## 2026-07-05 — Issue #4: Explore (map + filterable list + place detail sheet)
-
-- Carried-over device debt from #2/#3 partially cleared: phone reconnected; APK
-  installs, launches, three tabs render (uiautomator dump), freizeit.db created at
-  startup. Aborted deeper UI driving BOTH times — the owner was actively using the
-  phone (my taps landed on their launcher once; backed out immediately). Rule for
-  future cycles: check mCurrentFocus + screen state before injecting input, abort
-  on any collision.
-- Explore implementation:
-  - PoiDao.observeAll(); ExploreViewModel combines POIs + category selection +
-    location on Dispatchers.Default; filterAndSort() is a pure top-level function
-    (unit-tested): selected categories only; nearest-first with location, name
-    sort (unnamed last) without.
-  - osmdroid 6.1.18 (Compose AndroidView interop): one SimpleFastPointOverlay per
-    category (28k POIs total → MAXIMUM_OPTIMIZATION above 5k points), category
-    colors from shared ui/common/CategoryUi.kt, click → detail sheet. Lifecycle
-    wired via LifecycleEventObserver; fallback center Cologne, else last known
-    location (LocationHelper, plain LocationManager, no Play Services).
-  - Map/List segmented toggle; FilterChips filter both; LazyColumn list with
-    distance labels.
-  - PlaceDetailSheet (ModalBottomSheet): name/category dot/missing-from-OSM badge,
-    distance, address line, opening hours; commented slot for #6 verdict buttons.
-  - Location permission requested on first Explore entry; everything degrades
-    gracefully without it (name sort, no distances).
-- Tests: 25 total green (new: GeoDistanceTest, FilterAndSortTest).
-- Pushed data/pois.json to the phone's Downloads for the manual import test.
-- NOT verified on device (owner using phone): map rendering/pan-zoom performance,
-  marker taps, SAF import flow. Left a 30-second verification recipe on issue #4.
 
 ## 2026-07-05 — Hotfix: Settings crashed on first import (reported by Robert)
 
