@@ -5,9 +5,26 @@ Reads every top-level ``*.pbf`` in the Ride-Graph ``data/pbf/`` directory.
 IMPORTANT: it must read the FULL extracts, not ``data/pbf/precut/`` — the
 precut cache is filtered to highway data and contains no POIs.
 
-All categories in ``CATEGORIES`` are extracted and each POI carries its
-``category`` field; the Freizeit app decides at runtime which categories to
-show. To add a category later, add one line to ``CATEGORIES`` and re-run.
+Two kinds of categories are extracted, checked in this order (first match
+wins) and each POI carries its ``category`` field; the Freizeit app decides
+at runtime which categories to show:
+
+- ``EXACT_CATEGORIES`` — a specific (OSM key, OSM value) pair, no ``name``
+  tag required. The original 5 (issue #1): playground, park, cafe,
+  restaurant, ice_cream. Unchanged since issue #1 — same keys/values, same
+  no-name-required behaviour, so existing imported/favorited POIs match
+  exactly as before.
+- ``COARSE_CATEGORIES`` — any object carrying the given OSM key (regardless
+  of value), *and* a non-empty ``name`` tag. Added by issue #14: shop,
+  tourism, leisure_other, office, craft, historic. ``leisure_other`` is
+  ``leisure=*`` excluding the values already claimed by the exact
+  playground/park categories. The name requirement keeps these 6 categories
+  from flooding the map with unnamed benches/hydrants/etc. that a bare
+  top-level-key match would otherwise pull in.
+
+To add another exact category, add one line to ``EXACT_CATEGORIES``. To add
+another coarse (name-required) category, add one line to
+``COARSE_CATEGORIES``. Either way, re-run the script afterwards.
 
 Requires the ``osmium`` package (available in the Ride-Graph venv):
 
@@ -25,15 +42,37 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# category name -> (OSM key, OSM value). Order is priority when an object
-# matches more than one category.
-CATEGORIES: dict[str, tuple[str, str]] = {
+# category name -> (OSM key, OSM value), exact match, no name tag required.
+# Order is priority when an object matches more than one category.
+EXACT_CATEGORIES: dict[str, tuple[str, str]] = {
     "playground": ("leisure", "playground"),
     "park": ("leisure", "park"),
     "cafe": ("amenity", "cafe"),
     "restaurant": ("amenity", "restaurant"),
     "ice_cream": ("amenity", "ice_cream"),
 }
+
+# category name -> OSM key, any value accepted, but a non-empty `name` tag
+# is required. Checked after EXACT_CATEGORIES, so e.g. leisure=playground
+# still resolves to "playground", not "leisure_other".
+COARSE_CATEGORIES: dict[str, str] = {
+    "shop": "shop",
+    "tourism": "tourism",
+    "leisure_other": "leisure",
+    "office": "office",
+    "craft": "craft",
+    "historic": "historic",
+}
+
+# leisure=* values already claimed by EXACT_CATEGORIES; excluded from the
+# leisure_other coarse bucket so a playground/park is never double-counted.
+_LEISURE_EXACT_VALUES = {
+    value for key, value in EXACT_CATEGORIES.values() if key == "leisure"
+}
+
+# Combined, priority-ordered list used for the coverage report and the
+# output file's "categories" field.
+CATEGORIES: list[str] = list(EXACT_CATEGORIES) + list(COARSE_CATEGORIES)
 
 ADDRESS_TAGS = {
     "addr:street": "street",
@@ -47,9 +86,18 @@ DEFAULT_OUT = Path(__file__).resolve().parents[2] / "data" / "pois.json"
 
 
 def categorize(tags: dict) -> str | None:
-    for category, (key, value) in CATEGORIES.items():
+    for category, (key, value) in EXACT_CATEGORIES.items():
         if tags.get(key) == value:
             return category
+    if not tags.get("name"):
+        return None
+    for category, key in COARSE_CATEGORIES.items():
+        value = tags.get(key)
+        if not value:
+            continue
+        if key == "leisure" and value in _LEISURE_EXACT_VALUES:
+            continue
+        return category
     return None
 
 
@@ -95,7 +143,9 @@ def extract_file(pbf_path: Path) -> list[dict]:
     import osmium
     from osmium.filter import KeyFilter
 
-    filter_keys = sorted({key for key, _ in CATEGORIES.values()})
+    filter_keys = sorted(
+        {key for key, _ in EXACT_CATEGORIES.values()} | set(COARSE_CATEGORIES.values())
+    )
     # Ways/relations must be in the read mask to feed the area assembler.
     # Raw Ways are skipped below: a closed POI way arrives twice (as Way and
     # as Area), and only the Area has resolved geometry.

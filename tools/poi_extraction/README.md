@@ -33,13 +33,26 @@ nothing is copied into this repo.
 
 ## Categories
 
-The script extracts every category in the `CATEGORIES` registry
-(`extract_pois.py`) and tags each POI with its `category`. Filtering/toggling
-happens **in the app**, so enabling a new category later is one added line
-(e.g. `"museum": ("tourism", "museum")`) and a re-run — no app data-format
-change.
+The script extracts two kinds of categories (checked in this order, first
+match wins) and tags each POI with its `category`. Filtering/toggling
+happens **in the app** — enabling another category later is one added line
+and a re-run, no app data-format change.
 
-Current set (issue #1): playground, park, cafe, restaurant, ice_cream.
+- **Exact** (`EXACT_CATEGORIES` in `extract_pois.py`) — a specific OSM
+  `key=value` pair, no `name` tag required. Original 5 (issue #1):
+  playground, park, cafe, restaurant, ice_cream. Unchanged since issue #1.
+- **Coarse** (`COARSE_CATEGORIES`) — any object carrying the given OSM key,
+  *any* value, but only if it also has a non-empty `name` tag. Added by
+  issue #14, one per top-level OSM key: shop, tourism, leisure_other,
+  office, craft, historic. `leisure_other` is `leisure=*` minus the values
+  already claimed by playground/park. The name requirement exists because a
+  bare key match on these keys pulls in a lot of unnamed street furniture
+  (benches, vending machines, waste baskets tagged `shop=vacant`, etc.) that
+  isn't a place worth showing on the map.
+
+To add another exact category: one line in `EXACT_CATEGORIES`. To add
+another coarse (name-required) category: one line in `COARSE_CATEGORIES`.
+Either way, re-run the script.
 
 ## Output format
 
@@ -47,7 +60,9 @@ Current set (issue #1): playground, park, cafe, restaurant, ice_cream.
 {
   "generated": "2026-07-05T17:06:13+00:00",
   "sources": ["koeln-regbez-260604.osm.pbf", "..."],
-  "categories": ["playground", "park", "cafe", "restaurant", "ice_cream"],
+  "categories": ["playground", "park", "cafe", "restaurant", "ice_cream",
+                 "shop", "tourism", "leisure_other", "office", "craft",
+                 "historic"],
   "pois": [
     {
       "id": "node/286560726",
