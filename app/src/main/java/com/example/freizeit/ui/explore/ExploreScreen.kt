@@ -33,6 +33,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -263,17 +264,14 @@ fun ExploreScreen(
                 onSelectCategory = { category ->
                     if (searchActive) closeSearch()
                     viewModel.selectCategory(category)
-                    showLayersPanel = false
                 },
                 onSelectFavorites = {
                     if (searchActive) closeSearch()
                     viewModel.toggleFavoritesOnly()
-                    showLayersPanel = false
                 },
                 onSelectAllPois = {
                     if (searchActive) closeSearch()
                     viewModel.selectAllPois()
-                    showLayersPanel = false
                 },
                 onDismiss = { showLayersPanel = false }
             )
@@ -293,10 +291,11 @@ fun ExploreScreen(
 }
 
 /**
- * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell) presenting a
- * single-select list of layers. Tapping a row applies it as the sole active filter and
- * dismisses the panel via the caller's on-select callback; tapping the scrim or the
- * close button dismisses without changing the filter.
+ * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell) presenting one
+ * toggle switch per layer. Only one layer is ever active on the map at a time — toggling
+ * one on switches the previously active one off, mirroring what the map displays — but
+ * the panel itself stays open across toggles so multiple layers can be tried in a row;
+ * only the scrim or the close button dismisses it.
  */
 @Composable
 private fun LayersPanel(
@@ -380,12 +379,13 @@ private fun LayerRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         leadingIcon()
-        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Switch(checked = selected, onCheckedChange = { onClick() })
     }
 }
 
