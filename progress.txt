@@ -1,5 +1,66 @@
 # Freizeit v2 progress log
 
+## 2026-07-16 — Issue #16: Distinct map pin styling (color/icon) for new POI categories
+
+- Only open `ready-for-agent` issue this session — #15 (its blocker) closed
+  already, unblocking it.
+- Read `CategoryUi.kt`, `PoiMap.kt`, `MapStyle.kt`/`categoryColorExpression()`,
+  and `ExploreScreen.kt`'s `CategoryDot`/`LayersPanel`/`PoiRow` before writing
+  anything. Found the whole per-category-color path is already data-driven off
+  one list: `CATEGORY_ORDER` (used for both sort order and as the source of
+  `categoryColorExpression()`'s match stops) only listed the original 5, so
+  `categoryColor()` silently fell back to the shared gray for all 6 new
+  categories everywhere at once — the map circle layer, `CategoryDot` in the
+  list/panel, and the Layers panel's category rows. This matches #15's own
+  note that this was "the expected pre-#16 state, not a bug." So the fix is
+  two `CategoryUi.kt` edits, not three separate ones: extending
+  `CATEGORY_ORDER` alone fixes `categoryColorExpression()`, `CategoryDot`, and
+  `LayerRow` simultaneously since they all read through `categoryColor()`/
+  `categoryOrderIndex()`. No `PoiMap.kt` change needed — its circle-color
+  property already reads `categoryColorExpression()` verbatim.
+- `CATEGORY_ORDER` extended to all 11, ordered to match the extraction
+  registry's `CATEGORIES` list in `extract_pois.py` (`EXACT_CATEGORIES` then
+  `COARSE_CATEGORIES`: shop, tourism, leisure_other, office, craft, historic),
+  matching the doc comment's existing claim that this list "match[es] the
+  extraction registry."
+- `categoryColor()`: 6 new hex colors, chosen by computing HSL hues spread
+  across the gaps left by the original 5 (orange 32°, green 123°, brown ~17°,
+  red 0°, pink 336°) so every pair of the 11 stays ≥28° apart on the color
+  wheel even with all shown together in "All POIs" mode: shop `#1B7D98`
+  (blue-cyan, 193°), tourism `#1B986A` (teal, 158°), leisure_other `#7CA51D`
+  (olive/yellow-green, 78°, sitting in the wide gap between orange and green),
+  office `#1D38A5` (blue-indigo, 228°), craft `#511DA5` (violet, 263°),
+  historic `#A01DA5` (purple-magenta, 298°, 38° clear of pink).
+- Interpreted "icon" in the issue title/body as the existing dot-style — this
+  codebase has no per-category image/sprite icon system for any of the
+  original 5 categories either (`CategoryDot` is a plain colored circle,
+  `PoiMap.kt`'s pins are a `CircleLayer`, not a `SymbolLayer` with images), so
+  adding one now would be new infrastructure beyond "following the existing
+  pattern in `CategoryUi.kt`" that the issue explicitly asked to follow. Flagging
+  as a possible future issue if real icon glyphs (not just color) turn out to
+  matter once someone eyeballs the map with all 11 categories on screen.
+- Cluster circles/count labels needed no change: `clusterCircleLayer()` colors
+  every cluster from `MaterialTheme.colorScheme.secondary` regardless of the
+  categories inside it (count-based size tiers only), so mixed-category
+  clusters were already category-agnostic and stay legible by construction —
+  confirmed by reading `PoiMap.kt` rather than assuming.
+- Added `CategoryUiTest.kt` (new file, `ui/common` had no test coverage
+  before): asserts `CATEGORY_ORDER` is exactly the 11 in extraction-registry
+  order, all 11 colors are pairwise distinct (`.toSet().size` check — would
+  catch an accidental hex collision even if hue math above has a bug), the 6
+  new categories don't hit the shared fallback gray, and they sort after
+  `ice_cream` and before an unknown category.
+- Tests: 104 total (was 100), 23 failed (was 23) — all 4 new `CategoryUiTest`
+  cases green; the 23 failures are the pre-existing `PoiImportTest`
+  Robolectric `UnsatisfiedLinkError` set from #15/#13/#10 (`MapLibre.getInstance()`
+  under the JVM test env), untouched by this issue (no `PoiImportTest` file
+  was edited).
+- Not verified on device: this is exactly the kind of change (color-only, on
+  a rendering path that already worked for 5 categories) that can't be
+  distinguished from "compiles but colors happen to look bad together" without
+  actually eyeballing the Layers panel and "All POIs" map on Robert's phone —
+  flagging clearly rather than claiming visual confirmation I couldn't do.
+
 ## 2026-07-16 — Issue #15: Import and query support for new POI categories
 
 - Only unblocked `ready-for-agent` issue: #16 depends on #15, and #15's own
@@ -367,59 +428,3 @@
 - Not verified on device: color/size/chip changes are Compose/MapLibre
   declarative code with no new branchy logic: not screenshotted on Robert's
   phone this session.
-
-## 2026-07-14 — Issue #10: Map minor changes (vector basemap, coarser clustering, drawer heart icon)
-
-- Grilled the issue first — it wasn't tagged ready-for-agent and had three
-  underspecified asks. Resolved via Q&A with Robert: (1) heart icon is the
-  stock Material `Icons.Outlined.FavoriteBorder`/`Filled.Favorite` pair, not
-  an external "MyQuotes" asset (that repo has no such icon and isn't wired
-  into this codebase at all); (2) "not for us" (👎) is removed everywhere,
-  not just the map drawer — including HomeScreen's post-visit banner and
-  SuggestionEngine's permanent down-filter, which is now genuinely dead code
-  deleted outright (existing "down" rows on-device are left as harmless
-  inert data, no migration); (3) "coarser zoom level" for clustering meant
-  individual pins should already show at the default zoom (12), so
-  `CLUSTER_MAX_ZOOM` moved from 14 to 11, not the other direction I first
-  assumed; (4) dark map contrast complaint resolved by switching to the same
-  CARTO vector `dark-matter-gl-style.json` the Velometrics app uses (verified
-  by inspecting Velometrics's `MapPoiRenderer.kt`/`Constants.kt`) instead of
-  the old raster `dark_all` tiles — Robert declined extra manual contrast
-  tuning once told it'd render identically to Velometrics.
-- MapStyle.kt: dropped the raster `cartoDarkMatterSource()`/`cartoDarkMatterLayer()`
-  helpers for a `DARK_MATTER_STYLE_URL` constant consumed via
-  `Style.Builder().fromUri(...)` in both PoiMap.kt and PlaceMiniMap.kt. The
-  vector style ships its own `glyphs` config, which is exactly what was
-  missing when `67fd22e` had to rip out cluster-count text (broke the
-  sibling CircleLayer via an unconfigured glyphs source) — so cluster counts
-  (`clusterCountLayer()`, mirrored from Velometrics's `MapPoiRenderer`) now
-  render without that problem.
-- PlaceDetailSheet.kt: `VerdictRow`/`VerdictButton` (👎+❤️ emoji buttons at
-  the sheet's bottom) replaced by a single `FavoriteButton` icon toggle moved
-  into the name `Row` (top-aligned, rightmost, after the edit-name pencil).
-- Verdict.kt/SuggestionEngine.kt/HomeScreen.kt: `VALUE_DOWN` constant and its
-  hard-filter branch deleted; VisitBanner's 👎 `TextButton` removed, ❤️ and
-  "didn't go" remain.
-- Concurrent-session collision: issue #11's session was editing the same
-  three map files (MapStyle.kt/PoiMap.kt/PlaceMiniMap.kt) plus HomeScreen.kt
-  at the same time, in the same working tree (no worktree isolation). Kept
-  re-reading files immediately before each edit rather than trusting earlier
-  reads. After both sessions' edits landed and #11 committed first (`0009c64`/
-  `1b740cd`), rebuilt "new-HEAD + my-changes-only" content for the 4 shared
-  files by diffing against `git show HEAD:<path>` before committing, instead
-  of blindly `git add`-ing the mixed working tree (which would have silently
-  reverted #11's already-committed `POSITION_DOT_COLOR` work). Confirmed via
-  `git diff HEAD --stat` that the final staged diff was exactly this issue's
-  scope before committing.
-- Tests: 94 total (was 98 across both sessions' baselines), one fewer
-  (`SuggestionVerdictTest`'s down-vote test deleted, feature removed) plus
-  `VerdictDaoTest`/`BackupRepositoryTest` updated to stop depending on the
-  removed `VALUE_DOWN` constant. 21 pre-existing Robolectric failures
-  (`MapLibre.getInstance()` → `UnsatisfiedLinkError` under the JVM test
-  environment, from the original osmdroid→MapLibre migration commit
-  `d6cb11a`, unrelated to this issue) confirmed present at HEAD via an
-  isolated `git worktree` baseline check — same 21 before and after this
-  change, so no regression introduced.
-- Not verified on device: vector-tile rendering/contrast and the lowered
-  cluster zoom threshold are MapLibre style/runtime behavior that can't be
-  exercised under Robolectric; needs a real run on Robert's phone.
