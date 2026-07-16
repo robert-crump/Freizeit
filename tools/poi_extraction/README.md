@@ -19,6 +19,12 @@ Defaults: reads `C:\Users\bob22\PycharmProjects\Ride-Graph\data\pbf\*.pbf`,
 writes `data\pois.json` (git-ignored — regenerate on demand). Override with
 `--pbf-dir` / `--out`.
 
+By default the output is trimmed to a bounding box around Aachen (center
+±20km, i.e. a ~40km × 40km area: lat 50.5956–50.9550, lon 5.7996–6.3682).
+Pass `--bbox LAT_MIN LON_MIN LAT_MAX LON_MAX` to use a different box, or
+`--no-bbox` to keep every POI in the source extracts with no geographic
+filtering.
+
 Re-run the same command whenever the Ride-Graph `.pbf` files are refreshed,
 then re-import the JSON into the app.
 
@@ -63,6 +69,7 @@ Either way, re-run the script.
   "categories": ["playground", "park", "cafe", "restaurant", "ice_cream",
                  "shop", "tourism", "leisure_other", "office", "craft",
                  "historic"],
+  "bbox": [50.5956, 5.7996, 50.9550, 6.3682],
   "pois": [
     {
       "id": "node/286560726",
@@ -83,4 +90,5 @@ Either way, re-run the script.
 `id` is OSM `type/id` (node/way/relation) — the app's stable place key.
 Way/relation coordinates are outer-ring centroids. Optional fields (`name`,
 `opening_hours`, address parts) are omitted when untagged. POIs appearing in
-overlapping extracts are deduplicated by `id`.
+overlapping extracts are deduplicated by `id`. `bbox` is `null` when the run
+used `--no-bbox`.
