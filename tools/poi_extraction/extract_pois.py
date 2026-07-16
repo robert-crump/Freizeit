@@ -84,6 +84,9 @@ ADDRESS_TAGS = {
 DEFAULT_PBF_DIR = Path(r"C:\Users\bob22\PycharmProjects\Ride-Graph\data\pbf")
 DEFAULT_OUT = Path(__file__).resolve().parents[2] / "data" / "pois.json"
 
+# lat_min, lon_min, lat_max, lon_max — Aachen center +/-20km (flat approx)
+AACHEN_BBOX: tuple[float, float, float, float] = (50.5956, 5.7996, 50.9550, 6.3682)
+
 
 def categorize(tags: dict) -> str | None:
     for category, (key, value) in EXACT_CATEGORIES.items():
@@ -119,6 +122,13 @@ def build_record(osm_id: str, category: str, tags: dict,
     return record
 
 
+def in_bbox(lat: float, lon: float, bbox: tuple[float, float, float, float] | None) -> bool:
+    if bbox is None:
+        return True
+    lat_min, lon_min, lat_max, lon_max = bbox
+    return lat_min <= lat <= lat_max and lon_min <= lon <= lon_max
+
+
 def area_centroid(area) -> tuple[float, float] | None:
     """Mean of all outer-ring node coordinates (good enough for POI pins)."""
     lat_sum = lon_sum = 0.0
@@ -137,7 +147,7 @@ def area_centroid(area) -> tuple[float, float] | None:
     return lat_sum / count, lon_sum / count
 
 
-def extract_file(pbf_path: Path) -> list[dict]:
+def extract_file(pbf_path: Path, bbox: tuple[float, float, float, float] | None) -> list[dict]:
     """One streaming pass: POI nodes directly, ways/relations via assembled
     areas (closed ways and multipolygon relations both surface as Areas)."""
     import osmium
@@ -167,12 +177,16 @@ def extract_file(pbf_path: Path) -> list[dict]:
         if isinstance(obj, osmium.osm.Node):
             if not obj.location.valid():
                 continue
+            if not in_bbox(obj.location.lat, obj.location.lon, bbox):
+                continue
             records.append(build_record(
                 f"node/{obj.id}", category, tags,
                 obj.location.lat, obj.location.lon))
         elif isinstance(obj, osmium.osm.Area):
             centroid = area_centroid(obj)
             if centroid is None:
+                continue
+            if not in_bbox(centroid[0], centroid[1], bbox):
                 continue
             osm_type = "way" if obj.from_way() else "relation"
             records.append(build_record(
@@ -204,7 +218,14 @@ def main() -> int:
                              "(NOT the precut/ cache)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT,
                         help="Output POI JSON path")
+    parser.add_argument("--bbox", type=float, nargs=4,
+                        metavar=("LAT_MIN", "LON_MIN", "LAT_MAX", "LON_MAX"),
+                        default=list(AACHEN_BBOX),
+                        help="Bounding box to keep POIs within (default: Aachen +/-20km)")
+    parser.add_argument("--no-bbox", action="store_true",
+                        help="Disable bbox filtering; keep all POIs in the source extracts")
     args = parser.parse_args()
+    bbox = None if args.no_bbox else tuple(args.bbox)
 
     pbf_paths = sorted(args.pbf_dir.glob("*.pbf"))
     if not pbf_paths:
@@ -215,7 +236,7 @@ def main() -> int:
     duplicates = 0
     for pbf_path in pbf_paths:
         print(f"Extracting {pbf_path.name} …", flush=True)
-        records = extract_file(pbf_path)
+        records = extract_file(pbf_path, bbox)
         new = 0
         for record in records:
             if record["id"] in by_id:
@@ -230,12 +251,14 @@ def main() -> int:
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "sources": [p.name for p in pbf_paths],
         "categories": list(CATEGORIES),
+        "bbox": list(bbox) if bbox else None,
         "pois": pois,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
     print(f"\nWrote {len(pois)} POIs -> {args.out}")
+    print(f"Bounding box: {bbox}" if bbox else "Bounding box: none (full extract)")
 
     print_report(pois, duplicates)
     return 0
