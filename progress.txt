@@ -1,5 +1,64 @@
 # Freizeit v2 progress log
 
+## 2026-07-16 — Issue #15: Import and query support for new POI categories
+
+- Only unblocked `ready-for-agent` issue: #16 depends on #15, and #15's own
+  blockers (#13, #14) are both closed already.
+- Read through the whole import/query path (`PoiJsonParser`, `PoiRepository`,
+  `PoiDao`, `ExploreViewModel.filterAndSort`, `ExploreScreen`'s `LayersPanel`)
+  before writing anything, per the issue's own framing that this might be a
+  verification-only slice. Confirmed it is: `category` on `Poi` is a plain
+  `String` with no enum/whitelist anywhere, `categoryCounts()` groups by the
+  raw string, `filterAndSort`'s search branch matches name substrings with no
+  category check at all, `showAll` passes every row through unconditionally,
+  and `ExploreViewModel.uiState` derives its `categories` list dynamically via
+  `pois.map { it.category }.distinct()` — `LayersPanel` iterates that, not a
+  hardcoded list. So the six new categories from #14 (shop/tourism/
+  leisure_other/office/craft/historic) already flow through import, "All
+  POIs", and search with zero production-code changes needed. (Per-category
+  pin color/icon is explicitly #16's job — `CategoryUi.kt`'s `categoryColor()`
+  falls back to one shared gray for anything outside the original 5, which is
+  the expected pre-#16 state, not a bug.)
+- Sanity-checked the real regenerated `data/pois.json` (from #14, git-ignored,
+  19 MB / 130725 POIs) with a throwaway Python read: `categories` field lists
+  all 11, per-category counts match #14's coverage report exactly, and a
+  sample `shop` POI has the exact field shape (`id`/`category`/`lat`/`lon`/
+  `name`/`opening_hours`/`street`/`housenumber`/`postcode`/`city`)
+  `PoiJsonParser` expects — confirms the file will import via the SAF picker
+  without hitting the parser's strict-field checks.
+  Didn't run the full 130k-row file through a Robolectric import (slow, and
+  the file's git-ignored so it can't back a committed test) — the schema
+  match plus the new regression tests below stand in for it.
+- Added regression coverage rather than changing code: `PoiImportTest` gained
+  a case importing one POI from each new category (checks count + per-category
+  `categoryCounts()`) and a case mirroring the existing "verdicted place kept
+  and flagged" test but with a new-category (`shop`) POI, to close acceptance
+  criterion 5 explicitly. `FilterAndSortTest` gained a 5th fixture POI
+  (`shop`) and a search-match test for it, alongside the existing `showAll`
+  coverage which already generalizes to any category.
+- Tests: 100 total (was 97), 23 failed (was 21) — the +2 are my two new
+  `PoiImportTest` cases, which join the *entire* pre-existing 21-failure set
+  in that Robolectric class (confirmed by rerunning the class alone: all 8 of
+  its tests fail, not just the new ones). Root cause, read from the stack
+  trace: `FreizeitApplication.onCreate()` calls `MapLibre.getInstance(this)`
+  unconditionally, and any Robolectric test that touches
+  `ApplicationProvider.getApplicationContext()` — not just map-UI tests —
+  triggers that and hits the same native-lib `UnsatisfiedLinkError` the #10/
+  #13 notes flagged, just via a wider blast radius than those notes described
+  (whole-`Application`-onCreate, not map-specific tests). Confirmed via a
+  stash-and-rerun against HEAD before my changes: 97 tests/21 failures,
+  matching #13's documented baseline exactly, so this is pre-existing and
+  untouched by this issue. `FilterAndSortTest` and `PoiJsonParserTest` (no
+  Robolectric) are 100% green on their own: 21/21.
+- Deliberately not fixed: making `FreizeitApplication` skip
+  `MapLibre.getInstance()` under test (or lazy-initing it) would unblock a
+  wide swath of the suite, but it's unrelated to #15's scope and touches
+  app-startup code no other #15 acceptance criterion mentions — flagging here
+  as a good follow-up issue rather than folding it into this one.
+- Not verified on device: the actual SAF-picker import of the real
+  regenerated `data/pois.json` needs a physical run on Robert's phone, same
+  as every prior on-device item in this log.
+
 ## 2026-07-15 — Issue #14: Widen POI extraction to shop/tourism/leisure_other/office/craft/historic
 
 - Picked over #15/#16 since both are blocked transitively on this one (#15
@@ -78,15 +137,6 @@
 - Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
   gestures are declarative Compose with no new branchy logic, but not screenshotted
   on Robert's phone this session.
-
-## 2026-07-05 — Hotfix: Settings crashed on first import (reported by Robert)
-
-- Cause: return@Column early-return in ImportSummaryCard's empty state; when the
-  summary flow emitted after the first successful import, the branch switch
-  corrupted the composer group stack → IndexOutOfBoundsException at Stack.pop.
-- Fix (d87b81a): restructured as if/else; grep confirmed no other return@ inside
-  composables. Rule: no early returns inside composable lambdas.
-- Fixed APK installed on the phone; import retry pending Robert.
 
 ## 2026-07-06 — Issue #5: Home — three suggestion cards with transparent ranking and weather
 
