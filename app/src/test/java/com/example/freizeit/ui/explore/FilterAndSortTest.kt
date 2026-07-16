@@ -15,7 +15,8 @@ class FilterAndSortTest {
         poi("node/1", "cafe", 50.90, 6.90, "Bravo"),
         poi("node/2", "park", 50.95, 6.95, "Alpha"),
         poi("node/3", "cafe", 51.50, 7.50, null),
-        poi("node/4", "playground", 50.91, 6.91, "Charlie")
+        poi("node/4", "playground", 50.91, 6.91, "Charlie"),
+        poi("node/5", "shop", 50.92, 6.92, "Delta Bakery")
     )
 
     @Test
@@ -81,6 +82,12 @@ class FilterAndSortTest {
             customNames = mapOf("node/3" to "Our Hidden Gem")
         )
         assertEquals(listOf("node/3"), result.map { it.poi.id })
+    }
+
+    @Test
+    fun `search matches a new coarse category the same as the original five`() {
+        val result = filterAndSort(pois, null, null, searchQuery = "bakery")
+        assertEquals(listOf("node/5"), result.map { it.poi.id })
     }
 
     @Test

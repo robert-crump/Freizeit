@@ -86,6 +86,56 @@ class PoiImportTest {
     }
 
     @Test
+    fun `new coarse categories from the widened extractor import alongside the original five`() = runTest {
+        val count = repository.importFrom(
+            fileWith(
+                poiJson(
+                    poi("node/1", "playground"),
+                    poi("node/2", "shop"),
+                    poi("node/3", "tourism"),
+                    poi("node/4", "leisure_other"),
+                    poi("node/5", "office"),
+                    poi("node/6", "craft"),
+                    poi("node/7", "historic")
+                )
+            )
+        )
+
+        assertEquals(7, count)
+        assertEquals(7, db.poiDao().count())
+        val counts = db.poiDao().categoryCounts().first().associate { it.category to it.count }
+        assertEquals(
+            mapOf(
+                "playground" to 1, "shop" to 1, "tourism" to 1, "leisure_other" to 1,
+                "office" to 1, "craft" to 1, "historic" to 1
+            ),
+            counts
+        )
+    }
+
+    @Test
+    fun `verdicted new-category place missing from new file is kept and flagged, same as the original five`() = runTest {
+        repository.importFrom(fileWith(poiJson(poi("node/1", "shop"), poi("node/2", "cafe"))))
+        db.verdictDao().upsert(
+            Verdict(
+                placeId = "node/1",
+                value = Verdict.VALUE_FAVORITE,
+                verdictedAt = System.currentTimeMillis(),
+                snapshotName = "Place node/1",
+                snapshotLat = 50.5,
+                snapshotLon = 6.5,
+                snapshotCategory = "shop"
+            )
+        )
+
+        repository.importFrom(fileWith(poiJson(poi("node/2", "cafe"))))
+
+        val kept = db.poiDao().getById("node/1")
+        assertNotNull(kept)
+        assertTrue(kept!!.missingFromOsm)
+    }
+
+    @Test
     fun `re-importing the same file is idempotent`() = runTest {
         val uri = fileWith(poiJson(poi("node/1", "cafe"), poi("way/2", "park")))
 
