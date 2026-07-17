@@ -45,7 +45,7 @@ private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
 
 /** Below this zoom, MapLibre's built-in GeoJSON clustering groups POIs into size-tiered bubbles. */
-private const val CLUSTER_MAX_ZOOM = 11
+private const val CLUSTER_MAX_ZOOM = 12
 private const val CLUSTER_RADIUS = 60
 private const val CLUSTER_TAP_ZOOM_STEP = 3.0
 
