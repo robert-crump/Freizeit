@@ -123,7 +123,7 @@ fun PlaceDetailSheet(
 
     if (showEditNameDialog) {
         CustomNameDialog(
-            initialName = customName ?: "",
+            initialName = customName ?: poi.name.orEmpty(),
             onSave = {
                 onCustomNameChange(it)
                 showEditNameDialog = false
