@@ -20,6 +20,7 @@ import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
@@ -61,7 +62,15 @@ fun SuggestionsMiniMap(
     state.onPoiClick = onPoiClick
 
     val mapView = remember {
-        MapView(context).apply { onCreate(null) }
+        // Default MapView renders to a GLSurfaceView, which composites straight through
+        // SurfaceFlinger and ignores the Compose graphicsLayer alpha applied by the Home
+        // swipe deck (translationX still works since that's just view positioning, but the
+        // map wouldn't fade). Texture mode routes rendering through the normal View draw
+        // pass instead, so it fades along with the rest of the card.
+        val options = MapLibreMapOptions.createFromAttributes(context)
+            .textureMode(true)
+            .translucentTextureSurface(true)
+        MapView(context, options).apply { onCreate(null) }
     }
 
     DisposableEffect(mapView) {
