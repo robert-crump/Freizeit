@@ -1,10 +1,13 @@
 package com.example.freizeit.domain.suggestion
 
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.SuggestionFixture.HOME
 import com.example.freizeit.domain.suggestion.SuggestionFixture.allPois
 import com.example.freizeit.domain.suggestion.SuggestionFixture.cafe
 import com.example.freizeit.domain.suggestion.SuggestionFixture.coldClear
+import com.example.freizeit.domain.suggestion.SuggestionFixture.favoriteAll
 import com.example.freizeit.domain.suggestion.SuggestionFixture.iceCream
 import com.example.freizeit.domain.suggestion.SuggestionFixture.kiosk
 import com.example.freizeit.domain.suggestion.SuggestionFixture.park
@@ -25,55 +28,63 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * ~20 canned situations asserting the ranking produces sensible cards
- * (issue #5's "suggestions must not feel dumb" fixture). Each test is one
- * situation: a clock, a sky, a budget — and what a reasonable concierge
- * would and would not put on the table.
+ * ~20 canned situations asserting the favorites-only ranking (issue #17
+ * redesign) produces sensible cards. Each test is one situation: a clock,
+ * a sky, a set of favorites — and what a reasonable concierge would and
+ * would not put on the table.
  */
 class SuggestionScenariosTest {
 
     private fun ctx(
         now: LocalDateTime,
         weather: WeatherSnapshot?,
-        budgetMinutes: Int = 180,
         location: LatLon? = HOME,
-        kidsAlong: Boolean = true
-    ) = SuggestionContext(now, location, weather, budgetMinutes, kidsAlong)
+        verdicts: Map<String, Verdict> = favoriteAll()
+    ) = SuggestionContext(now, location, weather, verdicts = verdicts)
 
     private fun List<Suggestion>.ids() = map { it.poi.id }
-    private fun List<Suggestion>.categories() = map { it.poi.category }.toSet()
     private fun List<Suggestion>.reasonsOf(poi: Poi) =
         first { it.poi.id == poi.id }.reasons.joinToString(" · ")
+    private fun List<Suggestion>.statusOf(poi: Poi) =
+        first { it.poi.id == poi.id }.openStatus
 
     @Test
-    fun `sunny Saturday morning - an outdoor place is on the cards`() {
-        val cards = SuggestionEngine.suggest(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
-        assertEquals(3, cards.size)
-        assertTrue(cards.categories().any { it == "playground" || it == "park" })
+    fun `sunny Saturday morning - an outdoor favorite is in the deck`() {
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
+        assertTrue(ranked.any { it.poi.category == "playground" || it.poi.category == "park" })
     }
 
     @Test
-    fun `sunny Saturday morning - three cards span at least two categories`() {
-        val cards = SuggestionEngine.suggest(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
-        assertTrue(cards.categories().size >= 2)
+    fun `only favorited places are candidates - a non-favorite never appears`() {
+        // 15:00: every other fixture place is open, so the count check isolates the favorite filter.
+        val verdicts = favoriteAll(allPois - cafe)
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(15), sunny(saturdayAt(15)), verdicts = verdicts))
+        assertFalse(cafe.id in ranked.ids())
+        assertTrue(ranked.size == allPois.size - 1)
     }
 
     @Test
-    fun `rainy Tuesday afternoon - no outdoor place anywhere in the ranking`() {
+    fun `no favorites at all - the deck is empty`() {
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), verdicts = emptyMap()))
+        assertTrue(ranked.isEmpty())
+    }
+
+    @Test
+    fun `rainy Tuesday afternoon - no outdoor favorite anywhere in the deck`() {
         val ranked = SuggestionEngine.rankAll(allPois, ctx(tuesdayAt(16), rainingNow(tuesdayAt(16))))
         assertTrue(ranked.none { it.poi.category == "playground" || it.poi.category == "park" })
     }
 
     @Test
-    fun `rainy Tuesday afternoon - indoor places suggested with a rainy-day reason`() {
-        val cards = SuggestionEngine.suggest(allPois, ctx(tuesdayAt(16), rainingNow(tuesdayAt(16))))
-        assertEquals(3, cards.size)
-        assertTrue(cards.any { "good for a rainy day" in it.reasons })
+    fun `rainy Tuesday afternoon - indoor favorites suggested with a rainy-day reason`() {
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(tuesdayAt(16), rainingNow(tuesdayAt(16))))
+        assertTrue(ranked.isNotEmpty())
+        assertTrue(ranked.any { "good for a rainy day" in it.reasons })
     }
 
     @Test
-    fun `rain arriving mid-outing - playground filtered even though it is dry right now`() {
-        // Rain from 16:00, default 3 h budget starting 14:00
+    fun `rain arriving within the fixed outing window - playground filtered even though dry right now`() {
+        // Rain from 16:00, fixed 3 h outing window starting 14:00
         val ranked = SuggestionEngine.rankAll(
             allPois, ctx(tuesdayAt(14), rainComing(tuesdayAt(14), inHours = 2))
         )
@@ -81,10 +92,10 @@ class SuggestionScenariosTest {
     }
 
     @Test
-    fun `rain arriving after a short outing - playground stays`() {
-        // Rain from 20:00; a 1 h outing at 14:00 doesn't care
+    fun `rain arriving after the fixed outing window - playground stays`() {
+        // Rain from 18:00, outside the fixed 3 h window starting 14:00
         val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(tuesdayAt(14), rainComing(tuesdayAt(14), inHours = 6), budgetMinutes = 60)
+            allPois, ctx(tuesdayAt(14), rainComing(tuesdayAt(14), inHours = 4))
         )
         assertTrue(playgroundNear.id in ranked.ids())
     }
@@ -135,27 +146,16 @@ class SuggestionScenariosTest {
     }
 
     @Test
-    fun `one hour budget - far playground is unreachable and dropped`() {
-        val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), budgetMinutes = 60)
-        )
-        assertFalse(playgroundFar.id in ranked.ids()) // 62 min ride each way
-        assertTrue(playgroundNear.id in ranked.ids())
-    }
-
-    @Test
-    fun `all day budget - far playground comes back`() {
-        val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), budgetMinutes = 480)
-        )
-        assertTrue(playgroundFar.id in ranked.ids())
-    }
-
-    @Test
-    fun `reason line says Open only where hours are actually known`() {
+    fun `no reachability filter - a favorite far away still shows up`() {
         val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
-        assertTrue("Open" in ranked.reasonsOf(cafe))
-        assertFalse("Open" in ranked.reasonsOf(playgroundNear))
+        assertTrue(playgroundFar.id in ranked.ids()) // 62 min ride away, no longer filtered
+    }
+
+    @Test
+    fun `open status reflects hours only where they are actually known`() {
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
+        assertEquals(OpenStatus.OPEN, ranked.statusOf(cafe))
+        assertEquals(OpenStatus.UNKNOWN, ranked.statusOf(playgroundNear))
     }
 
     @Test
@@ -168,7 +168,7 @@ class SuggestionScenariosTest {
     @Test
     fun `no location - nothing is unreachable and no bike estimates are claimed`() {
         val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), budgetMinutes = 60, location = null)
+            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), location = null)
         )
         assertTrue(playgroundFar.id in ranked.ids())
         assertTrue(ranked.flatMap { it.reasons }.none { "by bike" in it })
@@ -182,86 +182,11 @@ class SuggestionScenariosTest {
     }
 
     @Test
-    fun `reroll - next three cards are fresh, no repeats`() {
-        val context = ctx(saturdayAt(15), sunny(saturdayAt(15)))
-        val first = SuggestionEngine.suggest(allPois, context)
-        val second = SuggestionEngine.suggest(allPois, context, excludeIds = first.ids().toSet())
-        assertEquals(3, second.size)
-        assertTrue(first.ids().toSet().intersect(second.ids().toSet()).isEmpty())
-    }
-
-    @Test
-    fun `determinism - same context always produces the same cards`() {
+    fun `determinism - same context always produces the same deck`() {
         val context = ctx(saturdayAt(10), sunny(saturdayAt(10)))
         assertEquals(
-            SuggestionEngine.suggest(allPois, context).ids(),
-            SuggestionEngine.suggest(allPois, context).ids()
-        )
-    }
-
-    @Test
-    fun `diversity - three same-category leaders get one swapped out`() {
-        val threePlaygroundsAndACafe = listOf(
-            playgroundNear,
-            playgroundNear.copy(id = "node/91", name = "Spielplatz B"),
-            playgroundNear.copy(id = "node/92", name = "Spielplatz C"),
-            cafe.copy(id = "node/93", lat = HOME.lat + 5 * 0.009) // far, scores lowest
-        )
-        val cards = SuggestionEngine.suggest(
-            threePlaygroundsAndACafe, ctx(saturdayAt(10), sunny(saturdayAt(10)))
-        )
-        assertEquals(3, cards.size)
-        assertTrue(cards.categories().size >= 2)
-    }
-
-    @Test
-    fun `adults only - playgrounds drop off the cards`() {
-        val cards = SuggestionEngine.suggest(
-            allPois, ctx(saturdayAt(15), sunny(saturdayAt(15)), kidsAlong = false)
-        )
-        assertEquals(3, cards.size)
-        assertTrue(cards.none { it.poi.category == "playground" })
-    }
-
-    @Test
-    fun `issue 7 - reason line calls out an adults-only override`() {
-        val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(15), sunny(saturdayAt(15)), kidsAlong = false)
-        )
-        assertTrue(ranked.isNotEmpty())
-        assertTrue(ranked.all { "adults-only pick" in it.reasons })
-    }
-
-    @Test
-    fun `issue 7 - default kids-along context never claims an adults-only override`() {
-        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(15), sunny(saturdayAt(15))))
-        assertTrue(ranked.flatMap { it.reasons }.none { "adults-only" in it })
-    }
-
-    @Test
-    fun `issue 7 - one hour budget reason line says quick outing`() {
-        val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), budgetMinutes = 60)
-        )
-        assertTrue(ranked.isNotEmpty())
-        assertTrue(ranked.all { "quick outing" in it.reasons })
-    }
-
-    @Test
-    fun `issue 7 - all day budget reason line says all day`() {
-        val ranked = SuggestionEngine.rankAll(
-            allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), budgetMinutes = 480)
-        )
-        assertTrue(ranked.isNotEmpty())
-        assertTrue(ranked.all { "you've got all day" in it.reasons })
-    }
-
-    @Test
-    fun `issue 7 - default 3h budget reason line makes no time-budget claim`() {
-        val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
-        assertTrue(
-            ranked.flatMap { it.reasons }
-                .none { "quick outing" in it || "you've got all day" in it }
+            SuggestionEngine.rankAll(allPois, context).ids(),
+            SuggestionEngine.rankAll(allPois, context).ids()
         )
     }
 }
