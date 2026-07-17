@@ -38,7 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,18 +111,15 @@ fun HomeScreen(
 
         WeatherStrip(state.weather)
 
-        val currentCard = state.currentCard
         when {
             state.isLoading -> CenteredLoading()
             !state.hasPois -> CenteredHint(stringResource(R.string.home_empty))
             !state.hasFavorites -> CenteredHint(stringResource(R.string.home_no_favorites))
-            currentCard == null -> CenteredHint(stringResource(R.string.home_no_suggestions))
+            state.deck.isEmpty() -> CenteredHint(stringResource(R.string.home_no_suggestions))
             else -> SwipeableSuggestionCard(
-                card = currentCard,
-                nextCard = state.nextCard,
+                deck = state.deck,
                 customNames = state.customNames,
                 location = state.location,
-                onAdvance = viewModel::advance,
                 onGo = { suggestion ->
                     val poi = suggestion.poi
                     viewModel.recordGo(poi, state.customNames[poi.id])
@@ -180,17 +177,22 @@ internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean 
 /**
  * One favorite at a time, backed by a peeking card behind it so the deck reads as stackable.
  * Dragging translates and fades the top card while the peek card grows into place; releasing
- * past the threshold commits that motion to completion and advances the deck, releasing short
- * of it springs back to rest. Unfavoriting runs the same commit animation (sliding right, since
- * a button tap has no drag direction to inherit) before applying the actual verdict change.
+ * past the threshold commits that motion to completion and pages the deck, releasing short of
+ * it springs back to rest. Unfavoriting runs the same commit animation (sliding right, since a
+ * button tap has no drag direction to inherit) before applying the actual verdict change.
+ *
+ * Position in [deck] is tracked locally ([localIndex]) rather than round-tripped through the
+ * ViewModel: a swipe-driven page needs the very next frame to show the promoted card at rest,
+ * and a Room/combine round trip (even a fast one) lands a beat too late, which reads as the
+ * peeking card flicking to full size and back. Unfavoriting still goes through the ViewModel
+ * since it has to persist, but leaving [localIndex] untouched lets the shrunken deck naturally
+ * surface whatever was already peeking through.
  */
 @Composable
 private fun SwipeableSuggestionCard(
-    card: Suggestion,
-    nextCard: Suggestion?,
+    deck: List<Suggestion>,
     customNames: Map<String, String>,
     location: LatLon?,
-    onAdvance: () -> Unit,
     onGo: (Suggestion) -> Unit,
     onUnfavorite: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
@@ -200,11 +202,19 @@ private fun SwipeableSuggestionCard(
     val peekOffsetPx = with(density) { PEEK_REST_OFFSET_DP.dp.toPx() }
     val scope = rememberCoroutineScope()
 
+    var localIndex by rememberSaveable { mutableStateOf(0) }
     val offsetX = remember { Animatable(0f) }
     var isCommitting by remember { mutableStateOf(false) }
-    val currentOnAdvance by rememberUpdatedState(onAdvance)
 
-    fun commit(direction: Float, onCommitted: () -> Unit) {
+    val card = deck[localIndex.mod(deck.size)]
+    val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
+    val previousCard = if (deck.size <= 1) null else deck[(localIndex - 1).mod(deck.size)]
+    // Dragging left peeks at the previous card (moving "up" the stack); dragging right, or at
+    // rest, peeks at the next one (moving "down") — the same default as before bidirectional
+    // paging existed.
+    val peekCard = if (offsetX.value < 0f) previousCard else nextCard
+
+    fun commit(direction: Int, onCommitted: () -> Unit) {
         if (isCommitting) return
         isCommitting = true
         scope.launch {
@@ -224,7 +234,8 @@ private fun SwipeableSuggestionCard(
                 onDragEnd = {
                     val current = offsetX.value
                     if (isPastSwipeThreshold(current, thresholdPx)) {
-                        commit(sign(current)) { currentOnAdvance() }
+                        val direction = sign(current).toInt()
+                        commit(direction) { localIndex += direction }
                     } else {
                         scope.launch { offsetX.animateTo(0f, animationSpec = spring()) }
                     }
@@ -240,11 +251,11 @@ private fun SwipeableSuggestionCard(
             )
         }
     ) {
-        if (nextCard != null) {
+        if (peekCard != null) {
             val progress = revealProgress(offsetX.value, thresholdPx)
             SuggestionCard(
-                suggestion = nextCard,
-                customName = customNames[nextCard.poi.id],
+                suggestion = peekCard,
+                customName = customNames[peekCard.poi.id],
                 location = location,
                 onGo = {},
                 onUnfavorite = {},
@@ -262,7 +273,7 @@ private fun SwipeableSuggestionCard(
             location = location,
             onGo = { onGo(card) },
             onUnfavorite = {
-                commit(direction = 1f) { onUnfavorite(card) }
+                commit(direction = 1) { onUnfavorite(card) }
             },
             modifier = Modifier.graphicsLayer {
                 translationX = offsetX.value
@@ -371,7 +382,10 @@ private fun SuggestionCard(
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
-    Card(modifier = modifier.fillMaxWidth()) {
+    // Fixed to the stack's full height (not just wrap-content) so the top and peek cards always
+    // share the same bounds — otherwise a peek card with more content than the top card pokes
+    // its extra text and the Go button out past the top card's bottom edge.
+    Card(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .padding(20.dp)

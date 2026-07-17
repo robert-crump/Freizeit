@@ -42,9 +42,11 @@ fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
 data class HomeUiState(
-    /** The full ranked swipe deck: every favorite that survives the weather/hours filters. */
+    /** The full ranked swipe deck: every favorite that survives the weather/hours filters.
+     *  Position within it is tracked locally by the swipe deck UI, not here — see
+     *  SwipeableSuggestionCard's localIndex — so that paging through it never waits on a
+     *  Room/combine round trip. */
     val deck: List<Suggestion> = emptyList(),
-    val currentIndex: Int = 0,
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
     /** False only once the POI table is confirmed empty — drives the import hint. */
@@ -57,15 +59,7 @@ data class HomeUiState(
     val customNames: Map<String, String> = emptyMap(),
     /** True until the first Room/weather emission lands — drives the loading spinner. */
     val isLoading: Boolean = true
-) {
-    /** The card on top of the deck right now, looping back to the start past the end. */
-    val currentCard: Suggestion?
-        get() = if (deck.isEmpty()) null else deck[currentIndex.mod(deck.size)]
-
-    /** The card peeking behind [currentCard], null when there's nothing else to peek at. */
-    val nextCard: Suggestion?
-        get() = if (deck.size <= 1) null else deck[(currentIndex + 1).mod(deck.size)]
-}
+)
 
 class HomeViewModel(
     private val appContext: Context,
@@ -77,13 +71,6 @@ class HomeViewModel(
 ) : ViewModel() {
 
     private val location = MutableStateFlow<LatLon?>(null)
-
-    /**
-     * Position in the ranked deck. Swiping advances it; unfavoriting the current card shrinks
-     * the deck out from under the same index, which naturally surfaces whatever was next —
-     * no separate "auto-advance" step needed.
-     */
-    private val currentIndex = MutableStateFlow(0)
 
     /** Favorited pois + whether the (city-wide) poi table has anything at all, plus small side tables. */
     private data class PoiSlice(
@@ -111,9 +98,8 @@ class HomeViewModel(
         poisVerdictsAndNames,
         weatherRepository.snapshot,
         location,
-        currentIndex,
         pendingVisitDao.observe()
-    ) { slice, weather, loc, index, pendingVisit ->
+    ) { slice, weather, loc, pendingVisit ->
         val context = SuggestionContext(
             now = LocalDateTime.now(),
             location = loc,
@@ -122,7 +108,6 @@ class HomeViewModel(
         )
         HomeUiState(
             deck = SuggestionEngine.rankAll(slice.favoritePois, context),
-            currentIndex = index,
             weather = weather,
             location = loc,
             hasPois = slice.hasPois,
@@ -142,11 +127,6 @@ class HomeViewModel(
     init {
         viewModelScope.launch { weatherRepository.loadCache() }
         refreshLocation()
-    }
-
-    /** Swiping either direction advances to the next card; the deck loops past the end. */
-    fun advance() {
-        currentIndex.value += 1
     }
 
     fun refreshLocation() {
