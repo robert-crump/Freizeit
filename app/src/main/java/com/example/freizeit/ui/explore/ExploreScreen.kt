@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.explore
 
 import android.Manifest
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -29,9 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,13 +43,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -91,33 +86,18 @@ fun ExploreScreen(
         }
     }
 
-    var viewIndex by rememberSaveable { mutableIntStateOf(0) }
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
     var showLayersPanel by rememberSaveable { mutableStateOf(false) }
-    var searchActive by rememberSaveable { mutableStateOf(false) }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter+sort
     // pass (see ExploreViewModel) completes.
     var searchText by rememberSaveable { mutableStateOf("") }
     var searchBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
-    val searchFocusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
 
-    LaunchedEffect(searchActive) {
-        if (searchActive) {
-            searchFocusRequester.requestFocus()
-            keyboardController?.show()
-        }
-    }
+    BackHandler(enabled = showLayersPanel) { showLayersPanel = false }
 
-    fun closeSearch() {
-        searchActive = false
-        searchText = ""
-        viewModel.clearSearch()
-    }
-
-    val searchSuggestions = if (searchActive && searchText.trim().length >= SEARCH_SUGGESTION_MIN_LENGTH) {
+    val searchSuggestions = if (searchText.trim().length >= SEARCH_SUGGESTION_MIN_LENGTH) {
         state.pois.take(SEARCH_SUGGESTION_MAX_RESULTS)
     } else {
         emptyList()
@@ -133,42 +113,28 @@ fun ExploreScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (searchActive) {
-                    OutlinedTextField(
-                        value = searchText,
-                        onValueChange = {
-                            searchText = it
-                            viewModel.setSearchQuery(it)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .focusRequester(searchFocusRequester),
-                        placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
-                    )
-                    IconButton(onClick = { closeSearch() }) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_search_close))
-                    }
-                } else {
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.weight(1f)) {
-                        listOf(
-                            stringResource(R.string.explore_view_map),
-                            stringResource(R.string.explore_view_list)
-                        ).forEachIndexed { index, label ->
-                            SegmentedButton(
-                                selected = viewIndex == index,
-                                onClick = { viewIndex = index },
-                                shape = SegmentedButtonDefaults.itemShape(index = index, count = 2)
-                            ) {
-                                Text(label)
+                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.explore_search_icon))
+                OutlinedTextField(
+                    value = searchText,
+                    onValueChange = {
+                        searchText = it
+                        viewModel.setSearchQuery(it)
+                    },
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    trailingIcon = if (searchText.isNotEmpty()) {
+                        {
+                            IconButton(onClick = {
+                                searchText = ""
+                                viewModel.clearSearch()
+                            }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_search_clear))
                             }
                         }
-                    }
-                    IconButton(onClick = { searchActive = true }) {
-                        Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.explore_search_icon))
-                    }
-                }
+                    } else null
+                )
             }
 
             Box(modifier = Modifier.weight(1f)) {
@@ -181,7 +147,7 @@ fun ExploreScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                } else if (viewIndex == 0) {
+                } else {
                     PoiMap(
                         pois = state.pois,
                         location = state.location,
@@ -209,23 +175,6 @@ fun ExploreScreen(
                             Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.explore_locate_me))
                         }
                     }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        PoiList(
-                            pois = state.pois,
-                            customNames = state.customNames,
-                            onPoiClick = viewModel::selectPoi,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        FloatingActionButton(
-                            onClick = { showLayersPanel = true },
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(16.dp)
-                        ) {
-                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.explore_layers_button))
-                        }
-                    }
                 }
             }
         }
@@ -247,7 +196,8 @@ fun ExploreScreen(
                             customNames = state.customNames,
                             onClick = {
                                 viewModel.selectPoi(item)
-                                closeSearch()
+                                searchText = ""
+                                viewModel.clearSearch()
                             }
                         )
                     }
@@ -261,18 +211,9 @@ fun ExploreScreen(
                 selectedCategory = state.selectedCategory,
                 favoritesOnly = state.favoritesOnly,
                 showAllPois = state.showAllPois,
-                onSelectCategory = { category ->
-                    if (searchActive) closeSearch()
-                    viewModel.selectCategory(category)
-                },
-                onSelectFavorites = {
-                    if (searchActive) closeSearch()
-                    viewModel.toggleFavoritesOnly()
-                },
-                onSelectAllPois = {
-                    if (searchActive) closeSearch()
-                    viewModel.selectAllPois()
-                },
+                onSelectCategory = { category -> viewModel.selectCategory(category) },
+                onSelectFavorites = { viewModel.toggleFavoritesOnly() },
+                onSelectAllPois = { viewModel.selectAllPois() },
                 onDismiss = { showLayersPanel = false }
             )
         }
@@ -386,65 +327,6 @@ private fun LayerRow(
         leadingIcon()
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Switch(checked = selected, onCheckedChange = { onClick() })
-    }
-}
-
-@Composable
-private fun PoiList(
-    pois: List<PoiWithDistance>,
-    customNames: Map<String, String>,
-    onPoiClick: (PoiWithDistance) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    LazyColumn(modifier = modifier) {
-        items(pois, key = { it.poi.id }) { item ->
-            PoiRow(
-                item = item,
-                customNames = customNames,
-                onClick = { onPoiClick(item) },
-                showDistance = true
-            )
-        }
-    }
-}
-
-@Composable
-private fun PoiRow(
-    item: PoiWithDistance,
-    customNames: Map<String, String>,
-    onClick: () -> Unit,
-    showDistance: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CategoryDot(item.poi.category)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.poi.displayName(customNames[item.poi.id]),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = categoryDisplayName(item.poi.category),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (showDistance) {
-            item.distanceMeters?.let {
-                Text(
-                    text = GeoDistance.format(it),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
     }
 }
 
