@@ -13,3 +13,6 @@ val GreenPrimaryDark = Color(0xFFA1D399)
 val GreenOnPrimaryDark = Color(0xFF0A390F)
 val GreenPrimaryContainerDark = Color(0xFF235024)
 val GreenOnPrimaryContainerDark = Color(0xFFBCF0B4)
+
+/** Fixed strong red for the "favorite" heart, independent of dynamic color theming. */
+val FavoriteRed = Color(0xFFE53935)

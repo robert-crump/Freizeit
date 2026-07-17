@@ -37,6 +37,7 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.util.GeoDistance
 
 /** Shared place detail sheet, opened from map markers, list rows, and Home cards. */
@@ -60,21 +61,26 @@ fun PlaceDetailSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(verticalAlignment = Alignment.Top) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Text(
                     text = poi.displayName(customName),
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = { showEditNameDialog = true }) {
-                    Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.detail_edit_name))
-                }
-                FavoriteButton(
-                    isFavorite = verdict == Verdict.VALUE_FAVORITE,
-                    onClick = {
-                        onVerdictChange(if (verdict == Verdict.VALUE_FAVORITE) null else Verdict.VALUE_FAVORITE)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    IconButton(
+                        onClick = { showEditNameDialog = true },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.detail_edit_name))
                     }
-                )
+                    FavoriteButton(
+                        isFavorite = verdict == Verdict.VALUE_FAVORITE,
+                        onClick = {
+                            onVerdictChange(if (verdict == Verdict.VALUE_FAVORITE) null else Verdict.VALUE_FAVORITE)
+                        }
+                    )
+                }
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -167,11 +173,11 @@ private fun FavoriteButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    IconButton(onClick = onClick, modifier = modifier) {
+    IconButton(onClick = onClick, modifier = modifier.size(24.dp)) {
         Icon(
             imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
             contentDescription = stringResource(R.string.detail_verdict_favorite),
-            tint = if (isFavorite) MaterialTheme.colorScheme.error else LocalContentColor.current
+            tint = if (isFavorite) FavoriteRed else LocalContentColor.current
         )
     }
 }

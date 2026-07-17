@@ -27,8 +27,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -56,6 +59,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,6 +79,7 @@ import com.example.freizeit.ui.explore.PlaceDetailSheet
 import com.example.freizeit.ui.explore.PoiWithDistance
 import com.example.freizeit.ui.explore.SuggestionsMiniMap
 import com.example.freizeit.ui.explore.displayName
+import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
@@ -491,14 +499,43 @@ private fun SuggestionCard(
                 )
             }
             if (suggestion.reasons.isNotEmpty()) {
-                Text(
-                    text = suggestion.reasons.joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                ReasonsLine(reasons = suggestion.reasons, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
 }
+
+/** "❤️ favorite" in [reasons] renders as the same filled heart icon used in the POI sheet. */
+@Composable
+private fun ReasonsLine(reasons: List<String>, style: TextStyle) {
+    if (FAVORITE_REASON !in reasons) {
+        Text(text = reasons.joinToString(" · "), style = style)
+        return
+    }
+    val joined = reasons.joinToString(" · ") { if (it == FAVORITE_REASON) "favorite" else it }
+    val favoriteWordStart = joined.indexOf("favorite")
+    val annotated = buildAnnotatedString {
+        append(joined.substring(0, favoriteWordStart))
+        appendInlineContent(FAVORITE_ICON_ID, "[favorite]")
+        append(" ")
+        append(joined.substring(favoriteWordStart))
+    }
+    val inlineContent = mapOf(
+        FAVORITE_ICON_ID to InlineTextContent(
+            Placeholder(
+                width = style.fontSize,
+                height = style.fontSize,
+                placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter
+            )
+        ) {
+            Icon(imageVector = Icons.Filled.Favorite, contentDescription = null, tint = FavoriteRed)
+        }
+    )
+    Text(text = annotated, style = style, inlineContent = inlineContent)
+}
+
+private const val FAVORITE_REASON = "❤️ favorite"
+private const val FAVORITE_ICON_ID = "favoriteIcon"
 
 @Composable
 private fun CenteredHint(text: String) {
