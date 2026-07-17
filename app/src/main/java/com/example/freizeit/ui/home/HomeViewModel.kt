@@ -81,15 +81,25 @@ class HomeViewModel(
      */
     private val currentIndex = MutableStateFlow(0)
 
+    /** Favorited pois + whether the (city-wide) poi table has anything at all, plus small side tables. */
+    private data class PoiSlice(
+        val favoritePois: List<Poi>,
+        val hasPois: Boolean,
+        val verdicts: Map<String, Verdict>,
+        val customNames: Map<String, String>
+    )
+
     private val poisVerdictsAndNames = combine(
-        poiDao.observeAll(),
+        poiDao.observeFavorites(),
+        poiDao.observeCount(),
         verdictDao.observeAll(),
         poiCustomNameDao.observeAll()
-    ) { pois, verdicts, customNames ->
-        Triple(
-            pois,
-            verdicts.associateBy { it.placeId },
-            customNames.associate { it.placeId to it.customName }
+    ) { favoritePois, poiCount, verdicts, customNames ->
+        PoiSlice(
+            favoritePois = favoritePois,
+            hasPois = poiCount > 0,
+            verdicts = verdicts.associateBy { it.placeId },
+            customNames = customNames.associate { it.placeId to it.customName }
         )
     }
 
@@ -99,29 +109,31 @@ class HomeViewModel(
         location,
         currentIndex,
         pendingVisitDao.observe()
-    ) { poisVerdictsNames, weather, loc, index, pendingVisit ->
-        val (pois, verdictMap, customNames) = poisVerdictsNames
+    ) { slice, weather, loc, index, pendingVisit ->
         val context = SuggestionContext(
             now = LocalDateTime.now(),
             location = loc,
             weather = weather,
-            verdicts = verdictMap
+            verdicts = slice.verdicts
         )
         HomeUiState(
-            deck = SuggestionEngine.rankAll(pois, context),
+            deck = SuggestionEngine.rankAll(slice.favoritePois, context),
             currentIndex = index,
             weather = weather,
             location = loc,
-            hasPois = pois.isNotEmpty(),
-            hasFavorites = verdictMap.values.any { it.value == Verdict.VALUE_FAVORITE },
+            hasPois = slice.hasPois,
+            hasFavorites = slice.favoritePois.isNotEmpty(),
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
-            verdicts = verdictMap,
-            customNames = customNames,
+            verdicts = slice.verdicts,
+            customNames = slice.customNames,
             isLoading = false
         )
     }
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+        // Home's ViewModel outlives tab switches (bottom-nav saveState/restoreState), so stay
+        // subscribed instead of dropping Room collection 5s after Home loses its last observer —
+        // that cold-restart was the visible 0.5-1s lag when returning from Explore.
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
     init {
         viewModelScope.launch { weatherRepository.loadCache() }
