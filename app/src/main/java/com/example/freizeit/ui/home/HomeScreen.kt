@@ -143,10 +143,13 @@ fun HomeScreen(
 private const val SWIPE_THRESHOLD_DP = 96
 
 /**
- * How much further than the swipe threshold a drag has to travel before the top card is fully
- * transparent — so a card that's just crossed the threshold isn't instantly invisible.
+ * How much further than the swipe threshold a drag has to travel before the top card hits its
+ * minimum alpha — so a card that's just crossed the threshold isn't instantly near-invisible.
  */
 private const val FADE_DISTANCE_MULTIPLIER = 1.75f
+
+/** The top card never fades past this — it should still read as "there" mid-drag, not gone. */
+private const val MIN_TOP_CARD_ALPHA = 0.3f
 
 /** Scale and vertical offset of the peeking card at rest (no drag in progress). */
 private const val PEEK_REST_SCALE = 0.95f
@@ -155,16 +158,20 @@ private const val PEEK_REST_OFFSET_DP = 12
 /** Duration of the commit animation (card finishes leaving, peek card finishes revealing). */
 private const val COMMIT_ANIMATION_MILLIS = 250
 
-/** Alpha of the top (dragged) card at [offsetPx] — 1 at rest, 0 once past the fade distance. */
-internal fun topCardAlpha(offsetPx: Float, thresholdPx: Float): Float {
+/** How far [offsetPx] has traveled toward the fade distance, 0 at rest, 1 once past it. */
+private fun dragProgress(offsetPx: Float, thresholdPx: Float): Float {
     val fadeDistancePx = thresholdPx * FADE_DISTANCE_MULTIPLIER
-    if (fadeDistancePx <= 0f) return 0f
-    return (1f - abs(offsetPx) / fadeDistancePx).coerceIn(0f, 1f)
+    if (fadeDistancePx <= 0f) return 1f
+    return (abs(offsetPx) / fadeDistancePx).coerceIn(0f, 1f)
 }
 
-/** How far the peek card has grown toward full size, 0..1, tied to the same fade distance. */
+/** Alpha of the top (dragged) card at [offsetPx] — 1 at rest, floored at [MIN_TOP_CARD_ALPHA]. */
+internal fun topCardAlpha(offsetPx: Float, thresholdPx: Float): Float =
+    1f - (1f - MIN_TOP_CARD_ALPHA) * dragProgress(offsetPx, thresholdPx)
+
+/** How far the peek card has grown toward full size, 0..1 — reaches 1 when the top card bottoms out. */
 internal fun revealProgress(offsetPx: Float, thresholdPx: Float): Float =
-    1f - topCardAlpha(offsetPx, thresholdPx)
+    dragProgress(offsetPx, thresholdPx)
 
 /** True once a drag has gone far enough to count as a completed swipe. */
 internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean =
