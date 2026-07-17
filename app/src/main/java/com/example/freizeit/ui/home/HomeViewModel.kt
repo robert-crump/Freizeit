@@ -61,6 +61,10 @@ data class HomeUiState(
     /** The card on top of the deck right now, looping back to the start past the end. */
     val currentCard: Suggestion?
         get() = if (deck.isEmpty()) null else deck[currentIndex.mod(deck.size)]
+
+    /** The card peeking behind [currentCard], null when there's nothing else to peek at. */
+    val nextCard: Suggestion?
+        get() = if (deck.size <= 1) null else deck[(currentIndex + 1).mod(deck.size)]
 }
 
 class HomeViewModel(
