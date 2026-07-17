@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
 import kotlinx.coroutines.flow.Flow
 
 data class CategoryCount(val category: String, val count: Int)
@@ -25,6 +26,22 @@ interface PoiDao {
 
     @Query("SELECT * FROM poi")
     fun observeAll(): Flow<List<Poi>>
+
+    /**
+     * Home screen's swipe deck candidate pool (issue #17): only favorited places, filtered in
+     * SQL rather than pulling the whole (city-wide) table and filtering in Kotlin.
+     */
+    @Query(
+        """
+        SELECT poi.* FROM poi
+        INNER JOIN verdict ON verdict.placeId = poi.id
+        WHERE verdict.value = :favoriteValue
+        """
+    )
+    fun observeFavorites(favoriteValue: String = Verdict.VALUE_FAVORITE): Flow<List<Poi>>
+
+    @Query("SELECT COUNT(*) FROM poi")
+    fun observeCount(): Flow<Int>
 
     @Query("SELECT category, COUNT(*) as count FROM poi GROUP BY category ORDER BY category")
     fun categoryCounts(): Flow<List<CategoryCount>>
