@@ -1,6 +1,7 @@
 package com.example.freizeit.domain.suggestion
 
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.weather.HourForecast
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.util.LatLon
@@ -41,6 +42,20 @@ object SuggestionFixture {
     val iceCream = poi("node/7", "ice_cream", 0.9, "Eiscafé Venezia", "Mo-Su 12:00-20:00")
 
     val allPois = listOf(playgroundNear, playgroundFar, park, cafe, kiosk, restaurant, iceCream)
+
+    /** Every fixture POI favorited — the common case for the ranking scenario tests. */
+    fun favoriteAll(pois: List<Poi> = allPois): Map<String, Verdict> =
+        pois.associate { it.id to favoriteVerdict(it) }
+
+    fun favoriteVerdict(poi: Poi): Verdict = Verdict(
+        placeId = poi.id,
+        value = Verdict.VALUE_FAVORITE,
+        verdictedAt = 0L,
+        snapshotName = poi.name,
+        snapshotLat = poi.lat,
+        snapshotLon = poi.lon,
+        snapshotCategory = poi.category
+    )
 
     // July 2026: the 4th is a Saturday, the 7th a Tuesday.
     fun saturdayAt(hour: Int): LocalDateTime = LocalDateTime.of(2026, 7, 4, hour, 0)

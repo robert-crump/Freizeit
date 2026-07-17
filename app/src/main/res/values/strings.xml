@@ -5,19 +5,16 @@
     <string name="tab_settings">Settings</string>
     <!-- Home -->
     <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
-    <string name="home_no_suggestions">Nothing fits right now — bad weather or everything closed. Try Explore instead.</string>
-    <string name="home_reroll">Show me others</string>
+    <string name="home_no_favorites">You haven\'t favorited any places yet. Head to Explore and tap the heart on a place to see it here.</string>
+    <string name="home_no_suggestions">None of your favorites fit right now — bad weather or everything\'s closed.</string>
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
     <string name="home_go">Go</string>
+    <string name="home_unfavorite">Remove from favorites</string>
+    <string name="home_open_now">Open now</string>
+    <string name="home_closed_now">Closed now</string>
     <string name="home_visit_prompt">Were you at %1$s?</string>
     <string name="home_visit_didnt_go">Didn\'t go</string>
-    <string name="home_time_budget_short">1 h</string>
-    <string name="home_time_budget_default">3 h</string>
-    <string name="home_time_budget_long">All day</string>
-    <string name="home_who_kids">Kids along</string>
-    <string name="home_who_adults">Adults only</string>
-    <string name="home_suggestions_header">Suggestions</string>
     <!-- Explore -->
     <string name="explore_view_map">Map</string>
     <string name="explore_view_list">List</string>

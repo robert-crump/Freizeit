@@ -12,7 +12,6 @@ import com.example.freizeit.data.dao.PendingVisitDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
-import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
@@ -43,21 +42,26 @@ fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
 data class HomeUiState(
-    val cards: List<Suggestion> = emptyList(),
+    /** The full ranked swipe deck: every favorite that survives the weather/hours filters. */
+    val deck: List<Suggestion> = emptyList(),
+    val currentIndex: Int = 0,
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
     /** False only once the POI table is confirmed empty — drives the import hint. */
     val hasPois: Boolean = true,
+    /** True if any place has ever been favorited, regardless of today's filters. */
+    val hasFavorites: Boolean = false,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
     val pendingVisit: PendingVisit? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
     val customNames: Map<String, String> = emptyMap(),
-    /** Active chip overrides (issue #7); reset to defaults on next app open. */
-    val timeBudgetMinutes: Int = SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES,
-    val kidsAlong: Boolean = true,
     /** True until the first Room/weather emission lands — drives the loading spinner. */
     val isLoading: Boolean = true
-)
+) {
+    /** The card on top of the deck right now, looping back to the start past the end. */
+    val currentCard: Suggestion?
+        get() = if (deck.isEmpty()) null else deck[currentIndex.mod(deck.size)]
+}
 
 class HomeViewModel(
     private val appContext: Context,
@@ -65,24 +69,17 @@ class HomeViewModel(
     private val verdictDao: VerdictDao,
     private val pendingVisitDao: PendingVisitDao,
     private val weatherRepository: WeatherRepository,
-    private val poiCustomNameDao: PoiCustomNameDao
+    poiCustomNameDao: PoiCustomNameDao
 ) : ViewModel() {
 
     private val location = MutableStateFlow<LatLon?>(null)
 
-    /** Card ids already shown this session; reroll excludes them until the pool runs dry. */
-    private val rerolledIds = MutableStateFlow<Set<String>>(emptySet())
-
-    /** Chip overrides (issue #7): process-scoped only, back to defaults on next app open. */
-    private val timeBudgetMinutes = MutableStateFlow(SuggestionContext.DEFAULT_TIME_BUDGET_MINUTES)
-    private val kidsAlong = MutableStateFlow(true)
-
-    private val locationAndOverrides = combine(
-        location, timeBudgetMinutes, kidsAlong
-    ) { loc, budget, kids -> Triple(loc, budget, kids) }
-
-    private val _selectedCard = MutableStateFlow<Suggestion?>(null)
-    val selectedCard: StateFlow<Suggestion?> = _selectedCard
+    /**
+     * Position in the ranked deck. Swiping advances it; unfavoriting the current card shrinks
+     * the deck out from under the same index, which naturally surfaces whatever was next —
+     * no separate "auto-advance" step needed.
+     */
+    private val currentIndex = MutableStateFlow(0)
 
     private val poisVerdictsAndNames = combine(
         poiDao.observeAll(),
@@ -99,34 +96,27 @@ class HomeViewModel(
     val uiState: StateFlow<HomeUiState> = combine(
         poisVerdictsAndNames,
         weatherRepository.snapshot,
-        locationAndOverrides,
-        rerolledIds,
+        location,
+        currentIndex,
         pendingVisitDao.observe()
-    ) { poisVerdictsNames, weather, (loc, budget, kids), excluded, pendingVisit ->
+    ) { poisVerdictsNames, weather, loc, index, pendingVisit ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
         val context = SuggestionContext(
             now = LocalDateTime.now(),
             location = loc,
             weather = weather,
-            timeBudgetMinutes = budget,
-            kidsAlong = kids,
             verdicts = verdictMap
         )
-        var cards = SuggestionEngine.suggest(pois, context, excludeIds = excluded)
-        if (cards.size < 3 && excluded.isNotEmpty()) {
-            // Reroll pool exhausted: wrap around to a fresh session.
-            cards = SuggestionEngine.suggest(pois, context)
-        }
         HomeUiState(
-            cards = cards,
+            deck = SuggestionEngine.rankAll(pois, context),
+            currentIndex = index,
             weather = weather,
             location = loc,
             hasPois = pois.isNotEmpty(),
+            hasFavorites = verdictMap.values.any { it.value == Verdict.VALUE_FAVORITE },
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = verdictMap,
             customNames = customNames,
-            timeBudgetMinutes = budget,
-            kidsAlong = kids,
             isLoading = false
         )
     }
@@ -138,16 +128,9 @@ class HomeViewModel(
         refreshLocation()
     }
 
-    /** Replaces all three cards with next-best, no repeats within the session. */
-    fun reroll() {
-        val current = uiState.value.cards.map { it.poi.id }
-        if (current.isEmpty()) return
-        val excluded = rerolledIds.value
-        rerolledIds.value = if (excluded.isNotEmpty() && uiState.value.cards.size < 3) {
-            current.toSet() // pool was exhausted and wrapped; start the exclusions over
-        } else {
-            excluded + current
-        }
+    /** Swiping either direction advances to the next card; the deck loops past the end. */
+    fun advance() {
+        currentIndex.value += 1
     }
 
     fun refreshLocation() {
@@ -163,24 +146,8 @@ class HomeViewModel(
         }
     }
 
-    fun selectCard(card: Suggestion?) {
-        _selectedCard.value = card
-    }
-
-    fun setTimeBudget(minutes: Int) {
-        timeBudgetMinutes.value = minutes
-    }
-
-    fun setKidsAlong(value: Boolean) {
-        kidsAlong.value = value
-    }
-
     fun setVerdict(poi: Poi, value: String?) {
         viewModelScope.launch(Dispatchers.IO) { verdictDao.setVerdict(poi, value) }
-    }
-
-    fun setCustomName(poiId: String, customName: String?) {
-        viewModelScope.launch(Dispatchers.IO) { poiCustomNameDao.setCustomName(poiId, customName) }
     }
 
     /** Tapping "Go" on a card records intent; the banner appears next open, 2h+ later. */
