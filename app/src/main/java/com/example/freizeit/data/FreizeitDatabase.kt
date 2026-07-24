@@ -11,17 +11,20 @@ import com.example.freizeit.data.dao.PendingVisitDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
+import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.PoiCustomName
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.Visit
 
 @Database(
     entities = [
-        Poi::class, Verdict::class, ImportInfo::class, PendingVisit::class, PoiCustomName::class
+        Poi::class, Verdict::class, ImportInfo::class, PendingVisit::class, PoiCustomName::class,
+        Visit::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class FreizeitDatabase : RoomDatabase() {
@@ -31,6 +34,7 @@ abstract class FreizeitDatabase : RoomDatabase() {
     abstract fun importInfoDao(): ImportInfoDao
     abstract fun pendingVisitDao(): PendingVisitDao
     abstract fun poiCustomNameDao(): PoiCustomNameDao
+    abstract fun visitDao(): VisitDao
 
     companion object {
         /** Adds pending_visit (issue #6); poi/verdict/import_info data on real devices is untouched. */
@@ -91,13 +95,33 @@ abstract class FreizeitDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds visit (issue #23), the manual check-in log; existing tables are untouched. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `visit` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `placeId` TEXT NOT NULL,
+                        `visitedAt` INTEGER NOT NULL,
+                        `source` TEXT NOT NULL,
+                        `snapshotName` TEXT,
+                        `snapshotLat` REAL NOT NULL,
+                        `snapshotLon` REAL NOT NULL,
+                        `snapshotCategory` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun build(context: Context): FreizeitDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
                 FreizeitDatabase::class.java,
                 "freizeit.db"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

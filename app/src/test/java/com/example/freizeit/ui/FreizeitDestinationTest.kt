@@ -6,9 +6,9 @@ import org.junit.Test
 class FreizeitDestinationTest {
 
     @Test
-    fun `has exactly the three tabs`() {
+    fun `has exactly the four tabs`() {
         assertEquals(
-            listOf("home", "explore", "settings"),
+            listOf("home", "explore", "checkin", "settings"),
             FreizeitDestination.entries.map { it.route }
         )
     }
