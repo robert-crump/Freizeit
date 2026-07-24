@@ -2,6 +2,7 @@
     <string name="app_name">Freizeit</string>
     <string name="tab_home">Home</string>
     <string name="tab_explore">Explore</string>
+    <string name="tab_checkin">Check-in</string>
     <string name="tab_settings">Settings</string>
     <!-- Home -->
     <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
@@ -28,6 +29,10 @@
     <string name="explore_search_icon">Search</string>
     <string name="explore_search_clear">Clear search</string>
     <string name="explore_search_placeholder">Search places by name</string>
+    <!-- Check-in -->
+    <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
+    <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>
+    <string name="checkin_checked_in">Checked in to %1$s</string>
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>

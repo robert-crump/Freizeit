@@ -3,9 +3,11 @@ package com.example.freizeit.ui
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Settings
@@ -26,6 +28,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.freizeit.R
+import com.example.freizeit.ui.checkin.CheckInScreen
 import com.example.freizeit.ui.explore.ExploreScreen
 import com.example.freizeit.ui.home.HomeScreen
 import com.example.freizeit.ui.settings.SettingsScreen
@@ -38,6 +41,7 @@ enum class FreizeitDestination(
 ) {
     HOME("home", R.string.tab_home, Icons.Filled.Home, Icons.Outlined.Home),
     EXPLORE("explore", R.string.tab_explore, Icons.Filled.Place, Icons.Outlined.Place),
+    CHECKIN("checkin", R.string.tab_checkin, Icons.Filled.CheckCircle, Icons.Outlined.CheckCircle),
     SETTINGS("settings", R.string.tab_settings, Icons.Filled.Settings, Icons.Outlined.Settings)
 }
 
@@ -84,6 +88,7 @@ fun FreizeitApp() {
         ) {
             composable(FreizeitDestination.HOME.route) { HomeScreen() }
             composable(FreizeitDestination.EXPLORE.route) { ExploreScreen() }
+            composable(FreizeitDestination.CHECKIN.route) { CheckInScreen() }
             composable(FreizeitDestination.SETTINGS.route) { SettingsScreen() }
         }
     }
