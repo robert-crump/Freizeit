@@ -11,17 +11,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -40,6 +47,7 @@ fun SettingsScreen(
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
+    val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -146,7 +154,44 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.error
             )
         }
+
+        Text(
+            text = stringResource(R.string.settings_suggestions_section),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        SuggestionRadiusField(
+            radiusKm = suggestionRadiusKm,
+            onCommit = viewModel::setSuggestionRadiusKm
+        )
     }
+}
+
+/**
+ * Commits on blur, not per keystroke, so an in-progress edit (or a momentarily invalid one)
+ * never writes to DataStore or re-runs Home's distance filter mid-type. Reverts to the last
+ * committed value if the field loses focus while empty/non-numeric.
+ */
+@Composable
+private fun SuggestionRadiusField(radiusKm: Int, onCommit: (Int) -> Unit) {
+    var text by remember(radiusKm) { mutableStateOf(radiusKm.toString()) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it.filter(Char::isDigit) },
+        label = { Text(stringResource(R.string.settings_radius_label)) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.onFocusChanged { focusState ->
+            if (!focusState.isFocused) {
+                val parsed = text.toIntOrNull()
+                if (parsed != null && parsed >= 1) {
+                    onCommit(parsed)
+                } else {
+                    text = radiusKm.toString()
+                }
+            }
+        }
+    )
 }
 
 @Composable

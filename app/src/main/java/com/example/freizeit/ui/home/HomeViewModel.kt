@@ -16,6 +16,7 @@ import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.weather.WeatherRepository
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
@@ -53,6 +54,11 @@ data class HomeUiState(
     val hasPois: Boolean = true,
     /** True if any place has ever been favorited, regardless of today's filters. */
     val hasFavorites: Boolean = false,
+    /** False only when there ARE favorites but none within [radiusKm] — see issue #21. Always
+     *  true while location is unknown, since distance can't be judged against a guess. */
+    val hasFavoritesWithinRadius: Boolean = true,
+    /** The configured suggestion radius, for the "no suggestions within X km" hint. */
+    val radiusKm: Int = SettingsRepository.DEFAULT_RADIUS_KM,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
     val pendingVisit: PendingVisit? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
@@ -67,7 +73,8 @@ class HomeViewModel(
     private val verdictDao: VerdictDao,
     private val pendingVisitDao: PendingVisitDao,
     private val weatherRepository: WeatherRepository,
-    poiCustomNameDao: PoiCustomNameDao
+    poiCustomNameDao: PoiCustomNameDao,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val location = MutableStateFlow<LatLon?>(null)
@@ -98,20 +105,24 @@ class HomeViewModel(
         poisVerdictsAndNames,
         weatherRepository.snapshot,
         location,
-        pendingVisitDao.observe()
-    ) { slice, weather, loc, pendingVisit ->
+        pendingVisitDao.observe(),
+        settingsRepository.suggestionRadiusKm
+    ) { slice, weather, loc, pendingVisit, radiusKm ->
         val context = SuggestionContext(
             now = LocalDateTime.now(),
             location = loc,
             weather = weather,
             verdicts = slice.verdicts
         )
+        val favoritesInRange = SuggestionEngine.withinRadius(slice.favoritePois, loc, radiusKm * 1000.0)
         HomeUiState(
-            deck = SuggestionEngine.rankAll(slice.favoritePois, context),
+            deck = SuggestionEngine.rankAll(favoritesInRange, context),
             weather = weather,
             location = loc,
             hasPois = slice.hasPois,
             hasFavorites = slice.favoritePois.isNotEmpty(),
+            hasFavoritesWithinRadius = slice.favoritePois.isEmpty() || favoritesInRange.isNotEmpty(),
+            radiusKm = radiusKm,
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = slice.verdicts,
             customNames = slice.customNames,
@@ -197,7 +208,8 @@ class HomeViewModel(
                     app.container.database.verdictDao(),
                     app.container.database.pendingVisitDao(),
                     app.container.weatherRepository,
-                    app.container.database.poiCustomNameDao()
+                    app.container.database.poiCustomNameDao(),
+                    app.container.settingsRepository
                 )
             }
         }

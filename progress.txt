@@ -1,5 +1,79 @@
 # Freizeit v2 progress log
 
+## 2026-07-24 — Issue #21: Filter suggestions by distance
+
+- Design was worked out via a full /grill-me pass before writing any code
+  (distance origin, no-location behavior, filter placement, empty-state
+  precedence, settings persistence, UI control, commit timing, scope,
+  test scope — all resolved with the user first). Implementation matched
+  that design exactly; no surprises during coding.
+- This is the app's first-ever persisted user setting — no DataStore or
+  SharedPreferences existed anywhere in the codebase before this issue.
+  Added `androidx.datastore:datastore-preferences:1.0.0` and a new
+  `SettingsRepository` (`data/repository/SettingsRepository.kt`) wrapping
+  a `Context.settingsDataStore` delegate declared in `AppContainer.kt`,
+  following the existing lazy-property-per-repository DI pattern exactly.
+  `suggestionRadiusKm` is a `Flow<Int>`, default 40, coerced to a minimum
+  of 1 on both read and write (no upper cap, per the issue).
+- `SuggestionEngine.withinRadius(pois, location, radiusMeters)`: a new
+  pure function, deliberately kept separate from `evaluate()`'s existing
+  closed-hours/bad-weather hard filters (rather than folded in) so
+  `HomeViewModel` can tell "nothing is within range" apart from "in range
+  but nothing currently fits" — the two need different empty-state copy.
+  `location == null` (no GPS fix yet) skips the filter entirely rather
+  than measuring against a guess — same principle as the existing
+  Cologne-fallback weather-only default, but the fallback itself is
+  *not* used for distance filtering (flagged as its own investigation,
+  issue #22, since nobody could say why Cologne specifically without
+  digging further).
+- `HomeViewModel`: added `settingsRepository` as a 6th constructor param
+  and a 5th flow in the existing 4-flow `uiState` combine (still within
+  the stdlib direct-lambda overload limit, no arity workaround needed
+  this time). New `HomeUiState.hasFavoritesWithinRadius` /`.radiusKm`
+  fields; `hasFavoritesWithinRadius` is `true` whenever there are no
+  favorites to judge in the first place or location is unknown, `false`
+  only when real favorites exist but all fall outside the radius.
+- `HomeScreen.kt`: new branch inserted between the existing `!hasFavorites`
+  and `deck.isEmpty()` hints — `!hasFavoritesWithinRadius -> CenteredHint(
+  "No suggestions within %d km.")`. Reused the existing `CenteredHint`
+  composable verbatim (a plain non-swipeable `Text`), which satisfies the
+  issue's "should not be swipeable" requirement for free — the swipe
+  gesture code in `SwipeableSuggestionCard` is never reached from any of
+  these hint branches.
+- Settings UI: new "Suggestions" section in `SettingsScreen.kt`, a single
+  `OutlinedTextField` (digits-only `onValueChange` filter, numeric
+  keyboard). Commits to `SettingsViewModel.setSuggestionRadiusKm` only on
+  blur (`Modifier.onFocusChanged`), not per keystroke, and reverts the
+  displayed text to the last-committed value if left blank/non-numeric —
+  first input-style control this screen has ever had (previously only
+  buttons).
+- Deliberately out of scope, per the design discussion: the radius only
+  filters Home's suggestion deck, not Explore's favorites/map (issue
+  title and body are both Home-specific); no "home address" concept was
+  introduced — distance is measured from the same live/last-known device
+  location `SuggestionEngine` already used for scoring.
+- Tests: 111 total (was 104), 0 new failures — the pre-existing 23
+  Robolectric `UnsatisfiedLinkError` failures (MapLibre native init
+  triggered by any test touching `ApplicationProvider.getApplicationContext()`,
+  documented since #15/#16) are untouched, same classes/count as before
+  this issue. New: `SuggestionRadiusTest` (4 cases — in-range, exact
+  boundary, all-excluded, null-location-skips-filter) and
+  `SettingsRepositoryTest` (3 cases — default, round-trip, non-positive
+  coerced to 1), the latter deliberately built on a temp-file
+  `PreferenceDataStoreFactory` DataStore instead of a Robolectric
+  `Context`, so it stays a fast, deterministic plain-JVM test rather than
+  inheriting the known MapLibre-init failure the other Context-based
+  repository tests hit.
+- Not verified on device: the on-blur commit behavior of the new text
+  field and the live "No suggestions within X km" re-filtering as the
+  setting changes are declarative Compose/Flow wiring with no new
+  branchy logic, but not exercised on Robert's phone this session.
+- Filed issue #22 as a follow-up: investigate the hardcoded Cologne
+  fallback location in `HomeViewModel.kt` (why Cologne specifically, and
+  whether it should exist in production builds at all) — found while
+  confirming this issue's "skip the filter when location is unknown"
+  design point.
+
 ## 2026-07-16 — Issue #16: Distinct map pin styling (color/icon) for new POI categories
 
 - Only open `ready-for-agent` issue this session — #15 (its blocker) closed
