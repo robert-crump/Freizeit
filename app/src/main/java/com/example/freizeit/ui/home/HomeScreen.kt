@@ -115,6 +115,9 @@ fun HomeScreen(
             state.isLoading -> CenteredLoading()
             !state.hasPois -> CenteredHint(stringResource(R.string.home_empty))
             !state.hasFavorites -> CenteredHint(stringResource(R.string.home_no_favorites))
+            !state.hasFavoritesWithinRadius -> CenteredHint(
+                stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
+            )
             state.deck.isEmpty() -> CenteredHint(stringResource(R.string.home_no_suggestions))
             else -> SwipeableSuggestionCard(
                 deck = state.deck,

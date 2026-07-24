@@ -14,6 +14,7 @@ import com.example.freizeit.data.dao.CategoryCount
 import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.PoiRepository
+import com.example.freizeit.data.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,11 +45,19 @@ sealed interface BackupStatus {
 
 class SettingsViewModel(
     private val poiRepository: PoiRepository,
-    private val backupRepository: BackupRepository
+    private val backupRepository: BackupRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _importStatus = MutableStateFlow<ImportStatus>(ImportStatus.Idle)
     val importStatus: StateFlow<ImportStatus> = _importStatus
+
+    val suggestionRadiusKm: StateFlow<Int> = settingsRepository.suggestionRadiusKm
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.DEFAULT_RADIUS_KM)
+
+    fun setSuggestionRadiusKm(radiusKm: Int) {
+        viewModelScope.launch { settingsRepository.setSuggestionRadiusKm(radiusKm) }
+    }
 
     val summary: StateFlow<PoiSummary?> = combine(
         poiRepository.categoryCounts,
@@ -104,7 +113,8 @@ class SettingsViewModel(
                 val app = this[APPLICATION_KEY] as FreizeitApplication
                 SettingsViewModel(
                     app.container.poiRepository,
-                    app.container.backupRepository
+                    app.container.backupRepository,
+                    app.container.settingsRepository
                 )
             }
         }

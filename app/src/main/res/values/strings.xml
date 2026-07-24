@@ -7,6 +7,7 @@
     <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
     <string name="home_no_favorites">You haven\'t favorited any places yet. Head to Explore and tap the heart on a place to see it here.</string>
     <string name="home_no_suggestions">None of your favorites fit right now — bad weather or everything\'s closed.</string>
+    <string name="home_no_suggestions_within_radius">No suggestions within %1$d km.</string>
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
     <string name="home_go">Go</string>
@@ -51,4 +52,7 @@
     <string name="settings_backup_working">Working…</string>
     <string name="settings_backup_export_success">Exported %1$d items.</string>
     <string name="settings_backup_import_success">Restored %1$d items.</string>
+    <!-- Settings: suggestions -->
+    <string name="settings_suggestions_section">Suggestions</string>
+    <string name="settings_radius_label">Suggestion radius (km)</string>
 </resources>

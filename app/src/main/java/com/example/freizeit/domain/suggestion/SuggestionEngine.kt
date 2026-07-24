@@ -70,6 +70,21 @@ object SuggestionEngine {
     fun rankAll(pois: List<Poi>, context: SuggestionContext): List<Suggestion> =
         pois.mapNotNull { evaluate(it, context) }.sortedByDescending { it.score }
 
+    /**
+     * Favorites no farther than [radiusMeters] from [location] (issue #21) — checked as a
+     * separate step before [rankAll] rather than folded into [evaluate]'s hard filters, so a
+     * caller can tell "nothing is within range" apart from "things are in range but closed/rainy".
+     *
+     * [location] null means no real fix is available yet (permission pending, no GPS lock) —
+     * filtering against a guess would be worse than not filtering, so every favorite passes.
+     */
+    fun withinRadius(pois: List<Poi>, location: LatLon?, radiusMeters: Double): List<Poi> {
+        if (location == null) return pois
+        return pois.filter {
+            GeoDistance.metersBetween(location.lat, location.lon, it.lat, it.lon) <= radiusMeters
+        }
+    }
+
     /** Null = not a favorite, or hard-filtered. */
     private fun evaluate(poi: Poi, context: SuggestionContext): Suggestion? {
         if (context.verdicts[poi.id]?.value != Verdict.VALUE_FAVORITE) return null
