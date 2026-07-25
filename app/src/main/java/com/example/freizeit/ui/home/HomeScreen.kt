@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -82,6 +83,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var pendingCheckIn by remember { mutableStateOf<Suggestion?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -133,13 +135,36 @@ fun HomeScreen(
                     val navUri = Uri.parse("geo:${poi.lat},${poi.lon}?q=${poi.lat},${poi.lon}($label)")
                     context.startActivity(Intent(Intent.ACTION_VIEW, navUri))
                 },
-                onCheckIn = { suggestion -> viewModel.checkIn(suggestion.poi) },
+                onCheckIn = { suggestion -> pendingCheckIn = suggestion },
                 onUnfavorite = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
             )
         }
+    }
+
+    pendingCheckIn?.let { suggestion ->
+        val poi = suggestion.poi
+        AlertDialog(
+            onDismissRequest = { pendingCheckIn = null },
+            title = {
+                Text(stringResource(R.string.checkin_confirm_message, poi.displayName(state.customNames[poi.id])))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.checkIn(poi)
+                    pendingCheckIn = null
+                }) {
+                    Text(stringResource(R.string.checkin_confirm_checkin))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCheckIn = null }) {
+                    Text(stringResource(R.string.checkin_confirm_cancel))
+                }
+            }
+        )
     }
 }
 
