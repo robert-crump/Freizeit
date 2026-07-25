@@ -59,6 +59,13 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setSuggestionRadiusKm(radiusKm) }
     }
 
+    val autoCheckInEnabled: StateFlow<Boolean> = settingsRepository.autoCheckInEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun setAutoCheckInEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAutoCheckInEnabled(enabled) }
+    }
+
     val summary: StateFlow<PoiSummary?> = combine(
         poiRepository.categoryCounts,
         poiRepository.missingCount,
