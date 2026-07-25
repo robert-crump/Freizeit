@@ -237,7 +237,17 @@ private fun SwipeableSuggestionCard(
 
     var localIndex by rememberSaveable { mutableStateOf(0) }
     val offsetX = remember { Animatable(0f) }
+    // offsetX's last-committed rest position. offsetX itself is never reset to 0 on commit —
+    // doing so would need a second state write racing the localIndex bump below, and a
+    // recomposition caught between the two (new index paired with the old, not-yet-reset offset)
+    // renders the wrong card at the wrong transform for a frame — e.g. the just-swiped-away card
+    // flashing back at full peek size. Bumping localIndex and capturing baseOffset happen back to
+    // back with no suspension point between them, so Compose can never observe one without the
+    // other.
+    var baseOffset by remember { mutableStateOf(0f) }
     var isCommitting by remember { mutableStateOf(false) }
+
+    val effectiveOffset = offsetX.value - baseOffset
 
     val card = deck[localIndex.mod(deck.size)]
     val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
@@ -245,18 +255,18 @@ private fun SwipeableSuggestionCard(
     // Dragging left peeks at the previous card (moving "up" the stack); dragging right, or at
     // rest, peeks at the next one (moving "down") — the same default as before bidirectional
     // paging existed.
-    val peekCard = if (offsetX.value < 0f) previousCard else nextCard
+    val peekCard = if (effectiveOffset < 0f) previousCard else nextCard
 
     fun commit(direction: Int, onCommitted: () -> Unit) {
         if (isCommitting) return
         isCommitting = true
         scope.launch {
             offsetX.animateTo(
-                targetValue = direction * thresholdPx * FADE_DISTANCE_MULTIPLIER,
+                targetValue = baseOffset + direction * thresholdPx * FADE_DISTANCE_MULTIPLIER,
                 animationSpec = tween(COMMIT_ANIMATION_MILLIS)
             )
             onCommitted()
-            offsetX.snapTo(0f)
+            baseOffset = offsetX.value
             isCommitting = false
         }
     }
@@ -265,16 +275,16 @@ private fun SwipeableSuggestionCard(
         modifier = modifier.pointerInput(Unit) {
             detectHorizontalDragGestures(
                 onDragEnd = {
-                    val current = offsetX.value
+                    val current = offsetX.value - baseOffset
                     if (isPastSwipeThreshold(current, thresholdPx)) {
                         val direction = sign(current).toInt()
                         commit(direction) { localIndex += direction }
                     } else {
-                        scope.launch { offsetX.animateTo(0f, animationSpec = spring()) }
+                        scope.launch { offsetX.animateTo(baseOffset, animationSpec = spring()) }
                     }
                 },
                 onDragCancel = {
-                    scope.launch { offsetX.animateTo(0f, animationSpec = spring()) }
+                    scope.launch { offsetX.animateTo(baseOffset, animationSpec = spring()) }
                 },
                 onHorizontalDrag = { change, dragAmount ->
                     if (isCommitting) return@detectHorizontalDragGestures
@@ -285,7 +295,7 @@ private fun SwipeableSuggestionCard(
         }
     ) {
         if (peekCard != null) {
-            val progress = revealProgress(offsetX.value, thresholdPx)
+            val progress = revealProgress(effectiveOffset, thresholdPx)
             SuggestionCard(
                 suggestion = peekCard,
                 customName = customNames[peekCard.poi.id],
@@ -311,8 +321,8 @@ private fun SwipeableSuggestionCard(
                 commit(direction = 1) { onUnfavorite(card) }
             },
             modifier = Modifier.graphicsLayer {
-                translationX = offsetX.value
-                alpha = topCardAlpha(offsetX.value, thresholdPx)
+                translationX = effectiveOffset
+                alpha = topCardAlpha(effectiveOffset, thresholdPx)
             }
         )
     }
