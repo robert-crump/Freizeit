@@ -5,7 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.freizeit.data.FreizeitDatabase
+import com.example.freizeit.data.geofence.GeofenceSyncManager
 import com.example.freizeit.data.repository.BackupRepository
+import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.weather.WeatherRepository
@@ -36,5 +38,13 @@ class AppContainer(private val context: Context) {
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(context.settingsDataStore)
+    }
+
+    val geofenceStateRepository: GeofenceStateRepository by lazy {
+        GeofenceStateRepository(context.settingsDataStore)
+    }
+
+    val geofenceSyncManager: GeofenceSyncManager by lazy {
+        GeofenceSyncManager(context, geofenceStateRepository)
     }
 }

@@ -24,6 +24,10 @@ interface VisitDao {
 
     @Query("DELETE FROM visit WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
+
+    /** Shared across [Visit.SOURCE_MANUAL]/[Visit.SOURCE_NOTIFICATION] — one cooldown clock per place. */
+    @Query("SELECT MAX(visitedAt) FROM visit WHERE placeId = :placeId")
+    suspend fun lastVisitedAt(placeId: String): Long?
 }
 
 /** Logs a check-in, snapshotting the poi as it is right now. */
