@@ -33,6 +33,11 @@
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
     <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>
     <string name="checkin_checked_in">Checked in to %1$s</string>
+    <string name="checkin_history_button">History</string>
+    <string name="checkin_history_title">Check-in history</string>
+    <string name="checkin_history_back">Back</string>
+    <string name="checkin_history_empty">No check-ins yet.</string>
+    <string name="checkin_history_unnamed_place">Unnamed place</string>
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>

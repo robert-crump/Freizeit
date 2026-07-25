@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -35,6 +36,7 @@ import com.example.freizeit.util.LocationHelper
 
 @Composable
 fun CheckInScreen(
+    onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: CheckInViewModel = viewModel(factory = CheckInViewModel.Factory)
 ) {
@@ -57,6 +59,17 @@ fun CheckInScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(onClick = onHistoryClick) {
+                Text(stringResource(R.string.checkin_history_button))
+            }
+        }
+
         state.lastCheckedInName?.let { name ->
             Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
                 Text(
