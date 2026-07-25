@@ -5,12 +5,14 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.freizeit.data.FreizeitDatabase
+import com.example.freizeit.data.geofence.GeofenceLocationMonitor
 import com.example.freizeit.data.geofence.GeofenceSyncManager
 import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.weather.WeatherRepository
+import kotlinx.coroutines.flow.first
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -45,6 +47,15 @@ class AppContainer(private val context: Context) {
     }
 
     val geofenceSyncManager: GeofenceSyncManager by lazy {
-        GeofenceSyncManager(context, geofenceStateRepository)
+        GeofenceSyncManager(context, geofenceStateRepository, database.poiDao())
+    }
+
+    /** Drives [GeofenceSyncManager.rerank] on significant location change (issue #29). */
+    val geofenceLocationMonitor: GeofenceLocationMonitor by lazy {
+        GeofenceLocationMonitor(context) { location ->
+            val enabled = settingsRepository.autoCheckInEnabled.first()
+            val favorites = database.poiDao().observeFavorites().first()
+            geofenceSyncManager.rerank(enabled, favorites, location)
+        }
     }
 }
