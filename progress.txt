@@ -1,5 +1,75 @@
 # Freizeit v2 progress log
 
+## 2026-07-25 — Issue #24: Permission opt-in flow for auto check-in
+
+- Picked over #25/#26/#27 (all unblocked now that #23 is closed): this is the one
+  that unblocks #28 (auto-detect proximity notification, the epic's core feature,
+  currently `ready-for-human` pending this permission groundwork) — #25 is a
+  docs-only amendment and #26/#27 are UI/ranking polish on top of already-shipped
+  check-in, neither unblocks anything else.
+- The issue text claims "there is no existing permission-request flow to extend,
+  this is net-new" — false. `HomeScreen.kt`/`ExploreScreen.kt`/`CheckInScreen.kt`
+  all already request `ACCESS_FINE/COARSE_LOCATION` unconditionally in a
+  `LaunchedEffect(Unit)` on first composition, no rationale, no opt-in gate (Home
+  is the start destination, so this fires at effectively first app launch).
+  Deliberately left untouched — that's pre-existing, separate behavior for
+  foreground GPS fixes used by suggestion ranking, not this issue's scope. Made
+  sure the new auto-check-in toggle's permission chain is independently gated
+  (only ever launched from the Settings toggle's `onCheckedChange`) rather than
+  reusing/short-circuiting on the fact that Home may have already gotten
+  foreground location granted for free.
+- `SettingsRepository`: new `autoCheckInEnabled: Flow<Boolean>` /
+  `setAutoCheckInEnabled()`, a second `booleanPreferencesKey` alongside
+  `suggestionRadiusKm`'s existing `intPreferencesKey`, same DataStore file, same
+  upsert-flow shape. Default `false` (off by default, per the issue).
+- New `util/AutoCheckInPermissions.kt`: thin `ContextCompat.checkSelfPermission`
+  wrappers for the three permissions, mirroring `LocationHelper.hasPermission`'s
+  existing style (no test file — same as `LocationHelper`, which also has none).
+  Background-location/notifications read as already-granted below API 29/33
+  respectively, since those permissions don't exist as a runtime concept there —
+  keeps the Settings status rows from showing a permanent false "Denied" on
+  older OS versions.
+- `AndroidManifest.xml`: added `ACCESS_BACKGROUND_LOCATION` and
+  `POST_NOTIFICATIONS` declarations (previously only fine/coarse foreground
+  location existed).
+- `SettingsScreen.kt`: new "Auto check-in" section, `Switch`-bound to the
+  DataStore flag directly (single source of truth — the switch only ever shows
+  on once the DataStore write actually happens at the end of a successful
+  chain, never optimistically). Turning it off just writes `false` immediately,
+  no permission dance needed. Turning it on shows an `AlertDialog` disclosure/
+  rationale screen first (reused the `AlertDialog` pattern from Explore's
+  existing `CustomNameDialog` — no `Dialog`/nav-route infrastructure needed,
+  consistent with this app having no sub-screen nav pattern yet, confirmed by
+  `FreizeitDestinationTest`'s hardcoded 4-route assertion). Confirming the
+  dialog kicks off three chained `rememberLauncherForActivityResult` callbacks
+  (foreground → background if SDK ≥29 → notifications if SDK ≥33, each
+  triggering the next from its own result callback), ending in
+  `onEnabledChange(true)` only if foreground location was actually granted — a
+  full foreground denial stops the chain immediately and shows an inline denied
+  hint instead of silently leaving a half-configured feature enabled.
+  Per-permission Granted/Denied status rows (shown once the feature is enabled)
+  refresh via a `DisposableEffect`/`LifecycleEventObserver` on `ON_RESUME`
+  (mirroring `PlaceMiniMap.kt`'s existing mapView lifecycle pattern) so a manual
+  grant/revoke via the system app-info screen is picked up on return to the app,
+  not just after a launcher callback.
+- Tests: 122 total (was 120 per #23's log — 118+3 VisitDao/CheckInRanking minus
+  the trimmed #5 entry doesn't affect the count, just progress.txt itself), 26
+  failed (unchanged) — the +2 are two new plain-JVM `SettingsRepositoryTest`
+  cases (default-false, round-trip), confirmed via the per-class XML report
+  that all 5 `SettingsRepositoryTest` cases are green and the 26 failures are
+  the same 6 pre-existing Robolectric `UnsatisfiedLinkError` classes
+  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/
+  BackupRepositoryTest/PoiImportTest) documented since #10/#13/#15/#23 — no new
+  class appears in the failing set.
+- Not verified on device: the actual OS permission dialogs (esp. the Android
+  10+ two-step background-location dance, which on real devices routes through
+  a separate "Allow all the time" system settings screen rather than a second
+  in-app dialog on some OEM skins) and the disclosure `AlertDialog` itself are
+  unexercised beyond compiling/unit-testing the DataStore and chain-sequencing
+  logic — needs a real run on Robert's phone, particularly to confirm the
+  chain's sequencing survives Android's own background-location system UI
+  detour rather than assuming a plain permission-dialog round trip throughout.
+
 ## 2026-07-24 — Issue #23: Manual check-in for nearby POIs
 
 - Picked over #24/#25/#27/#29 on purpose: this is the foundational slice —
@@ -325,41 +395,6 @@
 - Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
   gestures are declarative Compose with no new branchy logic, but not screenshotted
   on Robert's phone this session.
-
-## 2026-07-06 — Issue #5: Home — three suggestion cards with transparent ranking and weather
-
-- domain/ layer (pure Kotlin, fully unit-tested, no Android deps):
-  - OpeningHours: conservative OSM opening_hours evaluator implementing the #1
-    hybrid decision — only ever returns CLOSED when the value is fully understood
-    (24/7, day ranges/lists, split + overnight spans, "off", ";" rule override,
-    PH rules skipped); anything else is UNKNOWN = never filter by hours.
-  - WeatherSnapshot: current + 12h hourly, WMO code helpers, badWeatherWithin /
-    dryHoursAhead / outlook for the strip.
-  - SuggestionEngine: hard filters (known-closed, outdoor when rain falls inside
-    the outing window, unreachable = 2×bike travel + 30 min stay > budget; bike =
-    Haversine ×1.3 detour at 250 m/min) then transparent soft score (distance
-    decay 40·e^(-min/25), weather-fit bonuses, +6 confirmed-open, deterministic
-    daily novelty jitter 0–8) × who-is-along category weight (kids default
-    neutral; adults-only ready for #7). Diversity: if the top 3 share a category
-    the third is swapped for the best other-category place. rankAll() exposed for
-    tests/reroll; reason line parts ("Open", "4 min by bike", "dry all day",
-    "21° ice-cream weather", "good for a rainy day") built alongside the score.
-- data/weather: OpenMeteoClient (plain HttpURLConnection + Gson, keyless, null on
-  any failure) + WeatherRepository with stale-beats-spinner semantics: disk cache
-  in filesDir served instantly, refetch only when >30 min old, failures keep the
-  cache. Live API response shape verified against the DTO from the desktop.
-- ui/home: HomeViewModel (combine POIs + weather + location + reroll exclusions
-  on Dispatchers.Default; reroll excludes all session-shown ids and wraps when
-  the pool runs dry; Cologne fallback for weather when no location) and the new
-  HomeScreen: weather strip (emoji, temp, condition, outlook), three tappable
-  suggestion cards with reason lines, reroll button, reuse of PlaceDetailSheet.
-  Location permission requested on first entry, degrades gracefully without.
-- Tests: 60 total green (was 25). New: 22-scenario fixture (SuggestionScenariosTest
-  — the "suggestions must not feel dumb" validation: rainy Tuesday, sunny Saturday,
-  night owl 3am, budget shrink/grow, no-location, no-weather, reroll, determinism,
-  diversity, adults-only…), 9 OpeningHours tests, 4 OpenMeteo parse tests.
-- APK installed on the phone (was dozing + locked, so no UI drive per the
-  focus-collision rule). On-device smoke test of Home pending Robert.
 
 ## 2026-07-06 — Unlogged carry-over: Explore polish (dark map, locate-me, floating chips)
 

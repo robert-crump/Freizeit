@@ -52,4 +52,18 @@ class SettingsRepositoryTest {
         repository.setSuggestionRadiusKm(-5)
         assertEquals(1, repository.suggestionRadiusKm.first())
     }
+
+    @Test
+    fun `auto check-in defaults to disabled before anything is ever set`() = runTest {
+        assertEquals(false, repository.autoCheckInEnabled.first())
+    }
+
+    @Test
+    fun `auto check-in enabled state round trips`() = runTest {
+        repository.setAutoCheckInEnabled(true)
+        assertEquals(true, repository.autoCheckInEnabled.first())
+
+        repository.setAutoCheckInEnabled(false)
+        assertEquals(false, repository.autoCheckInEnabled.first())
+    }
 }
