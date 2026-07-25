@@ -17,9 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Handles both Play Services' geofence ENTER/EXIT broadcasts and the notification's own action
- * buttons — one receiver so both paths share the same "recompute the one active notification"
- * logic in [refreshNotification].
+ * Handles both Play Services' geofence ENTER/EXIT/DWELL broadcasts and the notification's own
+ * action buttons — one receiver so both paths share the same "recompute the one active
+ * notification" logic in [refreshNotification]. ENTER is ignored outright: only DWELL (staying,
+ * not just passing by) is notification-worthy.
  */
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
@@ -45,17 +46,22 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             Log.w(TAG, "Geofencing error code ${event.errorCode}")
             return
         }
+        if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
+            // Merely passing by isn't notification-worthy — only a confirmed DWELL is. Ignore
+            // entirely so a drive-by never touches dwelling state or shows a prompt.
+            return
+        }
         val triggeringPlaceIds = event.triggeringGeofences.orEmpty().map { it.requestId }.toSet()
         val geofenceState = app.container.geofenceStateRepository
-        val insideIds = when (event.geofenceTransition) {
-            Geofence.GEOFENCE_TRANSITION_ENTER -> geofenceState.getInsidePlaceIds() + triggeringPlaceIds
-            Geofence.GEOFENCE_TRANSITION_EXIT -> geofenceState.getInsidePlaceIds() - triggeringPlaceIds
+        val dwellingIds = when (event.geofenceTransition) {
+            Geofence.GEOFENCE_TRANSITION_DWELL -> geofenceState.getDwellingPlaceIds() + triggeringPlaceIds
+            Geofence.GEOFENCE_TRANSITION_EXIT -> geofenceState.getDwellingPlaceIds() - triggeringPlaceIds
             else -> return
         }
-        geofenceState.setInsidePlaceIds(insideIds)
+        geofenceState.setDwellingPlaceIds(dwellingIds)
 
         val triggerLocation = event.triggeringLocation ?: return
-        refreshNotification(app, insideIds, triggerLocation.latitude, triggerLocation.longitude)
+        refreshNotification(app, dwellingIds, triggerLocation.latitude, triggerLocation.longitude)
     }
 
     private suspend fun handleCheckIn(app: FreizeitApplication, intent: Intent) {
@@ -67,11 +73,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     private suspend fun refreshNotification(
         app: FreizeitApplication,
-        insidePlaceIds: Set<String>,
+        dwellingPlaceIds: Set<String>,
         triggerLat: Double,
         triggerLon: Double
     ) {
-        if (insidePlaceIds.isEmpty()) {
+        if (dwellingPlaceIds.isEmpty()) {
             GeofenceNotifications.cancel(app)
             return
         }
@@ -79,7 +85,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val visitDao = app.container.database.visitDao()
         val now = System.currentTimeMillis()
 
-        val candidates = insidePlaceIds.mapNotNull { placeId ->
+        val candidates = dwellingPlaceIds.mapNotNull { placeId ->
             poiDao.getById(placeId)?.let { poi -> GeofenceCandidate(poi.id, poi.lat, poi.lon) }
         }
         val coolingDown = candidates
