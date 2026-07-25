@@ -1,5 +1,21 @@
 # Freizeit v2 progress log
 
+## 2026-07-25 — Issue #25: Amend product doc for the geofencing reversal
+
+- Only unblocked `ready-for-agent` issue: #29 is blocked by #28, which is
+  still `ready-for-human` (not agent-pickable). #25 itself has no blockers.
+- `docs/ideas/freizeit-2.0-family-concierge.md`'s "Not Doing" entry for
+  "Geofencing / background location" struck through (not deleted) with a
+  dated addendum explaining the reversal: #20 (check-in) needs background
+  proximity detection to prompt a check-in while the app is closed, which a
+  next-open prompt can't provide; #28 is the issue that actually implements
+  the geofencing, flagged `ready-for-human` for its Play Store policy
+  surface rather than a routine agent pickup. Kept the original rationale
+  text intact above the strikethrough so the doc still reads as a decision
+  history, per the issue's explicit ask.
+- Docs-only change, no code touched — no test run, no `progress.txt` test
+  count line needed.
+
 ## 2026-07-25 — Issue #28: Auto-detect proximity notification for favorites
 
 - Flagged `ready-for-human` (not `ready-for-agent`) in the issue itself —
@@ -556,45 +572,4 @@
   no app/Kotlin code was touched, so no Gradle run — this issue is data/
   tooling-only. #15 (Room import/query) and #16 (map pin styling) are the
   ready-for-agent issues that consume this new data next.
-
-## 2026-07-15 — Issue #13: Layers FAB + panel: replace category chips with single-select overlay
-
-- Picked over #14 (also unblocked) because it's fully self-contained in this repo —
-  #14 needs the Ride-Graph .pbf sources + osmium venv on this machine, and #15/#16
-  both need #13 done regardless of which root ships first.
-- ExploreScreen.kt: `PoiCategoryChipRow` deleted. New `Icons.Default.Layers`
-  `FloatingActionButton` (same default size as the locate-me FAB): stacked above
-  locate-me at bottom-end in Map view (a `Column` with 12dp spacing), shown alone
-  at bottom-end in List view (locate-me only ever existed in Map view). Tapping it
-  opens `LayersPanel` — a scrim (32% black) + centered `Card` that swallows its own
-  clicks, mirroring Velometrics' `MapViewScreen.kt` layers-FAB shell exactly (same
-  scrim alpha, same `clickable(indication = null, interactionSource = remember {
-  MutableInteractionSource() })` swallow trick) since the issue asked to reuse that
-  pattern. Panel body is a single-select row list (Favorites, All POIs, then each
-  category via the existing `CategoryDot`), not Velometrics' toggle-`Switch` rows,
-  since this issue's filter model is mutually-exclusive-select, not independent
-  layers. Selecting a row applies it and closes the panel; scrim/close-button
-  dismiss without changing the filter.
-- ExploreViewModel.kt: new `showAllPois` `MutableStateFlow<Boolean>`, mutually
-  exclusive with `selectedCategory`/`favoritesOnly`/`searchQuery` exactly like the
-  existing three were with each other (`selectAllPois()` mirrors `toggleFavoritesOnly()`).
-  `filterAndSort` gained a `showAll: Boolean = false` param, checked after the
-  search/favorites branches and before the category-equality fallback, so "All
-  POIs" surfaces every category on one map source and in one list, per the issue's
-  acceptance criteria. The outer `combine()` was already at the stdlib 5-flow arity
-  limit (per #8's note) — folded `selectedCategory`/`favoritesOnly`/`showAllPois`
-  into one `layerSelection = combine(...) { Triple(...) }` stage first, same
-  workaround Home used.
-- Cold start unchanged: nothing selected → `filterAndSort`'s fallback branch
-  (`it.category == null`) still matches nothing, same empty map/list as the old
-  chip row's initial state.
-- Tests: 97 total (was 94), 0 new failures — added 3 `FilterAndSortTest` cases for
-  `showAll` (passes everything through, search and favorites still take priority
-  over it). The pre-existing 21 Robolectric `UnsatisfiedLinkError` failures (MapLibre
-  native init under the JVM test env, flagged unrelated as far back as #10) are
-  still exactly 21, confirmed via the HTML report's per-class failure counts —
-  `FilterAndSortTest` itself shows 0 failures.
-- Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
-  gestures are declarative Compose with no new branchy logic, but not screenshotted
-  on Robert's phone this session.
 

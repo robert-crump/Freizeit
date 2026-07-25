@@ -61,7 +61,13 @@ One screen done well: weather strip + three suggestion cards with reason lines +
 - **Kid-Picks Mode (wheel / picture cards)** — promising v2 feature, but it needs a trusted suggestion engine underneath first.
 - **Full logbook (notes, photos)** — habit-dependent; the 👍/👎/❤️ atom captures the value without the journaling graveyard.
 - **Real routing / transit times** — Haversine estimates survive; 4-minute errors don't change family decisions.
-- **Geofencing / background location** — heavy machinery against the app's no-surveillance ethos; the next-open prompt does the job.
+- ~~**Geofencing / background location** — heavy machinery against the app's no-surveillance ethos; the next-open prompt does the job.~~
+  **Reversed 2026-07-25 (#25):** the check-in feature (#20) needs background
+  proximity detection to prompt a check-in while the app is closed — a
+  next-open prompt can't do that job. #28 introduces background geofencing
+  for this; flagged `ready-for-human` for its Play Store policy surface
+  (background location permission, prominent disclosure) rather than picked
+  up as a routine agent task.
 - **Manual entry as a primary flow** — it's what killed v1. Entry stays possible but buried.
 - **Accounts, sync, sharing, Play Store** — no backend by constraint; household = one device for now.
 
