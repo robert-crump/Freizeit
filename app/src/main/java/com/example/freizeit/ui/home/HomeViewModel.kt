@@ -12,6 +12,7 @@ import com.example.freizeit.data.dao.PendingVisitDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
+import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
@@ -74,6 +75,7 @@ class HomeViewModel(
     private val pendingVisitDao: PendingVisitDao,
     private val weatherRepository: WeatherRepository,
     poiCustomNameDao: PoiCustomNameDao,
+    visitDao: VisitDao,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
@@ -84,20 +86,23 @@ class HomeViewModel(
         val favoritePois: List<Poi>,
         val hasPois: Boolean,
         val verdicts: Map<String, Verdict>,
-        val customNames: Map<String, String>
+        val customNames: Map<String, String>,
+        val visits: Map<String, List<Long>>
     )
 
     private val poisVerdictsAndNames = combine(
         poiDao.observeFavorites(),
         poiDao.observeCount(),
         verdictDao.observeAll(),
-        poiCustomNameDao.observeAll()
-    ) { favoritePois, poiCount, verdicts, customNames ->
+        poiCustomNameDao.observeAll(),
+        visitDao.observeAll()
+    ) { favoritePois, poiCount, verdicts, customNames, visits ->
         PoiSlice(
             favoritePois = favoritePois,
             hasPois = poiCount > 0,
             verdicts = verdicts.associateBy { it.placeId },
-            customNames = customNames.associate { it.placeId to it.customName }
+            customNames = customNames.associate { it.placeId to it.customName },
+            visits = visits.groupBy({ it.placeId }, { it.visitedAt })
         )
     }
 
@@ -112,7 +117,8 @@ class HomeViewModel(
             now = LocalDateTime.now(),
             location = loc,
             weather = weather,
-            verdicts = slice.verdicts
+            verdicts = slice.verdicts,
+            visits = slice.visits
         )
         val favoritesInRange = SuggestionEngine.withinRadius(slice.favoritePois, loc, radiusKm * 1000.0)
         HomeUiState(
@@ -209,6 +215,7 @@ class HomeViewModel(
                     app.container.database.pendingVisitDao(),
                     app.container.weatherRepository,
                     app.container.database.poiCustomNameDao(),
+                    app.container.database.visitDao(),
                     app.container.settingsRepository
                 )
             }

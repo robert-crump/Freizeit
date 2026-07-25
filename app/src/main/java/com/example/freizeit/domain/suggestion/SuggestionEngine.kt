@@ -10,6 +10,7 @@ import com.example.freizeit.util.LatLon
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.roundToInt
 
 /** Everything the engine needs to know about the outing being planned. */
@@ -20,7 +21,10 @@ data class SuggestionContext(
     /** Seed for the small novelty jitter; same seed = same ranking. */
     val noveltySeed: Long = now.toLocalDate().toEpochDay(),
     /** Verdicts keyed by place id — only a "favorite" verdict makes a place a candidate. */
-    val verdicts: Map<String, Verdict> = emptyMap()
+    val verdicts: Map<String, Verdict> = emptyMap(),
+    /** Check-in timestamps (epoch millis) per place id, full history — [SuggestionEngine]
+     *  applies the trailing-90-day window itself rather than receiving pre-filtered counts. */
+    val visits: Map<String, List<Long>> = emptyMap()
 ) {
     val nowMillis: Long = now.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
 }
@@ -65,6 +69,10 @@ object SuggestionEngine {
     /** Extra edge for a favorite that's also genuinely close by, on top of the distance decay above. */
     private const val PROXIMITY_BONUS = 15.0
     private const val PROXIMITY_DECAY_MINUTES = 25.0
+
+    /** Lookback for the visit-frequency term below — fixed, not user-configurable (issue #27). */
+    private const val VISIT_FREQUENCY_WINDOW_DAYS = 90L
+    private const val VISIT_FREQUENCY_WEIGHT = 10.0
 
     /** All favorited places that survive the hard filters, best first — the whole swipe deck. */
     fun rankAll(pois: List<Poi>, context: SuggestionContext): List<Suggestion> =
@@ -141,6 +149,13 @@ object SuggestionEngine {
                     reasons += "good for a rainy day"
                 }
             }
+        }
+
+        val windowStartMillis = context.nowMillis - VISIT_FREQUENCY_WINDOW_DAYS * 24 * 60 * 60 * 1000L
+        val recentVisits = context.visits[poi.id]?.count { it >= windowStartMillis } ?: 0
+        if (recentVisits > 0) {
+            score += VISIT_FREQUENCY_WEIGHT * ln(1.0 + recentVisits)
+            reasons += if (recentVisits == 1) "visited recently" else "visited $recentVisits× recently"
         }
 
         score += noveltyJitter(context.noveltySeed, poi.id)
