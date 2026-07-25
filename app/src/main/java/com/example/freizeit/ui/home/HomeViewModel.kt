@@ -13,6 +13,7 @@ import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
+import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
@@ -75,7 +76,7 @@ class HomeViewModel(
     private val pendingVisitDao: PendingVisitDao,
     private val weatherRepository: WeatherRepository,
     poiCustomNameDao: PoiCustomNameDao,
-    visitDao: VisitDao,
+    private val visitDao: VisitDao,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
@@ -161,6 +162,11 @@ class HomeViewModel(
 
     fun setVerdict(poi: Poi, value: String?) {
         viewModelScope.launch(Dispatchers.IO) { verdictDao.setVerdict(poi, value) }
+    }
+
+    /** Tapping "Check-in" on a card records a visit immediately, same as the Check-in tab. */
+    fun checkIn(poi: Poi) {
+        viewModelScope.launch(Dispatchers.IO) { visitDao.checkIn(poi) }
     }
 
     /** Tapping "Go" on a card records intent; the banner appears next open, 2h+ later. */

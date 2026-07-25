@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -24,12 +25,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -130,6 +133,7 @@ fun HomeScreen(
                     val navUri = Uri.parse("geo:${poi.lat},${poi.lon}?q=${poi.lat},${poi.lon}($label)")
                     context.startActivity(Intent(Intent.ACTION_VIEW, navUri))
                 },
+                onCheckIn = { suggestion -> viewModel.checkIn(suggestion.poi) },
                 onUnfavorite = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -197,6 +201,7 @@ private fun SwipeableSuggestionCard(
     customNames: Map<String, String>,
     location: LatLon?,
     onGo: (Suggestion) -> Unit,
+    onCheckIn: (Suggestion) -> Unit,
     onUnfavorite: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -261,6 +266,7 @@ private fun SwipeableSuggestionCard(
                 customName = customNames[peekCard.poi.id],
                 location = location,
                 onGo = {},
+                onCheckIn = {},
                 onUnfavorite = {},
                 modifier = Modifier.graphicsLayer {
                     scaleX = lerp(PEEK_REST_SCALE, 1f, progress)
@@ -275,6 +281,7 @@ private fun SwipeableSuggestionCard(
             customName = customNames[card.poi.id],
             location = location,
             onGo = { onGo(card) },
+            onCheckIn = { onCheckIn(card) },
             onUnfavorite = {
                 commit(direction = 1) { onUnfavorite(card) }
             },
@@ -373,7 +380,7 @@ private const val HEART_ICON_TOP_NUDGE_DP = 10
 
 /**
  * Self-contained swipeable unit (issue #17): name, a single-POI mini-map (current location vs.
- * this favorite), opening hours if known, and the Go/unfavorite actions all travel together.
+ * this favorite), opening hours if known, and the Go/Check-in/unfavorite actions all travel together.
  */
 @Composable
 private fun SuggestionCard(
@@ -381,6 +388,7 @@ private fun SuggestionCard(
     customName: String?,
     location: LatLon?,
     onGo: () -> Unit,
+    onCheckIn: () -> Unit,
     onUnfavorite: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -472,8 +480,23 @@ private fun SuggestionCard(
                 )
             }
 
-            Button(onClick = onGo, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.home_go))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Button(onClick = onGo, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.home_go))
+                }
+                OutlinedButton(
+                    onClick = onCheckIn,
+                    modifier = Modifier.weight(1f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(stringResource(R.string.home_checkin))
+                }
             }
         }
     }
