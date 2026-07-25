@@ -38,6 +38,30 @@
     <string name="checkin_history_back">Back</string>
     <string name="checkin_history_empty">No check-ins yet.</string>
     <string name="checkin_history_unnamed_place">Unnamed place</string>
+    <string name="checkin_search_icon">Search</string>
+    <string name="checkin_search_clear">Clear search</string>
+    <string name="checkin_search_placeholder">Search places by name</string>
+    <string name="checkin_search_waiting_location">Waiting for your location to search nearby places.</string>
+    <string name="checkin_search_empty">No matches nearby.</string>
+    <string name="checkin_favorites_nearby_header">Favorites nearby:</string>
+    <string name="checkin_favorites_nearby_empty">No favorite places nearby. Search to check in elsewhere.</string>
+    <string name="checkin_confirm_message">Do you want to check into %1$s?</string>
+    <string name="checkin_confirm_checkin">Check-in</string>
+    <string name="checkin_confirm_cancel">Cancel</string>
+    <string name="checkin_history_selected_count">%1$d selected</string>
+    <string name="checkin_history_selection_delete">Delete selected</string>
+    <string name="checkin_history_selection_clear">Cancel selection</string>
+    <string name="checkin_history_delete_confirm_delete">Delete</string>
+    <string name="checkin_history_delete_confirm_cancel">Cancel</string>
+    <string name="checkin_history_undo_action">Undo</string>
+    <plurals name="checkin_history_delete_confirm_message">
+        <item quantity="one">Do you want to delete this check-in?</item>
+        <item quantity="other">Do you want to delete these %1$d check-ins?</item>
+    </plurals>
+    <plurals name="checkin_history_delete_undo_message">
+        <item quantity="one">%1$d check-in deleted</item>
+        <item quantity="other">%1$d check-ins deleted</item>
+    </plurals>
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>

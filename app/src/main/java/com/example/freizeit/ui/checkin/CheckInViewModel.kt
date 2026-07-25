@@ -58,11 +58,17 @@ fun rankNearbyForCheckIn(
 }
 
 data class CheckInUiState(
-    val nearby: List<CheckInCandidate> = emptyList(),
+    /** Favorites within [CHECKIN_FAVORITE_RADIUS_METERS], shown by default. */
+    val favoritesNearby: List<CheckInCandidate> = emptyList(),
+    val searchQuery: String = "",
+    /** Matches (favorite or not) within [CHECKIN_MAX_RADIUS_METERS], populated only while searching. */
+    val searchResults: List<CheckInCandidate> = emptyList(),
     val hasLocation: Boolean = false,
     /** Name of the place last checked into this session, shown as a brief confirmation. */
     val lastCheckedInName: String? = null
-)
+) {
+    val isSearching: Boolean get() = searchQuery.isNotBlank()
+}
 
 class CheckInViewModel(
     private val appContext: Context,
@@ -73,16 +79,28 @@ class CheckInViewModel(
 
     private val location = MutableStateFlow<LatLon?>(null)
     private val lastCheckedInName = MutableStateFlow<String?>(null)
+    private val searchQuery = MutableStateFlow("")
 
     val uiState: StateFlow<CheckInUiState> = combine(
         poiDao.observeAll(),
         verdictDao.observeAll(),
         location,
-        lastCheckedInName
-    ) { pois, verdicts, loc, lastName ->
+        lastCheckedInName,
+        searchQuery
+    ) { pois, verdicts, loc, lastName, query ->
+        val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
+            ?: emptyList()
+        val trimmedQuery = query.trim()
         CheckInUiState(
-            nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
-                ?: emptyList(),
+            favoritesNearby = nearby.filter {
+                it.isFavorite && it.distanceMeters <= CHECKIN_FAVORITE_RADIUS_METERS
+            },
+            searchQuery = query,
+            searchResults = if (trimmedQuery.isEmpty()) {
+                emptyList()
+            } else {
+                nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
+            },
             hasLocation = loc != null,
             lastCheckedInName = lastName
         )
@@ -100,6 +118,14 @@ class CheckInViewModel(
                 LocationHelper.lastKnownLocation(appContext)
             }
         }
+    }
+
+    fun setSearchQuery(query: String) {
+        searchQuery.value = query
+    }
+
+    fun clearSearch() {
+        searchQuery.value = ""
     }
 
     fun checkIn(poi: Poi) {

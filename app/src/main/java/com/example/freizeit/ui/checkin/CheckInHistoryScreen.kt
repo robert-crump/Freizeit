@@ -1,5 +1,9 @@
 package com.example.freizeit.ui.checkin
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,14 +15,30 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,29 +56,69 @@ fun CheckInHistoryScreen(
     modifier: Modifier = Modifier,
     viewModel: CheckInHistoryViewModel = viewModel(factory = CheckInHistoryViewModel.Factory)
 ) {
-    val visits by viewModel.visits.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val undoMessage = if (state.undoableDeleteCount > 0) {
+        pluralStringResource(
+            R.plurals.checkin_history_delete_undo_message,
+            state.undoableDeleteCount,
+            state.undoableDeleteCount
+        )
+    } else {
+        null
+    }
+    val undoActionLabel = stringResource(R.string.checkin_history_undo_action)
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(R.string.checkin_history_back)
-                )
-            }
-            Text(
-                text = stringResource(R.string.checkin_history_title),
-                style = MaterialTheme.typography.titleLarge
+    LaunchedEffect(undoMessage) {
+        if (undoMessage != null) {
+            val result = snackbarHostState.showSnackbar(
+                message = undoMessage,
+                actionLabel = undoActionLabel
             )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete()
+            } else {
+                viewModel.dismissUndo()
+            }
         }
+    }
 
-        Box(modifier = Modifier.weight(1f)) {
-            if (visits.isEmpty()) {
+    BackHandler(enabled = state.isSelecting) { viewModel.clearSelection() }
+
+    Scaffold(
+        modifier = modifier,
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        topBar = {
+            if (state.isSelecting) {
+                SelectionTopBar(
+                    selectedCount = state.selectedIds.size,
+                    onDeleteClick = { showDeleteConfirm = true },
+                    onCancelClick = viewModel::clearSelection
+                )
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.checkin_history_back)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.checkin_history_title),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            if (state.visits.isEmpty()) {
                 Text(
                     text = stringResource(R.string.checkin_history_empty),
                     modifier = Modifier
@@ -69,27 +129,109 @@ fun CheckInHistoryScreen(
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(visits, key = { it.id }) { visit ->
-                        VisitRow(visit)
+                    items(state.visits, key = { it.id }) { visit ->
+                        VisitRow(
+                            visit = visit,
+                            isSelecting = state.isSelecting,
+                            isSelected = visit.id in state.selectedIds,
+                            onLongPress = { viewModel.startSelecting(visit.id) },
+                            onClick = { if (state.isSelecting) viewModel.toggleSelected(visit.id) }
+                        )
                     }
                 }
             }
         }
     }
+
+    if (showDeleteConfirm) {
+        val count = state.selectedIds.size
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = {
+                Text(
+                    pluralStringResource(R.plurals.checkin_history_delete_confirm_message, count, count)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteConfirm = false
+                    viewModel.deleteSelected()
+                }) {
+                    Text(stringResource(R.string.checkin_history_delete_confirm_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(stringResource(R.string.checkin_history_delete_confirm_cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun VisitRow(visit: Visit, modifier: Modifier = Modifier) {
+private fun SelectionTopBar(
+    selectedCount: Int,
+    onDeleteClick: () -> Unit,
+    onCancelClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = visit.snapshotName ?: stringResource(R.string.checkin_history_unnamed_place),
-            style = MaterialTheme.typography.bodyLarge
+            text = stringResource(R.string.checkin_history_selected_count, selectedCount),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.weight(1f)
         )
+        IconButton(onClick = onDeleteClick) {
+            Icon(
+                imageVector = Icons.Filled.Delete,
+                contentDescription = stringResource(R.string.checkin_history_selection_delete)
+            )
+        }
+        IconButton(onClick = onCancelClick) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.checkin_history_selection_clear)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VisitRow(
+    visit: Visit,
+    isSelecting: Boolean,
+    isSelected: Boolean,
+    onLongPress: () -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
+            )
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (isSelecting) {
+            Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = visit.snapshotName ?: stringResource(R.string.checkin_history_unnamed_place),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
         Text(
             text = formatVisitTimestamp(visit.visitedAt),
             style = MaterialTheme.typography.bodySmall,

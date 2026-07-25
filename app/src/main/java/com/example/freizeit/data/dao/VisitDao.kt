@@ -13,11 +13,17 @@ interface VisitDao {
     @Insert
     suspend fun insert(visit: Visit)
 
+    @Insert
+    suspend fun insertAll(visits: List<Visit>)
+
     @Query("SELECT * FROM visit ORDER BY visitedAt DESC")
     fun observeAll(): Flow<List<Visit>>
 
     @Query("SELECT * FROM visit ORDER BY visitedAt DESC")
     suspend fun getAll(): List<Visit>
+
+    @Query("DELETE FROM visit WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Long>)
 }
 
 /** Logs a check-in, snapshotting the poi as it is right now. */
