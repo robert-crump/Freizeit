@@ -1,5 +1,66 @@
 # Freizeit v2 progress log
 
+## 2026-07-25 — Issue #26: Check-in history screen
+
+- Picked over #25 (a docs-only decision amendment, no code) and #29 (blocked
+  by #28, which is still `ready-for-human`): #26 was the only unblocked,
+  code-affecting `ready-for-agent` issue left. #23 (its blocker) closed
+  2026-07-24.
+- The issue's nav requirements ("Check-in tab stays highlighted while history
+  is shown", "back returns to the Check-in entry screen, not another tab")
+  needed real nested navigation, not just a boolean-toggle `when` inside
+  `CheckInScreen` — this app already uses `androidx.navigation-compose`
+  (`FreizeitApp.kt`'s `NavHost` + per-tab `composable()` routes), just never a
+  nested graph before. Used `NavGraphBuilder.navigation(startDestination =
+  "checkin/entry", route = "checkin")` wrapping two `composable()`s
+  (`checkin/entry` → `CheckInScreen`, `checkin/history` → the new
+  `CheckInHistoryScreen`) in place of the old single `composable("checkin")`.
+  This gets both requirements for free: a nested destination's `hierarchy`
+  includes its parent graph's route, so the bottom bar's existing `currentDestination
+  ?.hierarchy?.any { it.route == destination.route }` check still matches
+  "checkin" while on the history screen with no changes to that code, and
+  `navController.popBackStack()` from history lands back on `checkin/entry`
+  specifically (the previous back-stack entry), never another tab.
+  `FreizeitDestination` enum itself (and `FreizeitDestinationTest`'s
+  four-route assertion) is untouched — the nested routes are private route
+  string constants in `FreizeitApp.kt`, not new enum entries.
+- New `CheckInHistoryViewModel` (thin, same `Factory`/`APPLICATION_KEY`
+  pattern as `CheckInViewModel`) exposes `VisitDao.observeAll()` directly as
+  a `StateFlow<List<Visit>>` — that query already sorts `ORDER BY visitedAt
+  DESC` (added in #23), so "reverse-chronological" needed no new DAO method.
+  Each row shows `Visit.snapshotName` (falls back to a generic "Unnamed
+  place" string, matching how `snapshotName` is nullable) and `visitedAt`
+  formatted via the same `DateTimeFormatter.ofLocalizedDateTime(FormatStyle
+  .MEDIUM)` one-liner `SettingsScreen.kt` already uses for its import
+  timestamp — copied rather than extracted to a shared util, matching this
+  codebase's existing per-file-private-formatter convention (not shared
+  anywhere else either).
+- `CheckInScreen.kt`: added a `TextButton` ("History") in a new top `Row`
+  (`Arrangement.End`), and a required `onHistoryClick: () -> Unit` param
+  wired from `FreizeitApp.kt`'s nested graph — no confirmation dialog or
+  Snackbar, consistent with the rest of this screen's minimal-UI style.
+- Deliberately no `TopAppBar`: grepped the whole app first and confirmed zero
+  existing `TopAppBar` usage anywhere (every screen relies on the bottom nav
+  alone for chrome) — added a plain `Row` with an `IconButton`
+  (`Icons.AutoMirrored.Filled.ArrowBack`) + title `Text` instead, so this
+  doesn't become the app's first and only screen with a real app bar.
+- Tests: no new test files. No new pure/business logic was introduced (the
+  ranking/query logic is #23's already-tested `rankNearbyForCheckIn`/
+  `VisitDao.observeAll`) — this issue is wiring + a new nav route + a new
+  formatting-only screen, and this codebase has zero Compose UI test
+  infrastructure (`createComposeRule` et al.) to exercise the nav graph
+  itself against. `testDebugUnitTest`: 124 total, 26 failed — same count and
+  same pre-existing Robolectric `UnsatisfiedLinkError` classes as #27's
+  baseline (`VisitDaoTest`/`BackupRepositoryTest`/`PoiImportTest`/etc.),
+  confirming this change added no regressions. `compileDebugKotlin` passed
+  clean; `FreizeitDestinationTest` (4-route assertion) still green.
+- Not verified on device: the nested-graph back-stack behavior (tab staying
+  highlighted, back landing on the entry screen rather than popping out of
+  the tab entirely) is exactly the kind of thing that can look right by
+  reading the Navigation library's documented `hierarchy`/`popBackStack`
+  semantics but still surprise on a real back-gesture vs. button tap —
+  needs a real run on Robert's phone.
+
 ## 2026-07-25 — Issue #27: Visit-frequency ranking boost for favorites
 
 - Picked over #25/#26 (both unblocked, #23 closed): #25 is a docs-only decision
@@ -447,54 +508,4 @@
   wouldn't get mixed into that diff: CARTO Dark Matter basemap, a locate-me
   FAB that recenters/zooms on tap, and the category chips moved to float
   over the map instead of a separate row above the view toggle.
-
-## 2026-07-06 — Issue #6: Verdicts + cooldowns end-to-end
-
-- PendingVisit: new single-row table (same pattern as ImportInfo), snapshots
-  name/coords/category like Verdict does so the banner and the verdict it
-  may produce don't depend on the poi row still existing. This is the
-  first real schema change since #2/#3 seeded v1 — wrote an actual
-  Migration(1, 2) (CREATE TABLE, no data loss) instead of destructive
-  fallback, since the phone already carries real POI/verdict data.
-- VerdictDao: added delete + observeAll, plus a `setVerdict(poi, value)`
-  extension (null clears) shared by Home and Explore — one tap sets,
-  re-tapping the same value clears, tapping another changes it.
-- SuggestionEngine: verdicts flow into SuggestionContext keyed by place id.
-  👎 is a hard filter forever; ❤️/👍 are hard-filtered only inside their
-  cooldown (❤️ 2 days, 👍 2 weeks — kids' rituals are a feature) and get a
-  score boost with a reason line once the cooldown passes. Pure and
-  covered by SuggestionVerdictTest; existing scenario tests untouched
-  since verdicts defaults to empty.
-- PlaceDetailSheet: added the 👍/👎/❤️ row (shared composable, wired from
-  both HomeScreen and ExploreScreen so both surfaces get one-tap set/change
-  for free).
-- Home: "Go" button on each suggestion card writes a PendingVisit. The
-  combine pipeline gates the banner on `wentAt` being ≥2h old
-  (`PendingVisit.isReadyForBanner`, pulled out as a pure top-level function
-  and unit-tested — the ViewModel itself stays thin per this codebase's
-  convention). Answering 👍/👎/❤️ records a verdict from the snapshot and
-  clears the pending visit; "didn't go" just clears it.
-- Explore: ❤️ "Loved" filter chip added to the floating category-chip row
-  (today's other change); `filterAndSort` takes an optional `lovedIds` set
-  so the pure-function contract stays testable.
-- Deliberately out of scope: the issue's prose mentions rerolled-past cards
-  getting "a mild penalty until the next day" as color, but it's not in the
-  acceptance criteria — the existing session-scoped hard reroll-exclusion
-  from #5 already satisfies "no repeats" and I didn't want to add a new
-  persisted RerollEvent table for an untested requirement. Flagging here in
-  case a future issue wants day-scoped (not session-scoped) reroll memory.
-- Not verified: the 1→2 migration against a real on-device v1 database —
-  exportSchema is false (a deliberate #2 choice) so there's no schema
-  fixture to run a MigrationTestHelper against, and adding that
-  infrastructure felt like scope creep for this issue. The CREATE TABLE
-  was hand-checked column-by-column against the PendingVisit entity.
-  Real validation is on-device: install the updated APK over the existing
-  one and confirm POIs/verdicts survive and pending_visit gets created.
-- Tests: 78 total green (was 60). New: SuggestionVerdictTest (6, cooldown +
-  boost + permanent down-filter), HomeVisitBannerTest (4, the 2h gate),
-  VerdictDaoTest (3), PendingVisitDaoTest (3), FilterAndSortTest +2 (loved
-  filter).
-- Not verified on device (same reasons as prior sessions — phone in active
-  use / locked). Go → banner → verdict loop, the ❤️ Explore filter, and the
-  migration itself all need a real run on Robert's phone.
 

@@ -26,8 +26,10 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.example.freizeit.R
+import com.example.freizeit.ui.checkin.CheckInHistoryScreen
 import com.example.freizeit.ui.checkin.CheckInScreen
 import com.example.freizeit.ui.explore.ExploreScreen
 import com.example.freizeit.ui.home.HomeScreen
@@ -44,6 +46,9 @@ enum class FreizeitDestination(
     CHECKIN("checkin", R.string.tab_checkin, Icons.Filled.CheckCircle, Icons.Outlined.CheckCircle),
     SETTINGS("settings", R.string.tab_settings, Icons.Filled.Settings, Icons.Outlined.Settings)
 }
+
+private const val CHECKIN_ENTRY_ROUTE = "checkin/entry"
+private const val CHECKIN_HISTORY_ROUTE = "checkin/history"
 
 @Composable
 fun FreizeitApp() {
@@ -88,7 +93,17 @@ fun FreizeitApp() {
         ) {
             composable(FreizeitDestination.HOME.route) { HomeScreen() }
             composable(FreizeitDestination.EXPLORE.route) { ExploreScreen() }
-            composable(FreizeitDestination.CHECKIN.route) { CheckInScreen() }
+            navigation(
+                startDestination = CHECKIN_ENTRY_ROUTE,
+                route = FreizeitDestination.CHECKIN.route
+            ) {
+                composable(CHECKIN_ENTRY_ROUTE) {
+                    CheckInScreen(onHistoryClick = { navController.navigate(CHECKIN_HISTORY_ROUTE) })
+                }
+                composable(CHECKIN_HISTORY_ROUTE) {
+                    CheckInHistoryScreen(onBack = { navController.popBackStack() })
+                }
+            }
             composable(FreizeitDestination.SETTINGS.route) { SettingsScreen() }
         }
     }
