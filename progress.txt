@@ -1,5 +1,63 @@
 # Freizeit v2 progress log
 
+## 2026-07-25 — Issue #29: Closest-100 geofence selection for large favorite counts
+
+- Picked up on explicit user override: #29 is the only `ready-for-agent` issue, but its
+  "Blocked by #28" note is a formal-tracker relationship, not a technical one — #28's code
+  (`GeofenceSyncManager` registering every favorite, no cap) is already implemented and on
+  `main` (confirmed by reading the file directly); #28's `ready-for-human` label is about its
+  Play Store background-location policy surface, not about #29's prerequisite being unbuilt.
+  Three prior sessions (#25/#26/#27's log entries) deferred #29 for this reason; the user
+  explicitly asked to implement it regardless this time, confirmed live: "I already received a
+  notification for a favorite nearby when the app was open" — i.e. #28's registration path is
+  demonstrably working already.
+- Split `GeofenceSyncManager`'s single `sync()` into two: `sync(enabled, favorites)` (unchanged
+  trigger — favorites/toggle change, app-open) and a new `rerank(enabled, favorites, location)`.
+  Under 100 favorites, `sync()` still registers everyone immediately, unchanged from #28. Over
+  100, `sync()` doesn't rank anything itself — it replays whichever closest-100 selection the
+  last `rerank()` persisted to a new `GeofenceStateRepository.selectedFavoriteIds` (same
+  DataStore-backed `Set<String>` pattern as the existing `insidePlaceIds`). `rerank()` is the
+  only thing that ever recomputes that set, and it's wired to fire from exactly one place: a new
+  `GeofenceLocationMonitor` (`FusedLocationProviderClient.requestLocationUpdates` with
+  `setMinUpdateDistanceMeters(500f)`, no periodic interval logic beyond Play Services' own
+  batching) — armed/disarmed in `FreizeitApplication.onCreate` alongside the same
+  `autoCheckInEnabled` collector that already drives `sync()`, so it's never triggered by app-open
+  or a timer, per the issue's explicit ask.
+- Ranking itself is a new pure function, `selectClosestFavorites(favorites, lat, lon, limit)` in
+  `util/GeofenceFavoriteRanking.kt` (Haversine via the existing `GeoDistance.metersBetween`,
+  matching `rankNearbyForCheckIn`'s existing pure-function-for-testability convention) — under
+  `limit` returns the list unchanged, over it sorts by distance and takes `limit`.
+- Lazy un-favorite deregistration (explicit AC: "not required to be immediate") falls out of how
+  `sync()`'s replay path resolves ids: it looks each persisted selected id up via
+  `PoiDao.getById()` directly, not by filtering the current `favorites` param against it — so an
+  id that's no longer a favorite still resolves (the `Poi` row survives un-favoriting, only the
+  `Verdict` row changes) and keeps its geofence registered until the next `rerank()` overwrites
+  the whole selected-ids set from scratch and drops it.
+- First-time-crossing-100 bootstrap (no `rerank()` has ever run, no persisted selection to
+  replay): `sync()` falls back to `favorites.take(100)` in arbitrary DB order rather than doing
+  any location-based ranking itself — deliberately dumb, to keep `sync()` truly rank-free per the
+  issue's "not on app-open" requirement; a real closest-100 selection supersedes it as soon as
+  the location monitor's first significant-change fix arrives.
+- Tests: new `GeofenceFavoriteRankingTest` (5 cases — under limit unchanged, exactly-at-limit
+  unchanged, over limit keeps exactly the closest N out of a shuffled 150-favorite fake set
+  matching the issue's own "testable with >100 entries" acceptance criterion, over-limit results
+  sorted closest-first, empty input). No test added for `GeofenceSyncManager`/
+  `GeofenceLocationMonitor` themselves — both need a real Android `Context`/Play Services client,
+  same reason the pre-#29 `GeofenceSyncManager` had no test file either.
+  `compileDebugKotlin`: clean. `testDebugUnitTest`: 138 total (was 133), 28 failed (unchanged) —
+  the +5 are the new `GeofenceFavoriteRankingTest` cases, all green (confirmed via its own XML
+  report: 5/5 pass); the 28 failures are the same 6 pre-existing Robolectric
+  `UnsatisfiedLinkError` classes documented since #10/#13/#15/#23
+  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/BackupRepositoryTest/
+  PoiImportTest), confirmed by summing each class's failure count and by class name — no new
+  failing class introduced.
+- Not verified on device: everything in this issue is new code with no existing on-device
+  confirmation to lean on (unlike #28's sync path, which the user already saw fire once) —
+  the significant-location-change trigger actually firing Play Services' `LocationCallback`,
+  the >100 favorites cap taking effect, and the lazy-deregistration behavior all need a real run,
+  ideally with a synthetic >100-favorite dataset since reaching that count organically is
+  unlikely during normal testing.
+
 ## 2026-07-25 — Issue #25: Amend product doc for the geofencing reversal
 
 - Only unblocked `ready-for-agent` issue: #29 is blocked by #28, which is
@@ -534,42 +592,4 @@
 - Not verified on device: the actual SAF-picker import of the real
   regenerated `data/pois.json` needs a physical run on Robert's phone, same
   as every prior on-device item in this log.
-
-## 2026-07-15 — Issue #14: Widen POI extraction to shop/tourism/leisure_other/office/craft/historic
-
-- Picked over #15/#16 since both are blocked transitively on this one (#15
-  directly, #16 via #15) — this was the only unblocked ready-for-agent issue,
-  and this machine has the Ride-Graph `.pbf` sources + `osmium` venv the
-  issue's note flags as a hard requirement.
-- `extract_pois.py`: split the old single `CATEGORIES` dict into
-  `EXACT_CATEGORIES` (the original 5 — playground/park/cafe/restaurant/
-  ice_cream, unchanged key=value matching, no name requirement) and a new
-  `COARSE_CATEGORIES` (shop/tourism/leisure_other/office/craft/historic —
-  matches any object carrying the given top-level OSM key regardless of
-  value, but only when it also has a non-empty `name` tag). `categorize()`
-  checks exact first, then coarse, so e.g. `leisure=playground` still
-  resolves to "playground" and never falls into `leisure_other`
-  (`_LEISURE_EXACT_VALUES` exclusion). The name requirement was in the
-  issue's acceptance criteria, to keep the coarse keys from pulling in
-  unnamed street furniture (benches, vacant shops, etc.) — confirmed
-  necessary by the coverage report below.
-  `filter_keys` for `osmium`'s `KeyFilter` widened to the union of both
-  dicts' keys so the new categories actually get read from the .pbf stream.
-- `README.md` updated: documents the exact-vs-coarse split, the name-tag
-  rule and why it exists, and the expanded `categories` field in the output
-  example.
-- Ran via the Ride-Graph venv against the real full extracts (koeln-regbez,
-  limburg, wallonia_french/german — not `precut/`). `data/pois.json`
-  regenerated in place (git-ignored, not committed). Coverage report:
-  playground 9635 (14.1% named), park 4466 (28.5%), cafe 3037 (94.7%),
-  restaurant 10145 (97.6%), ice_cream 612 (96.4%) — all five unchanged in
-  shape from before this issue, confirming the exact-match path wasn't
-  touched. New categories, all 100% named by construction: shop 45772,
-  tourism 16904, leisure_other 9004, office 11450, craft 3745, historic
-  15955. 130725 POIs total (2749 cross-extract duplicates dropped), up from
-  ~28k pre-#14.
-- No test harness exists for this Python tool (none did before either) and
-  no app/Kotlin code was touched, so no Gradle run — this issue is data/
-  tooling-only. #15 (Room import/query) and #16 (map pin styling) are the
-  ready-for-agent issues that consume this new data next.
 
