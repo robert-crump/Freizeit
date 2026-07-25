@@ -21,5 +21,6 @@ data class Visit(
 ) {
     companion object {
         const val SOURCE_MANUAL = "manual"
+        const val SOURCE_NOTIFICATION = "notification"
     }
 }

@@ -102,4 +102,11 @@
     <string name="settings_auto_checkin_disclosure_body">Freizeit uses your location in the background to notice when you\'re near a favorite place, even while the app is closed, and to send you a notification asking if you\'d like to check in. Location is never shared with anyone else. You can turn this off at any time.</string>
     <string name="settings_auto_checkin_disclosure_continue">Continue</string>
     <string name="settings_auto_checkin_disclosure_cancel">Cancel</string>
+
+    <string name="notification_channel_checkin_name">Check-in reminders</string>
+    <string name="notification_channel_checkin_description">Prompts to check in when you\'re near a favorite place</string>
+    <string name="notification_checkin_title">Check in?</string>
+    <string name="notification_checkin_body">Do you want to check into %1$s?</string>
+    <string name="notification_checkin_action_check_in">Check in</string>
+    <string name="notification_checkin_action_dismiss">Dismiss</string>
 </resources>

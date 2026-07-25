@@ -1,5 +1,102 @@
 # Freizeit v2 progress log
 
+## 2026-07-25 — Issue #28: Auto-detect proximity notification for favorites
+
+- Flagged `ready-for-human` (not `ready-for-agent`) in the issue itself —
+  background location + a Play Store disclosure surface. Implemented with
+  Robert pairing directly rather than picked up autonomously, which the
+  next-issue skill's checklist treats as satisfying the same human-review
+  intent the label exists for.
+- No new `Favorite` entity, no new "last checked in" storage: favorites are
+  already `PoiDao.observeFavorites()` (poi ⋈ verdict='favorite', #17), and
+  the shared cross-source cooldown ("manual or notification, one clock per
+  favorite") falls straight out of the existing `visit` table — added
+  `VisitDao.lastVisitedAt(placeId)` (`MAX(visitedAt) WHERE placeId = ...`)
+  instead of inventing a parallel timestamp store. `Visit.SOURCE_NOTIFICATION`
+  added alongside the existing `SOURCE_MANUAL`.
+- Geofence radius reuses `CheckInViewModel.CHECKIN_FAVORITE_RADIUS_METERS`
+  (200m, #23) by direct import rather than redefining it, per the issue's
+  own "same radius as the manual check-in list's 200m cutoff."
+- New `com.example.freizeit.data.geofence` package: `GeofenceSyncManager`
+  (registers/removes Play Services geofences — one per favorite, ENTER+EXIT
+  transitions, `removeGeofences` then `addGeofences` on every resync since
+  Play Services has no "update" call), `GeofenceBroadcastReceiver` (handles
+  both the Play Services transition intent and the notification's own
+  "Check in"/"Dismiss" action intents — one receiver so all three share the
+  same "recompute the one active notification" path), `GeofenceNotifications`
+  (channel setup + build/show/cancel).
+- "Only the closest favorite's notification is ever shown" is solved
+  structurally rather than by tracking per-favorite notification IDs: every
+  notification reuses one fixed ID, so there is never more than one to begin
+  with. What still needs tracking is *which* favorites the phone is
+  currently physically inside (Play Services only tells you about the
+  transition that just fired, not the standing set) — new
+  `GeofenceStateRepository` persists that as a `Set<String>` of placeIds via
+  DataStore, deliberately kept separate from `SettingsRepository` since it's
+  runtime state, not a user-facing preference. On every ENTER/EXIT the
+  receiver updates that set, then re-derives the nearest non-cooling-down
+  member from the transition's `triggeringLocation` (pure, unit-tested
+  `closestEligibleFavorite`/`isCoolingDown` in new
+  `util/GeofenceNotificationSelection.kt`) and shows or cancels accordingly.
+  A cooling-down closest favorite does NOT suppress the notification
+  entirely — the next-nearest non-cooling-down one still gets it, since nothing
+  in the issue text says a *whole spot* is picked before applying cooldown,
+  only that "that favorite" is suppressed.
+- Dismiss vs. cooldown, deliberately kept independent: `ACTION_DISMISS` only
+  cancels the notification, touching neither the inside-set nor the visit
+  log, so a fresh ENTER later can re-show it — matches "a dismissed or
+  ignored notification does NOT suppress" without needing a "was dismissed"
+  flag anywhere.
+- Sync trigger: `FreizeitApplication.onCreate` launches a
+  `combine(settingsRepository.autoCheckInEnabled, poiDao.observeFavorites())
+  .distinctUntilChanged()` collector calling `GeofenceSyncManager.sync(...)`
+  — covers the toggle flipping on (after #24's permission chain completes),
+  favorites being added/removed, and process start (geofences don't survive
+  process death the way a DataStore flag does, so re-registering on every
+  cold start is required, not just an optimization).
+- Added `com.google.android.gms:play-services-location:21.3.0` (this
+  project's first Play Services dependency — MapLibre, not Google Maps, was
+  already in use, so `google()` in `settings.gradle` existed but nothing
+  had pulled from it yet) and `kotlinx-coroutines-play-services:1.7.3` for
+  `Task<T>.await()` rather than hand-rolling a `suspendCancellableCoroutine`
+  wrapper.
+- Known gaps, deliberately left out as beyond the issue's acceptance
+  criteria rather than silently swallowed: geofences do not survive device
+  reboot (no `BOOT_COMPLETED` receiver added — the app-open resync covers
+  it in practice for a family day-trip app opened regularly, but a
+  reboot-then-never-reopened device would miss auto check-ins until next
+  open); un-favoriting a place while standing inside its still-active
+  notification does not proactively cancel that notification (no EXIT
+  event fires for a geofence that's merely removed from registration, only
+  for an actual physical exit).
+- Tests: new `GeofenceNotificationSelectionTest` (7 cases covering
+  `isCoolingDown`'s same/previous-day boundary and `closestEligibleFavorite`'s
+  nearest-pick / cooldown-skip / all-cooling-down / empty-input cases) —
+  pure JVM tests, no Robolectric, following the `CheckInRankingTest`/
+  `isReadyForBanner` convention. Two new cases added to the existing
+  `VisitDaoTest` for `lastVisitedAt`. `compileDebugKotlin`: clean.
+  `testDebugUnitTest`: 133 total (was 124), 28 failed (was 26) — the +2 are
+  the two new `VisitDaoTest` cases failing via the same pre-existing
+  Robolectric `UnsatisfiedLinkError` (MapLibre native init) that already
+  fails every other test in that class; confirmed via the XML report that
+  no new failing test class was introduced.
+- On-device pass with Robert caught a real bug the unit tests couldn't:
+  `geofencePendingIntent` in `GeofenceSyncManager` was built with
+  `FLAG_IMMUTABLE`, which crashed geofence registration at runtime with
+  `ApiException: 10: PendingIntent must be mutable` — Play Services writes
+  into that intent before redelivering it, so it can't be immutable (unlike
+  the notification's own action `PendingIntent`s in `GeofenceNotifications`,
+  which are correctly immutable since nothing external mutates those).
+  Switched to `FLAG_MUTABLE`; confirmed the app now launches and registers
+  geofences without crashing.
+- Still not verified on device: actual ENTER/EXIT transitions firing (needs
+  physically visiting/leaving a favorite, or a mock-location run), the
+  multi-favorite "closest wins" behavior when two favorites are near each
+  other, notification action buttons actually logging a `Visit` without
+  opening the app, and the permission-revoked-mid-flight `SecurityException`
+  path. Given the HITL flag on this issue, worth exercising these before
+  merge rather than trusting the Play Services API surface read correctly.
+
 ## 2026-07-25 — Issue #26: Check-in history screen
 
 - Picked over #25 (a docs-only decision amendment, no code) and #29 (blocked
@@ -500,12 +597,4 @@
 - Not verified on device: the FAB stacking, scrim/card panel visuals, and dismiss
   gestures are declarative Compose with no new branchy logic, but not screenshotted
   on Robert's phone this session.
-
-## 2026-07-06 — Unlogged carry-over: Explore polish (dark map, locate-me, floating chips)
-
-- Found uncommitted, working, tested changes at session start (not mine, no
-  progress.txt entry) — committed separately before starting #6 so it
-  wouldn't get mixed into that diff: CARTO Dark Matter basemap, a locate-me
-  FAB that recenters/zooms on tap, and the category chips moved to float
-  over the map instead of a separate row above the view toggle.
 

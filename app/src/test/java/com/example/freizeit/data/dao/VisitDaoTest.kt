@@ -82,4 +82,17 @@ class VisitDaoTest {
         assertEquals("Newer", all[0].snapshotName)
         assertEquals("Older", all[1].snapshotName)
     }
+
+    @Test
+    fun `lastVisitedAt returns the most recent visit regardless of source`() = runTest {
+        db.visitDao().checkIn(poi, source = Visit.SOURCE_MANUAL)
+        db.visitDao().checkIn(poi.copy(id = "node/1"), source = Visit.SOURCE_NOTIFICATION)
+
+        assertEquals(db.visitDao().getAll().maxOf { it.visitedAt }, db.visitDao().lastVisitedAt("node/1"))
+    }
+
+    @Test
+    fun `lastVisitedAt is null for a place with no visits`() = runTest {
+        assertEquals(null, db.visitDao().lastVisitedAt("node/never-visited"))
+    }
 }
