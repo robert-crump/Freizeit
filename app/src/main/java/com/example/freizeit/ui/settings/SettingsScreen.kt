@@ -3,9 +3,9 @@ package com.example.freizeit.ui.settings
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.annotation.StringRes
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,17 +16,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,18 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
-import com.example.freizeit.util.AutoCheckInPermissions
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -60,6 +59,10 @@ fun SettingsScreen(
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
     val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
+    val autoCheckInEnabled by viewModel.autoCheckInEnabled.collectAsStateWithLifecycle()
+
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showPoiBreakdown by remember { mutableStateOf(false) }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -86,21 +89,53 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = stringResource(R.string.tab_settings),
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = stringResource(R.string.settings_poi_section),
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Button(
-            onClick = { filePicker.launch(arrayOf("*/*")) },
-            enabled = importStatus != ImportStatus.Importing
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(stringResource(R.string.settings_import_button))
+            Text(
+                text = stringResource(R.string.tab_settings),
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.settings_menu_description)
+                    )
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_menu_poi_breakdown)) },
+                        onClick = {
+                            menuExpanded = false
+                            showPoiBreakdown = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_import_button)) },
+                        onClick = {
+                            menuExpanded = false
+                            filePicker.launch(arrayOf("*/*"))
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_backup_export)) },
+                        onClick = {
+                            menuExpanded = false
+                            backupExportPicker.launch("freizeit-backup.json")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.settings_backup_import)) },
+                        onClick = {
+                            menuExpanded = false
+                            backupImportPicker.launch(arrayOf("*/*"))
+                        }
+                    )
+                }
+            }
         }
 
         when (val status = importStatus) {
@@ -120,28 +155,6 @@ fun SettingsScreen(
                 text = status.message,
                 color = MaterialTheme.colorScheme.error
             )
-        }
-
-        ImportSummaryCard(summary)
-
-        Text(
-            text = stringResource(R.string.settings_backup_section),
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { backupExportPicker.launch("freizeit-backup.json") },
-                enabled = backupStatus != BackupStatus.Working
-            ) {
-                Text(stringResource(R.string.settings_backup_export))
-            }
-            Button(
-                onClick = { backupImportPicker.launch(arrayOf("*/*")) },
-                enabled = backupStatus != BackupStatus.Working
-            ) {
-                Text(stringResource(R.string.settings_backup_import))
-            }
         }
 
         when (val status = backupStatus) {
@@ -167,25 +180,49 @@ fun SettingsScreen(
             )
         }
 
-        Text(
-            text = stringResource(R.string.settings_suggestions_section),
-            style = MaterialTheme.typography.titleMedium
-        )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_suggestions_section),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                SuggestionRadiusField(
+                    radiusKm = suggestionRadiusKm,
+                    onCommit = viewModel::setSuggestionRadiusKm
+                )
+            }
+        }
 
-        SuggestionRadiusField(
-            radiusKm = suggestionRadiusKm,
-            onCommit = viewModel::setSuggestionRadiusKm
-        )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_auto_checkin_section),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                AutoCheckInSection(
+                    enabled = autoCheckInEnabled,
+                    onEnabledChange = viewModel::setAutoCheckInEnabled
+                )
+            }
+        }
+    }
 
-        Text(
-            text = stringResource(R.string.settings_auto_checkin_section),
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        val autoCheckInEnabled by viewModel.autoCheckInEnabled.collectAsStateWithLifecycle()
-        AutoCheckInSection(
-            enabled = autoCheckInEnabled,
-            onEnabledChange = viewModel::setAutoCheckInEnabled
+    if (showPoiBreakdown) {
+        AlertDialog(
+            onDismissRequest = { showPoiBreakdown = false },
+            title = { Text(stringResource(R.string.settings_poi_section)) },
+            text = { ImportSummaryContent(summary) },
+            confirmButton = {
+                TextButton(onClick = { showPoiBreakdown = false }) {
+                    Text(stringResource(R.string.settings_close))
+                }
+            }
         )
     }
 }
@@ -197,42 +234,18 @@ fun SettingsScreen(
  */
 @Composable
 private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-
     var showDisclosure by remember { mutableStateOf(false) }
     var showDeniedHint by remember { mutableStateOf(false) }
-    var foregroundGranted by remember { mutableStateOf(AutoCheckInPermissions.hasForegroundLocation(context)) }
-    var backgroundGranted by remember { mutableStateOf(AutoCheckInPermissions.hasBackgroundLocation(context)) }
-    var notificationsGranted by remember { mutableStateOf(AutoCheckInPermissions.hasNotifications(context)) }
-
-    fun refreshPermissionState() {
-        foregroundGranted = AutoCheckInPermissions.hasForegroundLocation(context)
-        backgroundGranted = AutoCheckInPermissions.hasBackgroundLocation(context)
-        notificationsGranted = AutoCheckInPermissions.hasNotifications(context)
-    }
-
-    // Manual grants via the system app-info screen only take effect once we come back to the
-    // foreground, not as a launcher callback.
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refreshPermissionState()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     val notificationsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
-        refreshPermissionState()
         onEnabledChange(true)
     }
 
     val backgroundLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
-        refreshPermissionState()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
@@ -243,7 +256,6 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
     val foregroundLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        refreshPermissionState()
         if (results.values.none { it }) {
             showDeniedHint = true
             return@rememberLauncherForActivityResult
@@ -279,12 +291,6 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
         )
     }
 
-    if (enabled) {
-        PermissionStatusRow(R.string.settings_auto_checkin_status_foreground, foregroundGranted)
-        PermissionStatusRow(R.string.settings_auto_checkin_status_background, backgroundGranted)
-        PermissionStatusRow(R.string.settings_auto_checkin_status_notifications, notificationsGranted)
-    }
-
     if (showDeniedHint) {
         Text(
             text = stringResource(R.string.settings_auto_checkin_denied_hint),
@@ -305,24 +311,6 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
                 )
             },
             onDismiss = { showDisclosure = false }
-        )
-    }
-}
-
-@Composable
-private fun PermissionStatusRow(@StringRes labelRes: Int, granted: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(text = stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
-        Text(
-            text = stringResource(
-                if (granted) R.string.settings_auto_checkin_status_granted
-                else R.string.settings_auto_checkin_status_denied
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
         )
     }
 }
@@ -374,54 +362,51 @@ private fun SuggestionRadiusField(radiusKm: Int, onCommit: (Int) -> Unit) {
 }
 
 @Composable
-private fun ImportSummaryCard(summary: PoiSummary?) {
+private fun ImportSummaryContent(summary: PoiSummary?) {
     // No early returns inside composable lambdas: switching branches across
     // recompositions corrupts the composer's group stack (Stack.pop IOOBE).
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            val info = summary?.importInfo
-            if (info == null) {
-                Text(
-                    text = stringResource(R.string.settings_no_import),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Text(
-                    text = stringResource(
-                        R.string.settings_last_import,
-                        formatTimestamp(info.importedAt)
-                    ),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Spacer(modifier = Modifier.size(4.dp))
-                summary.categoryCounts.forEach { entry ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = categoryDisplayName(entry.category),
-                            modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "%,d".format(entry.count),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-                if (summary.missingCount > 0) {
-                    Spacer(modifier = Modifier.size(4.dp))
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        val info = summary?.importInfo
+        if (info == null) {
+            Text(
+                text = stringResource(R.string.settings_no_import),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Text(
+                text = stringResource(
+                    R.string.settings_last_import,
+                    formatTimestamp(info.importedAt)
+                ),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.size(4.dp))
+            summary.categoryCounts.forEach { entry ->
+                Row(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = stringResource(
-                            R.string.settings_missing_flagged,
-                            summary.missingCount
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = categoryDisplayName(entry.category),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "%,d".format(entry.count),
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
+            }
+            if (summary.missingCount > 0) {
+                Spacer(modifier = Modifier.size(4.dp))
+                Text(
+                    text = stringResource(
+                        R.string.settings_missing_flagged,
+                        summary.missingCount
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

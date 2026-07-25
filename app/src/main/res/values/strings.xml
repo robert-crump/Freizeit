@@ -72,6 +72,10 @@
     <string name="detail_custom_name_label">Name</string>
     <string name="detail_custom_name_save">Save</string>
     <string name="detail_custom_name_cancel">Cancel</string>
+    <!-- Settings: overflow menu -->
+    <string name="settings_menu_description">More options</string>
+    <string name="settings_menu_poi_breakdown">Place data breakdown</string>
+    <string name="settings_close">Close</string>
     <!-- Settings: POI import -->
     <string name="settings_poi_section">Place data</string>
     <string name="settings_import_button">Import POI file</string>
@@ -93,11 +97,6 @@
     <!-- Settings: auto check-in -->
     <string name="settings_auto_checkin_section">Auto check-in</string>
     <string name="settings_auto_checkin_toggle">Notify me near favorites</string>
-    <string name="settings_auto_checkin_status_foreground">Location</string>
-    <string name="settings_auto_checkin_status_background">Background location</string>
-    <string name="settings_auto_checkin_status_notifications">Notifications</string>
-    <string name="settings_auto_checkin_status_granted">Granted</string>
-    <string name="settings_auto_checkin_status_denied">Denied</string>
     <string name="settings_auto_checkin_denied_hint">Some permissions were denied, so auto check-in was not enabled. Grant them in system settings and try again.</string>
     <string name="settings_auto_checkin_disclosure_title">Background location access</string>
     <string name="settings_auto_checkin_disclosure_body">Freizeit uses your location in the background to notice when you\'re near a favorite place, even while the app is closed, and to send you a notification asking if you\'d like to check in. Location is never shared with anyone else. You can turn this off at any time.</string>
