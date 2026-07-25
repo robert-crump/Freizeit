@@ -12,6 +12,7 @@
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
     <string name="home_go">Go</string>
+    <string name="home_checkin">Check-in</string>
     <string name="home_unfavorite">Remove from favorites</string>
     <string name="home_open_now">Open now</string>
     <string name="home_closed_now">Closed now</string>
