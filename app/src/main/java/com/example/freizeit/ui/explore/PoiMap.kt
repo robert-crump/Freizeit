@@ -1,7 +1,9 @@
 package com.example.freizeit.ui.explore
 
+import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
+import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -81,51 +83,50 @@ fun PoiMap(
     val lifecycleOwner = LocalLifecycleOwner.current
     val clusterColor = MaterialTheme.colorScheme.secondary.toArgb()
 
-    val state = remember { PoiMapState() }
+    val (mapView, state) = remember(context) { ExploreMapHolder.obtain(context) }
     state.onPoiClick = onPoiClick
 
-    val mapView = remember {
-        MapView(context).apply { onCreate(null) }
-    }
-
     DisposableEffect(mapView) {
-        mapView.getMapAsync { map ->
-            state.map = map
-            map.cameraPosition = CameraPosition.Builder()
-                .target(
-                    if (location != null) LatLng(location.lat, location.lon)
-                    else LatLng(FALLBACK_LAT, FALLBACK_LON)
-                )
-                .zoom(DEFAULT_ZOOM)
-                .build()
-
-            map.setStyle(
-                Style.Builder()
-                    .fromUri(DARK_MATTER_STYLE_URL)
-                    .withSource(
-                        GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
+        if (!ExploreMapHolder.configured) {
+            ExploreMapHolder.configured = true
+            mapView.getMapAsync { map ->
+                state.map = map
+                map.cameraPosition = CameraPosition.Builder()
+                    .target(
+                        if (location != null) LatLng(location.lat, location.lon)
+                        else LatLng(FALLBACK_LAT, FALLBACK_LON)
                     )
-                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, clusterColor, upperBound = 20))
-                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, clusterColor, lowerBound = 20, upperBound = 100))
-                    .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
-                    .withLayer(clusterCountLayer())
-                    .withLayer(poiCircleLayer())
-                    .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
-                    .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
-                    .withLayer(locationDotLayer(POSITION_DOT_COLOR))
-            ) { style ->
-                state.style = style
-                state.poiSource = style.getSourceAs(POI_SOURCE_ID)
-                state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
-                state.ready = true
-                applyPois(state, pois)
-                applyLocation(state, location)
-            }
+                    .zoom(DEFAULT_ZOOM)
+                    .build()
 
-            map.addOnMapClickListener { latLng ->
-                handleMapClick(state, map, latLng)
+                map.setStyle(
+                    Style.Builder()
+                        .fromUri(DARK_MATTER_STYLE_URL)
+                        .withSource(
+                            GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
+                        )
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, clusterColor, upperBound = 20))
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, clusterColor, lowerBound = 20, upperBound = 100))
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
+                        .withLayer(clusterCountLayer())
+                        .withLayer(poiCircleLayer())
+                        .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
+                        .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
+                        .withLayer(locationDotLayer(POSITION_DOT_COLOR))
+                ) { style ->
+                    state.style = style
+                    state.poiSource = style.getSourceAs(POI_SOURCE_ID)
+                    state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
+                    state.ready = true
+                    applyPois(state, pois)
+                    applyLocation(state, location)
+                }
+
+                map.addOnMapClickListener { latLng ->
+                    handleMapClick(state, map, latLng)
+                }
+                map.addOnCameraIdleListener { applyLocation(state, state.renderedLocation) }
             }
-            map.addOnCameraIdleListener { applyLocation(state, state.renderedLocation) }
         }
         onDispose { }
     }
@@ -154,12 +155,18 @@ fun PoiMap(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            mapView.onDestroy()
+            // Deliberately not mapView.onDestroy(): the MapView is retained by ExploreMapHolder
+            // across tab switches so its style/GL surface don't get rebuilt on every visit.
         }
     }
 
     AndroidView(
-        factory = { mapView },
+        factory = {
+            // mapView is retained across recompositions of this screen; detach it from
+            // whatever AndroidViewHolder last hosted it before this one adopts it.
+            (mapView.parent as? ViewGroup)?.removeView(mapView)
+            mapView
+        },
         modifier = modifier.clipToBounds(),
         update = {
             if (state.renderedPois != pois) {
@@ -182,6 +189,37 @@ private class PoiMapState {
     var renderedLocation: LatLon? = null
     var poiById: Map<String, PoiWithDistance> = emptyMap()
     var onPoiClick: (PoiWithDistance) -> Unit = {}
+}
+
+/**
+ * Retains the Explore [MapView] (and its loaded style/sources) across Home<->Explore tab
+ * switches. Compose Navigation fully disposes and recomposes the Explore destination on every
+ * switch, so without this the map would refetch its remote style and rebuild its GL surface on
+ * every visit. Reset when the hosting Activity changes (e.g. a config change not handled
+ * in-place), since a MapView can't outlive the Context it was created with.
+ */
+private object ExploreMapHolder {
+    private var mapView: MapView? = null
+    private var state: PoiMapState? = null
+    private var owningContext: Context? = null
+
+    /** Whether one-time setup (style/layers/listeners) has already run for the current [mapView]. */
+    var configured: Boolean = false
+
+    fun obtain(context: Context): Pair<MapView, PoiMapState> {
+        val existingView = mapView
+        if (existingView != null && owningContext === context) {
+            return existingView to state!!
+        }
+        existingView?.onDestroy()
+        val newView = MapView(context).apply { onCreate(null) }
+        val newState = PoiMapState()
+        mapView = newView
+        state = newState
+        owningContext = context
+        configured = false
+        return newView to newState
+    }
 }
 
 private fun poiClusterOptions(): GeoJsonOptions =
