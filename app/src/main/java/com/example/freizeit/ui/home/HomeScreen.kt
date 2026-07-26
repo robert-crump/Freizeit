@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.spring
@@ -39,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -137,9 +139,7 @@ fun HomeScreen(
                 },
                 onCheckIn = { suggestion -> pendingCheckIn = suggestion },
                 onUnfavorite = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -172,13 +172,10 @@ fun HomeScreen(
 private const val SWIPE_THRESHOLD_DP = 96
 
 /**
- * How much further than the swipe threshold a drag has to travel before the top card hits its
- * minimum alpha — so a card that's just crossed the threshold isn't instantly near-invisible.
+ * How much further than the swipe threshold a drag has to travel before the peek card finishes
+ * growing in — so a card that's just crossed the threshold isn't instantly at full size.
  */
-private const val FADE_DISTANCE_MULTIPLIER = 1.75f
-
-/** The top card never fades past this — it should still read as "there" mid-drag, not gone. */
-private const val MIN_TOP_CARD_ALPHA = 0.3f
+private const val REVEAL_DISTANCE_MULTIPLIER = 1.75f
 
 /** Scale and vertical offset of the peeking card at rest (no drag in progress). */
 private const val PEEK_REST_SCALE = 0.95f
@@ -187,16 +184,27 @@ private const val PEEK_REST_OFFSET_DP = 12
 /** Duration of the commit animation (card finishes leaving, peek card finishes revealing). */
 private const val COMMIT_ANIMATION_MILLIS = 250
 
-/** How far [offsetPx] has traveled toward the fade distance, 0 at rest, 1 once past it. */
-private fun dragProgress(offsetPx: Float, thresholdPx: Float): Float {
-    val fadeDistancePx = thresholdPx * FADE_DISTANCE_MULTIPLIER
-    if (fadeDistancePx <= 0f) return 1f
-    return (abs(offsetPx) / fadeDistancePx).coerceIn(0f, 1f)
+/** How far [offsetPx] has traveled toward the swipe threshold, 0 at rest, 1 once reached. */
+private fun thresholdProgress(offsetPx: Float, thresholdPx: Float): Float {
+    if (thresholdPx <= 0f) return 1f
+    return (abs(offsetPx) / thresholdPx).coerceIn(0f, 1f)
 }
 
-/** Alpha of the top (dragged) card at [offsetPx] — 1 at rest, floored at [MIN_TOP_CARD_ALPHA]. */
+/** How far [offsetPx] has traveled toward the (further) reveal distance, 0 at rest, 1 once past it. */
+private fun dragProgress(offsetPx: Float, thresholdPx: Float): Float {
+    val revealDistancePx = thresholdPx * REVEAL_DISTANCE_MULTIPLIER
+    if (revealDistancePx <= 0f) return 1f
+    return (abs(offsetPx) / revealDistancePx).coerceIn(0f, 1f)
+}
+
+/**
+ * Alpha of the top (dragged) card at [offsetPx] — 1 at rest, fully transparent by the swipe
+ * threshold. Reaching 0 right at the threshold (rather than a floor short of it) means the old
+ * card is already invisible for the whole commit animation that follows a released swipe, not
+ * just faded — masking any one-frame lag in the map underneath catching up to its new role.
+ */
 internal fun topCardAlpha(offsetPx: Float, thresholdPx: Float): Float =
-    1f - (1f - MIN_TOP_CARD_ALPHA) * dragProgress(offsetPx, thresholdPx)
+    1f - thresholdProgress(offsetPx, thresholdPx)
 
 /** How far the peek card has grown toward full size, 0..1 — reaches 1 when the top card bottoms out. */
 internal fun revealProgress(offsetPx: Float, thresholdPx: Float): Float =
@@ -219,6 +227,13 @@ internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean 
  * peeking card flicking to full size and back. Unfavoriting still goes through the ViewModel
  * since it has to persist, but leaving [localIndex] untouched lets the shrunken deck naturally
  * surface whatever was already peeking through.
+ *
+ * Previous/current/next cards are each key()'d by POI id rather than pinned to a fixed
+ * top/peek call site. A card's SuggestionsMiniMap (and its MapView) travels with its POI across
+ * commits, so paging the deck just re-transforms the same already-rendered composables instead
+ * of handing a call site new suggestion data to render from scratch — the latter was the source
+ * of a post-commit flicker: the (reused) top-slot MapView briefly still showed its previous
+ * POI's tiles until its LaunchedEffect-driven render caught up.
  */
 @Composable
 private fun SwipeableSuggestionCard(
@@ -252,17 +267,23 @@ private fun SwipeableSuggestionCard(
     val card = deck[localIndex.mod(deck.size)]
     val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
     val previousCard = if (deck.size <= 1) null else deck[(localIndex - 1).mod(deck.size)]
-    // Dragging left peeks at the previous card (moving "up" the stack); dragging right, or at
-    // rest, peeks at the next one (moving "down") — the same default as before bidirectional
-    // paging existed.
-    val peekCard = if (effectiveOffset < 0f) previousCard else nextCard
+    // One keyed window covering every role (previous/current/next), current last so it draws on
+    // top. A 2-card deck's "previous" and "next" are the same POI, and distinctBy keeps the
+    // first occurrence — so it's deduped to a single neighbor entry that reveals either way.
+    // All three roles must come from this one loop (one call site) rather than the current card
+    // being rendered from a separate key() elsewhere: Compose only preserves a composable's
+    // state (and here, its MapView) across recompositions when the same key recurs at the same
+    // call site. Splitting current out into its own call site meant a card promoted from
+    // neighbor to current was actually torn down and rebuilt from scratch — losing the very
+    // continuity this keying was for.
+    val window = (listOfNotNull(previousCard, nextCard) + card).distinctBy { it.poi.id }
 
     fun commit(direction: Int, onCommitted: () -> Unit) {
         if (isCommitting) return
         isCommitting = true
         scope.launch {
             offsetX.animateTo(
-                targetValue = baseOffset + direction * thresholdPx * FADE_DISTANCE_MULTIPLIER,
+                targetValue = baseOffset + direction * thresholdPx * REVEAL_DISTANCE_MULTIPLIER,
                 animationSpec = tween(COMMIT_ANIMATION_MILLIS)
             )
             onCommitted()
@@ -272,59 +293,83 @@ private fun SwipeableSuggestionCard(
     }
 
     Box(
-        modifier = modifier.pointerInput(Unit) {
-            detectHorizontalDragGestures(
-                onDragEnd = {
-                    val current = offsetX.value - baseOffset
-                    if (isPastSwipeThreshold(current, thresholdPx)) {
-                        val direction = sign(current).toInt()
-                        commit(direction) { localIndex += direction }
-                    } else {
+        // The deck's own size tracks the current card's natural (wrap-content) size, animating
+        // to a new target whenever a swipe changes which card that is. Neighbor cards below are
+        // matchParentSize()'d so they always conform to this same (possibly still-animating)
+        // size instead of contributing to it — that's what stops a taller neighbor from bleeding
+        // past the current card's bounds.
+        modifier = modifier
+            .animateContentSize(tween(COMMIT_ANIMATION_MILLIS))
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        val current = offsetX.value - baseOffset
+                        if (isPastSwipeThreshold(current, thresholdPx)) {
+                            val direction = sign(current).toInt()
+                            commit(direction) { localIndex += direction }
+                        } else {
+                            scope.launch { offsetX.animateTo(baseOffset, animationSpec = spring()) }
+                        }
+                    },
+                    onDragCancel = {
                         scope.launch { offsetX.animateTo(baseOffset, animationSpec = spring()) }
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        if (isCommitting) return@detectHorizontalDragGestures
+                        change.consume()
+                        scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
                     }
-                },
-                onDragCancel = {
-                    scope.launch { offsetX.animateTo(baseOffset, animationSpec = spring()) }
-                },
-                onHorizontalDrag = { change, dragAmount ->
-                    if (isCommitting) return@detectHorizontalDragGestures
-                    change.consume()
-                    scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
-                }
-            )
-        }
-    ) {
-        if (peekCard != null) {
-            val progress = revealProgress(effectiveOffset, thresholdPx)
-            SuggestionCard(
-                suggestion = peekCard,
-                customName = customNames[peekCard.poi.id],
-                location = location,
-                onGo = {},
-                onCheckIn = {},
-                onUnfavorite = {},
-                modifier = Modifier.graphicsLayer {
-                    scaleX = lerp(PEEK_REST_SCALE, 1f, progress)
-                    scaleY = lerp(PEEK_REST_SCALE, 1f, progress)
-                    translationY = lerp(peekOffsetPx, 0f, progress)
-                }
-            )
-        }
-
-        SuggestionCard(
-            suggestion = card,
-            customName = customNames[card.poi.id],
-            location = location,
-            onGo = { onGo(card) },
-            onCheckIn = { onCheckIn(card) },
-            onUnfavorite = {
-                commit(direction = 1) { onUnfavorite(card) }
-            },
-            modifier = Modifier.graphicsLayer {
-                translationX = effectiveOffset
-                alpha = topCardAlpha(effectiveOffset, thresholdPx)
+                )
             }
-        )
+    ) {
+        for (entry in window) {
+            key(entry.poi.id) {
+                val isCurrent = entry.poi.id == card.poi.id
+                // Dragging left reveals the previous card (moving "up" the stack); dragging
+                // right, or at rest, reveals the next one (moving "down") — a 2-card deck's
+                // single deduped neighbor is both, so it reveals either way.
+                val isPrevious = entry.poi.id == previousCard?.poi?.id
+                val isNext = entry.poi.id == nextCard?.poi?.id
+                val progress = when {
+                    effectiveOffset < 0f && isPrevious -> revealProgress(effectiveOffset, thresholdPx)
+                    effectiveOffset >= 0f && isNext -> revealProgress(effectiveOffset, thresholdPx)
+                    else -> 0f
+                }
+                // A single SuggestionCard call site regardless of role: role-dependent behavior
+                // is expressed as plain values (modifier, callbacks) fed into that one call,
+                // never as which composable call executes — an if/else choosing between two
+                // separate SuggestionCard(...) call expressions would itself defeat the keying,
+                // for the same reason splitting current/neighbor into separate loops did.
+                SuggestionCard(
+                    suggestion = entry,
+                    customName = customNames[entry.poi.id],
+                    location = location,
+                    onGo = if (isCurrent) ({ onGo(entry) }) else ({}),
+                    onCheckIn = if (isCurrent) ({ onCheckIn(entry) }) else ({}),
+                    onUnfavorite = if (isCurrent) {
+                        { commit(direction = 1) { onUnfavorite(entry) } }
+                    } else {
+                        {}
+                    },
+                    modifier = if (isCurrent) {
+                        Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationX = effectiveOffset
+                                alpha = topCardAlpha(effectiveOffset, thresholdPx)
+                            }
+                    } else {
+                        Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                scaleX = lerp(PEEK_REST_SCALE, 1f, progress)
+                                scaleY = lerp(PEEK_REST_SCALE, 1f, progress)
+                                translationY = lerp(peekOffsetPx, 0f, progress)
+                            }
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -428,10 +473,11 @@ private fun SuggestionCard(
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
-    // Fixed to the stack's full height (not just wrap-content) so the top and peek cards always
-    // share the same bounds — otherwise a peek card with more content than the top card pokes
-    // its extra text and the Go button out past the top card's bottom edge.
-    Card(modifier = modifier.fillMaxSize()) {
+    // Sizing is entirely up to the caller: the current card wraps its own content (driving the
+    // deck's animateContentSize), neighbor cards are matchParentSize()'d to whatever that
+    // resolves to, so a neighbor's extra content scrolls within its clipped bounds rather than
+    // poking out past the current card's edge.
+    Card(modifier = modifier) {
         Column(
             modifier = Modifier
                 .padding(20.dp)
