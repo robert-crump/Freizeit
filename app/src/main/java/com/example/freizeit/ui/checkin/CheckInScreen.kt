@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +59,10 @@ fun CheckInScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
+    // The text field's own source of truth: typing must feel instant, so it can't be
+    // driven by state.searchQuery, which only updates after the debounced filter pass
+    // (see CheckInViewModel) completes. Mirrors ExploreScreen's identical fix (#32).
+    var searchText by rememberSaveable { mutableStateOf("") }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -77,9 +82,15 @@ fun CheckInScreen(
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             CheckInSearchBar(
-                query = state.searchQuery,
-                onQueryChange = viewModel::setSearchQuery,
-                onClear = viewModel::clearSearch
+                query = searchText,
+                onQueryChange = {
+                    searchText = it
+                    viewModel.setSearchQuery(it)
+                },
+                onClear = {
+                    searchText = ""
+                    viewModel.clearSearch()
+                }
             )
 
             state.lastCheckedInName?.let { name ->
