@@ -37,7 +37,7 @@ private const val SEARCH_DEBOUNCE_MS = 250L
 data class ExploreUiState(
     val pois: List<PoiWithDistance> = emptyList(),
     val categories: List<String> = emptyList(),
-    val selectedCategory: String? = null,
+    val activeCategories: Set<String> = emptySet(),
     val location: LatLon? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
     val customNames: Map<String, String> = emptyMap(),
@@ -53,13 +53,14 @@ data class ExploreUiState(
  * substrings across all categories; otherwise [verdictIds] (non-null) restricts to
  * whichever single verdict bucket is active — favorites-only or want-to-go-only, the
  * caller decides which set to pass in, never both at once (#31); otherwise [showAll]
- * passes every category through; otherwise [selectedCategory] restricts to that one
- * category; with none set, nothing matches. With a location, sorts nearest first,
- * otherwise by name (unnamed places last).
+ * restricts to pois whose category is in [activeCategories] — a multi-select set (#33),
+ * so zero active categories is a valid state that matches nothing; with none of the above
+ * active, nothing matches either. With a location, sorts nearest first, otherwise by name
+ * (unnamed places last).
  */
 fun filterAndSort(
     pois: List<Poi>,
-    selectedCategory: String?,
+    activeCategories: Set<String>,
     location: LatLon?,
     verdictIds: Set<String>? = null,
     searchQuery: String? = null,
@@ -73,8 +74,8 @@ fun filterAndSort(
                 name != null && name.contains(searchQuery, ignoreCase = true)
             }
             verdictIds != null -> it.id in verdictIds
-            showAll -> true
-            else -> it.category == selectedCategory
+            showAll -> it.category in activeCategories
+            else -> false
         }
     }
     return if (location != null) {
@@ -100,8 +101,9 @@ class ExploreViewModel(
     private val poiCustomNameDao: PoiCustomNameDao
 ) : ViewModel() {
 
-    // null = no category chosen yet, so the map/list starts empty until the user picks a layer
-    private val selectedCategory = MutableStateFlow<String?>(null)
+    // Only consulted while showAllPois is true — see selectAllPois/toggleCategory. Reset to
+    // every known category each time All POIs is turned on (#33).
+    private val activeCategories = MutableStateFlow<Set<String>>(emptySet())
     private val location = MutableStateFlow<LatLon?>(null)
     private val favoritesOnly = MutableStateFlow(false)
     private val wantToGoOnly = MutableStateFlow(false)
@@ -124,18 +126,19 @@ class ExploreViewModel(
     }
 
     private data class LayerSelection(
-        val category: String?,
+        val activeCategories: Set<String>,
         val favoritesOnly: Boolean,
         val wantToGoOnly: Boolean,
         val showAllPois: Boolean
     )
 
     // Folded into one flow because the outer combine below is already at the stdlib 5-flow
-    // arity limit (see #8's note) — selectedCategory/favoritesOnly/wantToGoOnly/showAllPois are
-    // mutually exclusive anyway, so they travel together.
+    // arity limit (see #8's note) — activeCategories/favoritesOnly/wantToGoOnly/showAllPois are
+    // mutually exclusive anyway (categories are only ever consulted while showAllPois is true,
+    // #33), so they travel together.
     private val layerSelection = combine(
-        selectedCategory, favoritesOnly, wantToGoOnly, showAllPois
-    ) { category, favOnly, wantToGo, allPois -> LayerSelection(category, favOnly, wantToGo, allPois) }
+        activeCategories, favoritesOnly, wantToGoOnly, showAllPois
+    ) { active, favOnly, wantToGo, allPois -> LayerSelection(active, favOnly, wantToGo, allPois) }
 
     val uiState: StateFlow<ExploreUiState> = combine(
         poisVerdictsAndNames,
@@ -146,7 +149,7 @@ class ExploreViewModel(
         searchQuery.debounce(SEARCH_DEBOUNCE_MS)
     ) { poisVerdictsNames, layer, loc, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
-        val (selectedCat, favOnly, wantToGo, allPois) = layer
+        val (active, favOnly, wantToGo, allPois) = layer
         val categories = pois.map { it.category }.distinct()
             .sortedWith(compareBy({ categoryOrderIndex(it) }, { it }))
         val verdictIds = when {
@@ -155,9 +158,9 @@ class ExploreViewModel(
             else -> null
         }
         ExploreUiState(
-            pois = filterAndSort(pois, selectedCat, loc, verdictIds, query.ifBlank { null }, customNames, allPois),
+            pois = filterAndSort(pois, active, loc, verdictIds, query.ifBlank { null }, customNames, allPois),
             categories = categories,
-            selectedCategory = selectedCat,
+            activeCategories = active,
             location = loc,
             verdicts = verdictMap,
             customNames = customNames,
@@ -174,55 +177,56 @@ class ExploreViewModel(
         refreshLocation()
     }
 
-    /** Layer rows (category/favorites/want-to-go/all-POIs/search) are all mutually exclusive. */
-    fun selectCategory(category: String) {
-        selectedCategory.value = if (selectedCategory.value == category) null else category
-        if (selectedCategory.value != null) {
-            favoritesOnly.value = false
-            wantToGoOnly.value = false
-            showAllPois.value = false
-            searchQuery.value = ""
+    /**
+     * Independent per-category toggle (#33) — only meaningful while [showAllPois] is on, since
+     * the category rows are hidden otherwise. Not mutually exclusive with other categories;
+     * zero active categories is a valid state (the map/list simply shows nothing).
+     */
+    fun toggleCategory(category: String) {
+        activeCategories.value = activeCategories.value.let {
+            if (category in it) it - category else it + category
         }
     }
 
-    /** Mutually exclusive with the other layer rows and search — see [selectCategory]. */
+    /** Mutually exclusive with the other layer rows and search — see [selectAllPois]. */
     fun toggleFavoritesOnly() {
         favoritesOnly.value = !favoritesOnly.value
         if (favoritesOnly.value) {
-            selectedCategory.value = null
             wantToGoOnly.value = false
             showAllPois.value = false
             searchQuery.value = ""
         }
     }
 
-    /** Mutually exclusive with the other layer rows and search — see [selectCategory]. */
+    /** Mutually exclusive with the other layer rows and search — see [selectAllPois]. */
     fun toggleWantToGoOnly() {
         wantToGoOnly.value = !wantToGoOnly.value
         if (wantToGoOnly.value) {
-            selectedCategory.value = null
             favoritesOnly.value = false
             showAllPois.value = false
             searchQuery.value = ""
         }
     }
 
-    /** Mutually exclusive with the other layer rows and search — see [selectCategory]. */
+    /**
+     * Mutually exclusive with the other layer rows and search. Turning on defaults every known
+     * category to active (#33) — re-entering All POIs always resets the per-category selection
+     * rather than restoring whatever subset was active last time.
+     */
     fun selectAllPois() {
         showAllPois.value = !showAllPois.value
         if (showAllPois.value) {
-            selectedCategory.value = null
             favoritesOnly.value = false
             wantToGoOnly.value = false
             searchQuery.value = ""
+            activeCategories.value = uiState.value.categories.toSet()
         }
     }
 
-    /** Mutually exclusive with the layer rows — see [selectCategory]. */
+    /** Mutually exclusive with the layer rows — see [selectAllPois]. */
     fun setSearchQuery(query: String) {
         searchQuery.value = query
         if (query.isNotBlank()) {
-            selectedCategory.value = null
             favoritesOnly.value = false
             wantToGoOnly.value = false
             showAllPois.value = false

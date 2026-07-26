@@ -49,6 +49,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -217,11 +218,11 @@ fun ExploreScreen(
         if (showLayersPanel) {
             LayersPanel(
                 categories = state.categories,
-                selectedCategory = state.selectedCategory,
+                activeCategories = state.activeCategories,
                 favoritesOnly = state.favoritesOnly,
                 wantToGoOnly = state.wantToGoOnly,
                 showAllPois = state.showAllPois,
-                onSelectCategory = { category -> viewModel.selectCategory(category) },
+                onToggleCategory = { category -> viewModel.toggleCategory(category) },
                 onSelectFavorites = { viewModel.toggleFavoritesOnly() },
                 onSelectWantToGo = { viewModel.toggleWantToGoOnly() },
                 onSelectAllPois = { viewModel.selectAllPois() },
@@ -243,20 +244,22 @@ fun ExploreScreen(
 }
 
 /**
- * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell) presenting one
- * toggle switch per layer. Only one layer is ever active on the map at a time — toggling
- * one on switches the previously active one off, mirroring what the map displays — but
- * the panel itself stays open across toggles so multiple layers can be tried in a row;
- * only the scrim or the close button dismisses it.
+ * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell). The top-level rows
+ * (Favorites/Want to go/All POIs) are mutually exclusive toggle switches — only one is ever
+ * active on the map at a time. Category rows are only shown while "All POIs" is active (#33):
+ * they're a multi-select filter within it, not a fourth top-level layer, so they stay visible
+ * across category taps and only disappear when switching to Favorites or Want to go. The panel
+ * itself stays open across toggles so multiple layers/categories can be tried in a row; only the
+ * scrim or the close button dismisses it.
  */
 @Composable
 private fun LayersPanel(
     categories: List<String>,
-    selectedCategory: String?,
+    activeCategories: Set<String>,
     favoritesOnly: Boolean,
     wantToGoOnly: Boolean,
     showAllPois: Boolean,
-    onSelectCategory: (String) -> Unit,
+    onToggleCategory: (String) -> Unit,
     onSelectFavorites: () -> Unit,
     onSelectWantToGo: () -> Unit,
     onSelectAllPois: () -> Unit,
@@ -315,13 +318,14 @@ private fun LayersPanel(
                     onClick = onSelectAllPois,
                     leadingIcon = { Icon(Icons.Filled.Layers, contentDescription = null) }
                 )
-                categories.forEach { category ->
-                    LayerRow(
-                        label = categoryDisplayName(category),
-                        selected = category == selectedCategory,
-                        onClick = { onSelectCategory(category) },
-                        leadingIcon = { CategoryDot(category) }
-                    )
+                if (showAllPois) {
+                    categories.forEach { category ->
+                        CategoryLayerRow(
+                            category = category,
+                            active = category in activeCategories,
+                            onClick = { onToggleCategory(category) }
+                        )
+                    }
                 }
             }
         }
@@ -348,6 +352,40 @@ private fun LayerRow(
         leadingIcon()
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Switch(checked = selected, onCheckedChange = { onClick() })
+    }
+}
+
+/**
+ * Multi-select category row (#33) — no [Switch], since several can be active at once. Active
+ * state reads from text weight/color contrast instead: full-strength + semi-bold when active,
+ * dimmed + regular when not. Spacing is tighter than [LayerRow]'s since these form a denser list.
+ */
+@Composable
+private fun CategoryLayerRow(
+    category: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CategoryDot(category)
+        Text(
+            categoryDisplayName(category),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (active) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+            }
+        )
     }
 }
 

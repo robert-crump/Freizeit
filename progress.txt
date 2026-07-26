@@ -1,5 +1,54 @@
 # Freizeit v2 progress log
 
+## 2026-07-26 — Issue #33: Explore layer menu: reorder, multi-select categories, declutter
+
+- Only `ready-for-agent` issue open. Split out of #31's grill-me session specifically so it
+  could be reviewed/reverted independently of the "Want to go" verdict feature.
+- Reorder was already done: #31's log entry notes the top rows were inserted in
+  Favorites/Want to go/All POIs order already, "without needing #33's reorder work" — verified
+  by reading `ExploreScreen.kt`'s `LayersPanel` before touching anything, no code change needed
+  for that part.
+- The real work was converting category filtering from single-select to multi-select and
+  gating its visibility on "All POIs": `ExploreViewModel`'s `selectedCategory: String?` (a
+  fourth mutually-exclusive top-level layer, same tier as Favorites/Want to go/All POIs) is
+  gone, replaced by `activeCategories: Set<String>` that's only ever consulted while
+  `showAllPois` is true — categories are now a filter *within* All POIs, not a peer layer.
+  `selectCategory(category)` (single-select toggle) replaced by `toggleCategory(category)`
+  (independent set membership toggle, zero-selected allowed).
+- `selectAllPois()` resets `activeCategories` to every known category each time it's turned on
+  (from off to on) — read literally from the issue's "Entering All POIs activates every category
+  by default," not preserving whatever subset was active from a previous All-POIs session. Reads
+  the category list synchronously off `uiState.value.categories` (the same derived list already
+  shown in the panel) rather than adding a second `poiDao.observeAll()` collector just to get a
+  snapshot.
+- `filterAndSort()`'s `selectedCategory: String?` param replaced by `activeCategories: Set<String>`;
+  the `showAll` branch changed from unconditionally `true` to `it.category in activeCategories`,
+  and the previous `else -> it.category == selectedCategory` fallback branch (the single-category
+  layer) is gone entirely — `else -> false`, since category filtering has no path outside
+  `showAll` anymore. `FilterAndSortTest.kt` rewritten accordingly (13 → 16 cases): added explicit
+  coverage for multi-category matching, zero-active-categories showing nothing, and
+  showAll=false ignoring a non-empty active set.
+- `ExploreScreen.kt`: `LayersPanel`'s category rows are now wrapped in `if (showAllPois)` so they
+  disappear only when switching to Favorites/Want to go, matching the issue's "stays visible while
+  switching between categories, hides only on Favorites/Want to go." New `CategoryLayerRow`
+  composable replaces the shared `LayerRow` (which carries a `Switch`) for category rows
+  specifically — active/inactive now reads via `FontWeight.SemiBold` + full-opacity text vs.
+  `FontWeight.Normal` + 0.4-alpha text, per the issue's explicit "closer to background when
+  inactive, still legible" instruction. Vertical padding dropped from `LayerRow`'s 2.dp to 0.dp
+  for the "tighter vertical spacing... denser list" ask.
+- Deliberately left as-is: the top three rows (Favorites/Want to go/All POIs) keep `LayerRow`
+  and its `Switch` unchanged — the issue's decluttering ask was scoped to category rows only.
+- Tests: 147 total (was 144), 32 failed (unchanged) — the +3 are net new `FilterAndSortTest`
+  cases (13 → 16), all green (confirmed via its own XML report: 16/16 pass, 0 failures). The 32
+  pre-existing failures are the same 28 Robolectric `UnsatisfiedLinkError` classes
+  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/BackupRepositoryTest/
+  PoiImportTest) plus the 4 `HomeSwipeDeckMathTest` failures, both documented as pre-existing
+  since #31/#32 — confirmed unchanged by class/count, no new failing class introduced.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`: clean.
+- Not verified on device: the multi-select category rows (tap-to-toggle, zero-selected showing
+  an empty map, the text-contrast active/inactive treatment, All POIs resetting the set on
+  re-entry) are all new Compose wiring — needs a real run on Robert's phone.
+
 ## 2026-07-26 — Issue #31: "Want to go" places
 
 - Design worked out via a full /grill-me pass before writing any code (verdict
@@ -472,56 +521,3 @@
   logic — needs a real run on Robert's phone, particularly to confirm the
   chain's sequencing survives Android's own background-location system UI
   detour rather than assuming a plain permission-dialog round trip throughout.
-
-## 2026-07-24 — Issue #23: Manual check-in for nearby POIs
-
-- Picked over #24/#25/#27/#29 on purpose: this is the foundational slice —
-  #26/#27 are directly blocked by it, and #28/#29 transitively depend on it —
-  while #24 and #25 are unblocked but don't unblock anything else themselves.
-- `Favorite` entity mentioned in the issue text no longer exists (dropped by
-  `MIGRATION_3_4`, well before this session) — favoriting is a `Verdict` row
-  with `value == Verdict.VALUE_FAVORITE` now. Read the DB layer before
-  writing anything rather than trusting the issue's stale description.
-- New `Visit` entity (`data/entity/Visit.kt`): auto-generated `id` (it's an
-  append-only log, not a singleton row like `PendingVisit`) plus the same
-  denormalized snapshot fields (`placeId`, `visitedAt`, `source`,
-  `snapshotName/Lat/Lon/Category`) `Verdict`/`PendingVisit` already use, for
-  the same reason — a visit must outlive the poi row it refers to.
-  `Visit.SOURCE_MANUAL` is the only source constant added; `SOURCE_NOTIFICATION`
-  is #28's concern, not added speculatively here.
-- `VisitDao` + a `VisitDao.checkIn(poi, source)` extension function, mirroring
-  `VerdictDao.setVerdict`'s upsert-extension pattern. `MIGRATION_4_5` adds the
-  `visit` table (DB version 4 → 5); hand-checked the DDL column-by-column
-  against the entity like every prior migration in this file.
-- Nearby-ranking logic ("favorites <200m first, then everyone else by
-  distance, capped at 500m") is a new pure top-level function,
-  `rankNearbyForCheckIn()` in `CheckInViewModel.kt` — same convention as
-  `filterAndSort`/`withinRadius`/`nearestFavoriteWithin`, so it's unit-testable
-  without Robolectric. Favorites *beyond* 200m aren't excluded — they just
-  lose top billing and fall into the ordinary distance-sorted group, which
-  read most naturally from "top billing" in the issue text (not "favorites
-  only show up within 200m").
-- New "Check-in" bottom-nav tab (`ui/checkin/CheckInScreen.kt` +
-  `CheckInViewModel.kt`), inserted between Explore and Settings in
-  `FreizeitApp.kt`'s `FreizeitDestination` enum. Tapping a row calls
-  `viewModel.checkIn(poi)` directly (no confirmation dialog) and logs a
-  `Visit` with `source = manual`; a small persistent banner ("Checked in to
-  X") confirms it, following the same pattern as Settings' `ImportStatus`
-  banner rather than introducing a Snackbar (no Snackbar exists anywhere in
-  this codebase yet).
-- Reused `CategoryDot`/`Poi.displayName()` from `ui/explore/PlaceDetailSheet.kt`
-  (both already public) instead of duplicating them — the row layout mirrors
-  `ExploreScreen`'s `PoiSuggestionRow` closely on purpose.
-- Tests: 118 total (was 111), 26 failed (was 23) — the +3 are my own
-  `VisitDaoTest` cases, which join the pre-existing Robolectric
-  `UnsatisfiedLinkError` set (any test touching a Robolectric `Context`
-  triggers `FreizeitApplication`'s `MapLibre.getInstance()` call, documented
-  since #10/#13/#15) — confirmed by the failure list matching the prior
-  23-failure baseline exactly plus my 3 new cases, no other test flipped.
-  New `CheckInRankingTest` (4 cases: favorite top-billing, favorite losing
-  top-billing beyond 200m, 500m exclusion, empty input) is plain-JVM (no
-  Robolectric) and fully green. Updated `FreizeitDestinationTest` for the
-  new 4th tab.
-- Not verified on device: the Check-in tab's list/tap/confirmation-banner
-  flow is declarative Compose wired the same way Home/Explore already are,
-  but not run on Robert's phone this session.
