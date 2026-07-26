@@ -16,3 +16,6 @@ val GreenOnPrimaryContainerDark = Color(0xFFBCF0B4)
 
 /** Fixed strong red for the "favorite" heart, independent of dynamic color theming. */
 val FavoriteRed = Color(0xFFE53935)
+
+/** Fixed blue for the "want to go" bookmark, independent of dynamic color theming. */
+val WantToGoBlue = Color(0xFF1E88E5)

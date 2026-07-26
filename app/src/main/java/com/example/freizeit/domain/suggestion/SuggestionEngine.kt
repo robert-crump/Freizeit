@@ -20,7 +20,7 @@ data class SuggestionContext(
     val weather: WeatherSnapshot?,
     /** Seed for the small novelty jitter; same seed = same ranking. */
     val noveltySeed: Long = now.toLocalDate().toEpochDay(),
-    /** Verdicts keyed by place id — only a "favorite" verdict makes a place a candidate. */
+    /** Verdicts keyed by place id — a "favorite" or "want to go" verdict makes a place a candidate. */
     val verdicts: Map<String, Verdict> = emptyMap(),
     /** Check-in timestamps (epoch millis) per place id, full history — [SuggestionEngine]
      *  applies the trailing-90-day window itself rather than receiving pre-filtered counts. */
@@ -38,20 +38,26 @@ data class Suggestion(
     /** Human-readable score facts (travel time, weather fit), joined with " · " on the card. */
     val reasons: List<String>,
     /** Card-level cautions (currently closed, imminent rain) that no longer remove a
-     *  favorite from the deck — they're surfaced here instead so the user can still decide. */
-    val warnings: List<String> = emptyList()
+     *  favorite/want-to-go place from the deck — they're surfaced here instead so the
+     *  user can still decide. */
+    val warnings: List<String> = emptyList(),
+    /** [Verdict.VALUE_FAVORITE] or [Verdict.VALUE_WANT_TO_GO] — which bucket this card
+     *  came from, so the UI can show the matching icon/action (#31). */
+    val verdictValue: String
 )
 
 /**
- * The transparent ranking behind the favorites-only suggestion deck (issue
- * #17 redesign). Pure and deterministic: same POIs + same [SuggestionContext]
- * always produce the same output, so every rule here is asserted by unit
- * tests and scenario fixtures.
+ * The transparent ranking behind the merged favorites/want-to-go suggestion deck
+ * (issue #17 redesign, extended by #31). Pure and deterministic: same POIs + same
+ * [SuggestionContext] always produce the same output, so every rule here is
+ * asserted by unit tests and scenario fixtures.
  *
- * Candidate pool: only places with a "favorite" verdict — this screen is a
- * swipeable deck over your own favorites, not a general recommender.
+ * Candidate pool: only places with a "favorite" or "want to go" verdict — this screen
+ * is a swipeable deck over your own favorites and want-to-go places, not a general
+ * recommender. Both verdict types compete on equal footing; neither gets a scoring
+ * advantage over the other (#31).
  *
- * The only hard filter left on that pool is the favorite check above. Known-closed
+ * The only hard filter left on that pool is the verdict check above. Known-closed
  * places (issue #1 hybrid decision — unknown hours never count as closed) and outdoor
  * places facing imminent rain no longer get excluded — they stay in the deck with a
  * [Suggestion.warnings] entry instead, so the user decides rather than the engine.
@@ -98,9 +104,10 @@ object SuggestionEngine {
         }
     }
 
-    /** Null = not a favorite. */
+    /** Null = neither a favorite nor a want-to-go place. */
     private fun evaluate(poi: Poi, context: SuggestionContext): Suggestion? {
-        if (context.verdicts[poi.id]?.value != Verdict.VALUE_FAVORITE) return null
+        val verdictValue = context.verdicts[poi.id]?.value ?: return null
+        if (verdictValue != Verdict.VALUE_FAVORITE && verdictValue != Verdict.VALUE_WANT_TO_GO) return null
 
         val openStatus = OpeningHours.statusAt(poi.openingHours, context.now)
         val weather = context.weather
@@ -169,7 +176,7 @@ object SuggestionEngine {
 
         score += noveltyJitter(context.noveltySeed, poi.id)
 
-        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons, warnings)
+        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons, warnings, verdictValue)
     }
 
     /** Deterministic 0..8 point jitter so the same day always ranks the same. */

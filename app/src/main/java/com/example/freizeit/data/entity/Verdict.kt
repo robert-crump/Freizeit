@@ -23,5 +23,6 @@ data class Verdict(
 ) {
     companion object {
         const val VALUE_FAVORITE = "favorite"
+        const val VALUE_WANT_TO_GO = "want_to_go"
     }
 }

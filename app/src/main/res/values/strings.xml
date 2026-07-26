@@ -6,13 +6,14 @@
     <string name="tab_settings">Settings</string>
     <!-- Home -->
     <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
-    <string name="home_no_favorites">You haven\'t favorited any places yet. Head to Explore and tap the heart on a place to see it here.</string>
+    <string name="home_no_favorites">You haven\'t favorited or bookmarked any places yet. Head to Explore and tap the heart or bookmark on a place to see it here.</string>
     <string name="home_no_suggestions_within_radius">No suggestions within %1$d km.</string>
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
     <string name="home_go">Go</string>
     <string name="home_checkin">Check-in</string>
     <string name="home_unfavorite">Remove from favorites</string>
+    <string name="home_remove_want_to_go">Remove from want to go</string>
     <string name="home_open_now">Open now</string>
     <string name="home_closed_now">Closed now</string>
     <string name="home_visit_prompt">Were you at %1$s?</string>
@@ -22,6 +23,7 @@
     <string name="explore_locate_me">Locate me</string>
     <string name="explore_unnamed">Unnamed %1$s</string>
     <string name="explore_favorites_filter">Favorites</string>
+    <string name="explore_want_to_go_filter">Want to go</string>
     <string name="explore_all_pois_filter">All POIs</string>
     <string name="explore_layers_button">Layers</string>
     <string name="explore_layers_title">Layers</string>
@@ -66,6 +68,7 @@
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>
     <string name="detail_verdict_favorite">Favorite</string>
+    <string name="detail_verdict_want_to_go">Want to go</string>
     <string name="detail_edit_name">Edit name</string>
     <string name="detail_custom_name_title">Custom name</string>
     <string name="detail_custom_name_label">Name</string>

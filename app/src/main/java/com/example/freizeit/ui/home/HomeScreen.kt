@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -70,6 +71,7 @@ import com.example.freizeit.ui.explore.CategoryDot
 import com.example.freizeit.ui.explore.SuggestionsMiniMap
 import com.example.freizeit.ui.explore.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
+import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
@@ -121,8 +123,8 @@ fun HomeScreen(
         when {
             state.isLoading -> CenteredLoading()
             !state.hasPois -> CenteredHint(stringResource(R.string.home_empty))
-            !state.hasFavorites -> CenteredHint(stringResource(R.string.home_no_favorites))
-            !state.hasFavoritesWithinRadius -> CenteredHint(
+            !state.hasVerdictedPlaces -> CenteredHint(stringResource(R.string.home_no_favorites))
+            !state.hasVerdictedPlacesWithinRadius -> CenteredHint(
                 stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
             )
             else -> SwipeableSuggestionCard(
@@ -137,7 +139,7 @@ fun HomeScreen(
                     context.startActivity(Intent(Intent.ACTION_VIEW, navUri))
                 },
                 onCheckIn = { suggestion -> pendingCheckIn = suggestion },
-                onUnfavorite = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
+                onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -214,18 +216,19 @@ internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean 
     abs(offsetPx) > thresholdPx
 
 /**
- * One favorite at a time, backed by a peeking card behind it so the deck reads as stackable.
- * Dragging translates and fades the top card while the peek card grows into place; releasing
- * past the threshold commits that motion to completion and pages the deck, releasing short of
- * it springs back to rest. Unfavoriting runs the same commit animation (sliding right, since a
- * button tap has no drag direction to inherit) before applying the actual verdict change.
+ * One favorite or want-to-go place at a time, backed by a peeking card behind it so the deck
+ * reads as stackable. Dragging translates and fades the top card while the peek card grows into
+ * place; releasing past the threshold commits that motion to completion and pages the deck,
+ * releasing short of it springs back to rest. Removing a card's verdict runs the same commit
+ * animation (sliding right, since a button tap has no drag direction to inherit) before applying
+ * the actual verdict change.
  *
  * Position in [deck] is tracked locally ([localIndex]) rather than round-tripped through the
  * ViewModel: a swipe-driven page needs the very next frame to show the promoted card at rest,
  * and a Room/combine round trip (even a fast one) lands a beat too late, which reads as the
- * peeking card flicking to full size and back. Unfavoriting still goes through the ViewModel
- * since it has to persist, but leaving [localIndex] untouched lets the shrunken deck naturally
- * surface whatever was already peeking through.
+ * peeking card flicking to full size and back. Removing a verdict still goes through the
+ * ViewModel since it has to persist, but leaving [localIndex] untouched lets the shrunken deck
+ * naturally surface whatever was already peeking through.
  *
  * Previous/current/next cards are each key()'d by POI id rather than pinned to a fixed
  * top/peek call site. A card's SuggestionsMiniMap (and its MapView) travels with its POI across
@@ -241,7 +244,7 @@ private fun SwipeableSuggestionCard(
     location: LatLon?,
     onGo: (Suggestion) -> Unit,
     onCheckIn: (Suggestion) -> Unit,
-    onUnfavorite: (Suggestion) -> Unit,
+    onRemoveVerdict: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -345,8 +348,8 @@ private fun SwipeableSuggestionCard(
                     location = location,
                     onGo = if (isCurrent) ({ onGo(entry) }) else ({}),
                     onCheckIn = if (isCurrent) ({ onCheckIn(entry) }) else ({}),
-                    onUnfavorite = if (isCurrent) {
-                        { commit(direction = 1) { onUnfavorite(entry) } }
+                    onRemoveVerdict = if (isCurrent) {
+                        { commit(direction = 1) { onRemoveVerdict(entry) } }
                     } else {
                         {}
                     },
@@ -468,7 +471,7 @@ private fun SuggestionCard(
     location: LatLon?,
     onGo: () -> Unit,
     onCheckIn: () -> Unit,
-    onUnfavorite: () -> Unit,
+    onRemoveVerdict: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
@@ -493,11 +496,14 @@ private fun SuggestionCard(
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = onUnfavorite) {
+                val isFavorite = suggestion.verdictValue == Verdict.VALUE_FAVORITE
+                IconButton(onClick = onRemoveVerdict) {
                     Icon(
-                        imageVector = Icons.Filled.Favorite,
-                        contentDescription = stringResource(R.string.home_unfavorite),
-                        tint = FavoriteRed,
+                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.Bookmark,
+                        contentDescription = stringResource(
+                            if (isFavorite) R.string.home_unfavorite else R.string.home_remove_want_to_go
+                        ),
+                        tint = if (isFavorite) FavoriteRed else WantToGoBlue,
                         // IconButton centers the glyph in its 48dp touch target; nudge it up so
                         // it reads as flush with the name's top edge instead of vertically centered.
                         modifier = Modifier.offset(y = -HEART_ICON_TOP_NUDGE_DP.dp)
