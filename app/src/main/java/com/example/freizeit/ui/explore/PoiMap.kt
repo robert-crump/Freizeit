@@ -47,6 +47,7 @@ private const val FALLBACK_LAT = 50.7753
 private const val FALLBACK_LON = 6.0839
 private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
+private const val SEARCH_FOCUS_ZOOM = 16.0
 
 /** Below this zoom, MapLibre's built-in GeoJSON clustering groups POIs into size-tiered bubbles. */
 private const val CLUSTER_MAX_ZOOM = 12
@@ -79,6 +80,8 @@ fun PoiMap(
     onPoiClick: (PoiWithDistance) -> Unit,
     customNames: Map<String, String> = emptyMap(),
     recenterRequest: Int = 0,
+    focusTarget: LatLon? = null,
+    focusRequest: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -141,6 +144,18 @@ fun PoiMap(
                 CameraUpdateFactory.newLatLngZoom(LatLng(location.lat, location.lon), LOCATE_ME_ZOOM)
             )
             lastHandledRecenter = recenterRequest
+        }
+    }
+
+    // Bumped when a search suggestion is picked; jumps the camera to that POI regardless
+    // of whether it's currently on-screen, since the whole point is to reveal it.
+    var lastHandledFocus by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusRequest, focusTarget) {
+        if (focusRequest != 0 && focusRequest != lastHandledFocus && focusTarget != null) {
+            state.map?.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(LatLng(focusTarget.lat, focusTarget.lon), SEARCH_FOCUS_ZOOM)
+            )
+            lastHandledFocus = focusRequest
         }
     }
 

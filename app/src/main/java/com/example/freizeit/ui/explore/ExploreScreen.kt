@@ -55,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.GeoDistance
+import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 
 /** Below this many characters, matches are too broad to be useful as jump-to suggestions. */
@@ -87,6 +88,8 @@ fun ExploreScreen(
     }
 
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
+    var focusRequest by rememberSaveable { mutableIntStateOf(0) }
+    var focusTarget by remember { mutableStateOf<LatLon?>(null) }
     var showLayersPanel by rememberSaveable { mutableStateOf(false) }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter+sort
@@ -154,6 +157,8 @@ fun ExploreScreen(
                         onPoiClick = viewModel::selectPoi,
                         customNames = state.customNames,
                         recenterRequest = recenterRequest,
+                        focusTarget = focusTarget,
+                        focusRequest = focusRequest,
                         modifier = Modifier.fillMaxSize()
                     )
                     Column(
@@ -196,6 +201,8 @@ fun ExploreScreen(
                             customNames = state.customNames,
                             onClick = {
                                 viewModel.selectPoi(item)
+                                focusTarget = LatLon(item.poi.lat, item.poi.lon)
+                                focusRequest++
                                 searchText = ""
                                 viewModel.clearSearch()
                             }
