@@ -1,5 +1,38 @@
 # Freizeit v2 progress log
 
+## 2026-07-26 — Issue #22: Investigate hardcoded Cologne fallback location in HomeViewModel
+
+- Picked up on explicit user override: the issue carries no `ready-for-agent` label (no labels
+  at all — filed as a self-assigned follow-up from #21, never triaged). Proceeded anyway since
+  the user named it directly and it turned out to be fully specified once investigated.
+- Answered the issue's three questions by reading code, not guessing:
+  - **Interaction with #21's radius filter**: none. `HomeViewModel.uiState`'s `combine` block
+    (`HomeViewModel.kt:110-138`) feeds `SuggestionEngine.withinRadius` the raw `loc` from the
+    `location` `StateFlow` — real GPS fix or `null` — never the `FALLBACK_LAT`/`FALLBACK_LON`
+    constants. `withinRadius` already treats `null` as "skip filtering" (its doc comment cites
+    #21 directly). The fallback constants are read in exactly two places, both camera/fetch
+    centering, never suggestion filtering: `HomeViewModel.refreshLocation()`'s
+    `weatherRepository.refresh(...)` call and `PoiMap.kt`'s initial camera target.
+  - **Why "Cologne" and whether it should exist at all**: it shouldn't have been Cologne —
+    that was a bug, not a documented decision. `git log -S` traces `FALLBACK_LAT = 50.94` /
+    `FALLBACK_LON = 6.96` (Köln's actual coordinates) to the 2026-07-06 v2-rewrite squash
+    commit, which predates the POI extraction bbox decision entirely. `tools/poi_extraction`
+    fixed the bbox to Aachen center +/-20km on 2026-07-16 (`4de3c36`, lat 50.5956-50.9550, lon
+    5.7996-6.3682) and nobody circled back to the fallback constants. Cologne's longitude
+    (6.96) sits outside the bbox's max lon (6.3682) — the old fallback pointed to a spot with
+    zero POI coverage, so a no-GPS user would see an empty Explore map and get weather for a
+    city ~60km from every POI in the app. The fallback itself should exist (better than 0,0 or
+    a blank map/weather widget when GPS is unavailable) — only the coordinates were wrong.
+  - Fixed both call sites (`HomeViewModel.kt`, `PoiMap.kt`) to the actual bbox center
+    (50.7753, 6.0839 — Aachen), with comments naming the real source (`tools/poi_extraction`)
+    instead of the incorrect "Cologne" label, and a note in `HomeViewModel.kt` cross-referencing
+    #22 so the history of the mistake stays visible.
+- No test references either fallback constant directly (checked `app/src/test` for
+  `HomeViewModel`/`PoiMap`); the 50.94/6.96 literals in `SuggestionFixture.kt` and
+  `OpenMeteoClientTest.kt` are unrelated fixture coordinates, not references to the constants.
+- Tests: 138 total, 28 failed (unchanged) — same pre-existing Robolectric `UnsatisfiedLinkError`
+  set (MapLibre native init) documented since #10/#13/#15/#23 and reconfirmed as of #29.
+
 ## 2026-07-25 — Issue #29: Closest-100 geofence selection for large favorite counts
 
 - Picked up on explicit user override: #29 is the only `ready-for-agent` issue, but its
@@ -533,63 +566,3 @@
   distinguished from "compiles but colors happen to look bad together" without
   actually eyeballing the Layers panel and "All POIs" map on Robert's phone —
   flagging clearly rather than claiming visual confirmation I couldn't do.
-
-## 2026-07-16 — Issue #15: Import and query support for new POI categories
-
-- Only unblocked `ready-for-agent` issue: #16 depends on #15, and #15's own
-  blockers (#13, #14) are both closed already.
-- Read through the whole import/query path (`PoiJsonParser`, `PoiRepository`,
-  `PoiDao`, `ExploreViewModel.filterAndSort`, `ExploreScreen`'s `LayersPanel`)
-  before writing anything, per the issue's own framing that this might be a
-  verification-only slice. Confirmed it is: `category` on `Poi` is a plain
-  `String` with no enum/whitelist anywhere, `categoryCounts()` groups by the
-  raw string, `filterAndSort`'s search branch matches name substrings with no
-  category check at all, `showAll` passes every row through unconditionally,
-  and `ExploreViewModel.uiState` derives its `categories` list dynamically via
-  `pois.map { it.category }.distinct()` — `LayersPanel` iterates that, not a
-  hardcoded list. So the six new categories from #14 (shop/tourism/
-  leisure_other/office/craft/historic) already flow through import, "All
-  POIs", and search with zero production-code changes needed. (Per-category
-  pin color/icon is explicitly #16's job — `CategoryUi.kt`'s `categoryColor()`
-  falls back to one shared gray for anything outside the original 5, which is
-  the expected pre-#16 state, not a bug.)
-- Sanity-checked the real regenerated `data/pois.json` (from #14, git-ignored,
-  19 MB / 130725 POIs) with a throwaway Python read: `categories` field lists
-  all 11, per-category counts match #14's coverage report exactly, and a
-  sample `shop` POI has the exact field shape (`id`/`category`/`lat`/`lon`/
-  `name`/`opening_hours`/`street`/`housenumber`/`postcode`/`city`)
-  `PoiJsonParser` expects — confirms the file will import via the SAF picker
-  without hitting the parser's strict-field checks.
-  Didn't run the full 130k-row file through a Robolectric import (slow, and
-  the file's git-ignored so it can't back a committed test) — the schema
-  match plus the new regression tests below stand in for it.
-- Added regression coverage rather than changing code: `PoiImportTest` gained
-  a case importing one POI from each new category (checks count + per-category
-  `categoryCounts()`) and a case mirroring the existing "verdicted place kept
-  and flagged" test but with a new-category (`shop`) POI, to close acceptance
-  criterion 5 explicitly. `FilterAndSortTest` gained a 5th fixture POI
-  (`shop`) and a search-match test for it, alongside the existing `showAll`
-  coverage which already generalizes to any category.
-- Tests: 100 total (was 97), 23 failed (was 21) — the +2 are my two new
-  `PoiImportTest` cases, which join the *entire* pre-existing 21-failure set
-  in that Robolectric class (confirmed by rerunning the class alone: all 8 of
-  its tests fail, not just the new ones). Root cause, read from the stack
-  trace: `FreizeitApplication.onCreate()` calls `MapLibre.getInstance(this)`
-  unconditionally, and any Robolectric test that touches
-  `ApplicationProvider.getApplicationContext()` — not just map-UI tests —
-  triggers that and hits the same native-lib `UnsatisfiedLinkError` the #10/
-  #13 notes flagged, just via a wider blast radius than those notes described
-  (whole-`Application`-onCreate, not map-specific tests). Confirmed via a
-  stash-and-rerun against HEAD before my changes: 97 tests/21 failures,
-  matching #13's documented baseline exactly, so this is pre-existing and
-  untouched by this issue. `FilterAndSortTest` and `PoiJsonParserTest` (no
-  Robolectric) are 100% green on their own: 21/21.
-- Deliberately not fixed: making `FreizeitApplication` skip
-  `MapLibre.getInstance()` under test (or lazy-initing it) would unblock a
-  wide swath of the suite, but it's unrelated to #15's scope and touches
-  app-startup code no other #15 acceptance criterion mentions — flagging here
-  as a good follow-up issue rather than folding it into this one.
-- Not verified on device: the actual SAF-picker import of the real
-  regenerated `data/pois.json` needs a physical run on Robert's phone, same
-  as every prior on-device item in this log.
-

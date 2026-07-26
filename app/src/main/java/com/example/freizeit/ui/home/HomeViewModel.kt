@@ -207,9 +207,11 @@ class HomeViewModel(
     }
 
     companion object {
-        // Cologne area, center of the extract coverage — same fallback as the Explore map.
-        private const val FALLBACK_LAT = 50.94
-        private const val FALLBACK_LON = 6.96
+        // Aachen, center of the POI extraction bbox — same fallback as the Explore map
+        // (issue #22: the old constant was labeled "Cologne" and pointed there, ~60km
+        // outside the actual extraction bbox set by tools/poi_extraction, Aachen +/-20km).
+        private const val FALLBACK_LAT = 50.7753
+        private const val FALLBACK_LON = 6.0839
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
