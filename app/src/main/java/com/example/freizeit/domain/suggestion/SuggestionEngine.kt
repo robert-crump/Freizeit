@@ -36,7 +36,10 @@ data class Suggestion(
     val travelMinutes: Int?,
     val openStatus: OpenStatus,
     /** Human-readable score facts (travel time, weather fit), joined with " · " on the card. */
-    val reasons: List<String>
+    val reasons: List<String>,
+    /** Card-level cautions (currently closed, imminent rain) that no longer remove a
+     *  favorite from the deck — they're surfaced here instead so the user can still decide. */
+    val warnings: List<String> = emptyList()
 )
 
 /**
@@ -48,9 +51,10 @@ data class Suggestion(
  * Candidate pool: only places with a "favorite" verdict — this screen is a
  * swipeable deck over your own favorites, not a general recommender.
  *
- * Hard filters on that pool: known-closed places (issue #1 hybrid decision —
- * unknown hours never filter) and outdoor places when rain is due within the
- * outing window.
+ * The only hard filter left on that pool is the favorite check above. Known-closed
+ * places (issue #1 hybrid decision — unknown hours never count as closed) and outdoor
+ * places facing imminent rain no longer get excluded — they stay in the deck with a
+ * [Suggestion.warnings] entry instead, so the user decides rather than the engine.
  *
  * Soft score on survivors: distance decay + weather-fit bonus + confirmed-open
  * bonus + a small daily novelty jitter.
@@ -63,8 +67,9 @@ object SuggestionEngine {
 
     private val OUTDOOR_CATEGORIES = setOf("playground", "park")
 
-    /** Fixed window for "will it rain during this outing" now that there's no time-budget input. */
-    private const val OUTING_WINDOW_HOURS = 3
+    /** Above this precipitation probability (%) for the current hour, an outdoor favorite
+     *  gets a rain warning instead of being silently dropped from the deck. */
+    private const val RAIN_WARNING_THRESHOLD_PERCENT = 60
 
     /** Extra edge for a favorite that's also genuinely close by, on top of the distance decay above. */
     private const val PROXIMITY_BONUS = 15.0
@@ -80,8 +85,8 @@ object SuggestionEngine {
 
     /**
      * Favorites no farther than [radiusMeters] from [location] (issue #21) — checked as a
-     * separate step before [rankAll] rather than folded into [evaluate]'s hard filters, so a
-     * caller can tell "nothing is within range" apart from "things are in range but closed/rainy".
+     * separate step before [rankAll] rather than folded into [evaluate], so a caller can tell
+     * "nothing is within range" apart from "the deck is empty for some other reason".
      *
      * [location] null means no real fix is available yet (permission pending, no GPS lock) —
      * filtering against a guess would be worse than not filtering, so every favorite passes.
@@ -93,17 +98,22 @@ object SuggestionEngine {
         }
     }
 
-    /** Null = not a favorite, or hard-filtered. */
+    /** Null = not a favorite. */
     private fun evaluate(poi: Poi, context: SuggestionContext): Suggestion? {
         if (context.verdicts[poi.id]?.value != Verdict.VALUE_FAVORITE) return null
 
         val openStatus = OpeningHours.statusAt(poi.openingHours, context.now)
-        if (openStatus == OpenStatus.CLOSED) return null
-
         val weather = context.weather
         val outdoor = poi.category in OUTDOOR_CATEGORIES
-        if (outdoor && weather != null && weather.badWeatherWithin(context.now, OUTING_WINDOW_HOURS)) {
-            return null
+
+        // Current-hour rain check only (not a lookahead window) — rounds `now` to the
+        // nearest full hour and reads that single hour's forecast probability.
+        val rainProbabilityNow = weather?.precipitationProbabilityNear(context.now)
+        val rainWarning = rainProbabilityNow?.takeIf { outdoor && it > RAIN_WARNING_THRESHOLD_PERCENT }
+
+        val warnings = buildList {
+            if (openStatus == OpenStatus.CLOSED) add("Warning: Currently closed")
+            if (rainWarning != null) add("Warning: $rainWarning% rain probability")
         }
 
         var distanceMeters: Double? = null
@@ -134,11 +144,10 @@ object SuggestionEngine {
         if (weather != null) {
             val dryAhead = weather.dryHoursAhead(context.now)
             when {
-                outdoor -> {
-                    // survived the hard filter, so the window is dry
+                outdoor && rainWarning == null -> {
                     score += 15.0
                     reasons += if (dryAhead >= 10) "dry all day"
-                    else "dry for the next ${dryAhead.coerceAtLeast(OUTING_WINDOW_HOURS)} h"
+                    else "dry for the next ${dryAhead.coerceAtLeast(1)} h"
                 }
                 poi.category == "ice_cream" && dryAhead >= 1 && weather.currentTempC >= 18.0 -> {
                     score += 12.0
@@ -160,7 +169,7 @@ object SuggestionEngine {
 
         score += noveltyJitter(context.noveltySeed, poi.id)
 
-        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons)
+        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons, warnings)
     }
 
     /** Deterministic 0..8 point jitter so the same day always ranks the same. */

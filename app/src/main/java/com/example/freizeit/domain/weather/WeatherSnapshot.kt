@@ -32,6 +32,17 @@ data class WeatherSnapshot(
         }
     }
 
+    /**
+     * Precipitation probability for the hour nearest [at] (rounded to the nearest full hour,
+     * ties rounding up) — used for the "will it rain this hour" card warning, as opposed to
+     * [dryHoursAhead]'s whole-outing outlook. Null if that hour isn't in the forecast.
+     */
+    fun precipitationProbabilityNear(at: LocalDateTime): Int? {
+        val rounded = at.withMinute(0).withSecond(0).withNano(0)
+            .let { if (at.minute >= 30) it.plusHours(1) else it }
+        return hourly.firstOrNull { it.time == rounded }?.precipitationProbability
+    }
+
     /** Consecutive dry forecast hours ahead of [from], capped at the forecast horizon. */
     fun dryHoursAhead(from: LocalDateTime): Int {
         if (isWetCode(currentWeatherCode)) return 0

@@ -9,8 +9,8 @@ import org.junit.Test
 
 /**
  * The distance pre-filter behind issue #21: favorites farther than the configured radius never
- * reach [SuggestionEngine.rankAll], and are checked separately from evaluate()'s hard filters so
- * a caller can tell "nothing is within range" apart from "in range but closed/rainy".
+ * reach [SuggestionEngine.rankAll], and are checked separately from evaluate() so a caller can
+ * tell "nothing is within range" apart from other empty-deck reasons.
  */
 class SuggestionRadiusTest {
 

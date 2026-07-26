@@ -91,4 +91,9 @@ object SuggestionFixture {
         hourCode = { i -> if (i >= inHours) 61 else 2 },
         precip = { i -> if (i >= inHours) 85 else 10 }
     )
+
+    /** Every forecast hour (including now) at a fixed rain [percent], sky code kept non-wet so
+     *  the current-hour rain-warning threshold can be tested in isolation from the wet-code bonus. */
+    fun rainChance(now: LocalDateTime, percent: Int) =
+        weather(now, currentCode = 1, tempC = 17.0, precip = { percent })
 }

@@ -45,10 +45,10 @@ fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
 data class HomeUiState(
-    /** The full ranked swipe deck: every favorite that survives the weather/hours filters.
-     *  Position within it is tracked locally by the swipe deck UI, not here — see
-     *  SwipeableSuggestionCard's localIndex — so that paging through it never waits on a
-     *  Room/combine round trip. */
+    /** The full ranked swipe deck: every favorite within radius, closed/rainy ones flagged
+     *  with a warning rather than dropped. Position within it is tracked locally by the swipe
+     *  deck UI, not here — see SwipeableSuggestionCard's localIndex — so that paging through
+     *  it never waits on a Room/combine round trip. */
     val deck: List<Suggestion> = emptyList(),
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
