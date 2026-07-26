@@ -41,8 +41,10 @@ import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.pow
 
-private const val FALLBACK_LAT = 50.94 // Cologne area, center of the extract coverage
-private const val FALLBACK_LON = 6.96
+// Aachen, center of the POI extraction bbox (tools/poi_extraction, Aachen +/-20km) —
+// not Cologne; the app has no POI data outside this box, so the fallback must stay inside it.
+private const val FALLBACK_LAT = 50.7753
+private const val FALLBACK_LON = 6.0839
 private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
 
