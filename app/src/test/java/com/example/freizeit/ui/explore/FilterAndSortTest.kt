@@ -50,13 +50,13 @@ class FilterAndSortTest {
 
     @Test
     fun `favorites filter keeps only the ids in the favorite set regardless of category`() {
-        val result = filterAndSort(pois, null, null, favoriteIds = setOf("node/2"))
+        val result = filterAndSort(pois, null, null, verdictIds = setOf("node/2"))
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }
 
     @Test
     fun `null favorites filter falls back to the selected category`() {
-        val result = filterAndSort(pois, "cafe", null, favoriteIds = null)
+        val result = filterAndSort(pois, "cafe", null, verdictIds = null)
         assertEquals(2, result.size)
     }
 
@@ -70,7 +70,7 @@ class FilterAndSortTest {
     fun `search takes priority over category and favorites filters`() {
         val result = filterAndSort(
             pois, selectedCategory = "playground", location = null,
-            favoriteIds = setOf("node/1"), searchQuery = "alpha"
+            verdictIds = setOf("node/1"), searchQuery = "alpha"
         )
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }
@@ -101,7 +101,7 @@ class FilterAndSortTest {
     fun `favorites filter takes priority over showAll`() {
         val result = filterAndSort(
             pois, selectedCategory = null, location = null,
-            favoriteIds = setOf("node/2"), showAll = true
+            verdictIds = setOf("node/2"), showAll = true
         )
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }

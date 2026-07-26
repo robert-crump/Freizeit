@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +40,7 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.FavoriteRed
+import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.GeoDistance
 
 /** Shared place detail sheet, opened from map markers, list rows, and Home cards. */
@@ -74,6 +77,12 @@ fun PlaceDetailSheet(
                     ) {
                         Icon(Icons.Filled.Edit, contentDescription = stringResource(R.string.detail_edit_name))
                     }
+                    BookmarkButton(
+                        isWantToGo = verdict == Verdict.VALUE_WANT_TO_GO,
+                        onClick = {
+                            onVerdictChange(if (verdict == Verdict.VALUE_WANT_TO_GO) null else Verdict.VALUE_WANT_TO_GO)
+                        }
+                    )
                     FavoriteButton(
                         isFavorite = verdict == Verdict.VALUE_FAVORITE,
                         onClick = {
@@ -178,6 +187,24 @@ private fun FavoriteButton(
             imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
             contentDescription = stringResource(R.string.detail_verdict_favorite),
             tint = if (isFavorite) FavoriteRed else LocalContentColor.current
+        )
+    }
+}
+
+/** Tapping the bookmark again clears the want-to-go verdict; tapping it while unset sets it.
+ *  Mutually exclusive with [FavoriteButton] via the shared single-verdict-per-place model
+ *  (#31) — setting one silently clears the other. */
+@Composable
+private fun BookmarkButton(
+    isWantToGo: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    IconButton(onClick = onClick, modifier = modifier.size(24.dp)) {
+        Icon(
+            imageVector = if (isWantToGo) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+            contentDescription = stringResource(R.string.detail_verdict_want_to_go),
+            tint = if (isWantToGo) WantToGoBlue else LocalContentColor.current
         )
     }
 }

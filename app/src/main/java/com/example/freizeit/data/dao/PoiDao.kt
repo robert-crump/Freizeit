@@ -40,6 +40,19 @@ interface PoiDao {
     )
     fun observeFavorites(favoriteValue: String = Verdict.VALUE_FAVORITE): Flow<List<Poi>>
 
+    /**
+     * Home screen's merged swipe-deck candidate pool (#31): favorited AND want-to-go places
+     * together, filtered in SQL for the same reason as [observeFavorites].
+     */
+    @Query(
+        """
+        SELECT poi.* FROM poi
+        INNER JOIN verdict ON verdict.placeId = poi.id
+        WHERE verdict.value IN (:values)
+        """
+    )
+    fun observeByVerdictValues(values: List<String>): Flow<List<Poi>>
+
     @Query("SELECT COUNT(*) FROM poi")
     fun observeCount(): Flow<Int>
 

@@ -45,20 +45,22 @@ fun PendingVisit.isReadyForBanner(nowMillis: Long): Boolean =
     nowMillis - wentAt >= VISIT_BANNER_THRESHOLD_MILLIS
 
 data class HomeUiState(
-    /** The full ranked swipe deck: every favorite within radius, closed/rainy ones flagged
-     *  with a warning rather than dropped. Position within it is tracked locally by the swipe
-     *  deck UI, not here — see SwipeableSuggestionCard's localIndex — so that paging through
-     *  it never waits on a Room/combine round trip. */
+    /** The full ranked swipe deck: every favorite or want-to-go place within radius, merged
+     *  and ranked on equal footing (#31), closed/rainy ones flagged with a warning rather
+     *  than dropped. Position within it is tracked locally by the swipe deck UI, not here —
+     *  see SwipeableSuggestionCard's localIndex — so that paging through it never waits on
+     *  a Room/combine round trip. */
     val deck: List<Suggestion> = emptyList(),
     val weather: WeatherSnapshot? = null,
     val location: LatLon? = null,
     /** False only once the POI table is confirmed empty — drives the import hint. */
     val hasPois: Boolean = true,
-    /** True if any place has ever been favorited, regardless of today's filters. */
-    val hasFavorites: Boolean = false,
-    /** False only when there ARE favorites but none within [radiusKm] — see issue #21. Always
-     *  true while location is unknown, since distance can't be judged against a guess. */
-    val hasFavoritesWithinRadius: Boolean = true,
+    /** True if any place has ever been favorited or want-to-go'd, regardless of today's filters. */
+    val hasVerdictedPlaces: Boolean = false,
+    /** False only when there ARE favorites/want-to-go places but none within [radiusKm] — see
+     *  issue #21. Always true while location is unknown, since distance can't be judged
+     *  against a guess. */
+    val hasVerdictedPlacesWithinRadius: Boolean = true,
     /** The configured suggestion radius, for the "no suggestions within X km" hint. */
     val radiusKm: Int = SettingsRepository.DEFAULT_RADIUS_KM,
     /** Set only once the visit is at least 2h old, per [isReadyForBanner]. */
@@ -82,9 +84,10 @@ class HomeViewModel(
 
     private val location = MutableStateFlow<LatLon?>(null)
 
-    /** Favorited pois + whether the (city-wide) poi table has anything at all, plus small side tables. */
+    /** Favorited + want-to-go pois + whether the (city-wide) poi table has anything at all,
+     *  plus small side tables. */
     private data class PoiSlice(
-        val favoritePois: List<Poi>,
+        val candidatePois: List<Poi>,
         val hasPois: Boolean,
         val verdicts: Map<String, Verdict>,
         val customNames: Map<String, String>,
@@ -92,14 +95,14 @@ class HomeViewModel(
     )
 
     private val poisVerdictsAndNames = combine(
-        poiDao.observeFavorites(),
+        poiDao.observeByVerdictValues(listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)),
         poiDao.observeCount(),
         verdictDao.observeAll(),
         poiCustomNameDao.observeAll(),
         visitDao.observeAll()
-    ) { favoritePois, poiCount, verdicts, customNames, visits ->
+    ) { candidatePois, poiCount, verdicts, customNames, visits ->
         PoiSlice(
-            favoritePois = favoritePois,
+            candidatePois = candidatePois,
             hasPois = poiCount > 0,
             verdicts = verdicts.associateBy { it.placeId },
             customNames = customNames.associate { it.placeId to it.customName },
@@ -121,14 +124,14 @@ class HomeViewModel(
             verdicts = slice.verdicts,
             visits = slice.visits
         )
-        val favoritesInRange = SuggestionEngine.withinRadius(slice.favoritePois, loc, radiusKm * 1000.0)
+        val candidatesInRange = SuggestionEngine.withinRadius(slice.candidatePois, loc, radiusKm * 1000.0)
         HomeUiState(
-            deck = SuggestionEngine.rankAll(favoritesInRange, context),
+            deck = SuggestionEngine.rankAll(candidatesInRange, context),
             weather = weather,
             location = loc,
             hasPois = slice.hasPois,
-            hasFavorites = slice.favoritePois.isNotEmpty(),
-            hasFavoritesWithinRadius = slice.favoritePois.isEmpty() || favoritesInRange.isNotEmpty(),
+            hasVerdictedPlaces = slice.candidatePois.isNotEmpty(),
+            hasVerdictedPlacesWithinRadius = slice.candidatePois.isEmpty() || candidatesInRange.isNotEmpty(),
             radiusKm = radiusKm,
             pendingVisit = pendingVisit?.takeIf { it.isReadyForBanner(System.currentTimeMillis()) },
             verdicts = slice.verdicts,

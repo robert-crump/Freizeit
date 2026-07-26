@@ -1,5 +1,61 @@
 # Freizeit v2 progress log
 
+## 2026-07-26 — Issue #31: "Want to go" places
+
+- Design worked out via a full /grill-me pass before writing any code (verdict
+  mutual-exclusivity, icon choice, `PlaceDetailSheet` interaction model, merged-vs-separate
+  Home deck, ranking parity, Explore filter chip, geofencing scope, naming — all resolved
+  with the user first; the Explore layer-menu redesign that came up mid-session was split
+  out to #33 rather than bundled in here).
+- New `Verdict.VALUE_WANT_TO_GO` constant alongside `VALUE_FAVORITE`. No schema/PK
+  migration needed: `Verdict` was already one row per `placeId`, so the two verdicts are
+  mutually exclusive for free — setting one overwrites the other via the existing
+  `setVerdict()` upsert.
+- Icon is `Icons.Filled.Bookmark` / `Outlined.BookmarkBorder` (new `WantToGoBlue` tint in
+  `ui/theme/Color.kt`), not a star — the user's own reasoning during the grill-me pass: a
+  star reads too much like a second "favorite," where a bookmark reads as its own distinct
+  "saved for later" concept.
+- `PoiDao` gained `observeByVerdictValues(values)` alongside the existing
+  `observeFavorites()` — Home's deck now queries both verdict values together; the
+  favorites-only geofence sync path (`FreizeitApplication`/`AppContainer`) is untouched,
+  still calling `observeFavorites()` directly, per the explicit decision that want-to-go
+  places get no geofencing/DWELL notifications.
+- `SuggestionEngine`: the hard filter now accepts either verdict value; `Suggestion` gained
+  a `verdictValue` field so the UI can tell which bucket a card came from. Deliberately no
+  scoring changes beyond that — both verdict types compete on equal footing, no type-based
+  weighting. The visit-frequency term needed no special-casing: it's already keyed off
+  actual visit history, which is naturally empty for a never-visited want-to-go place.
+- `HomeViewModel`/`HomeScreen.kt`: renamed `hasFavorites`/`hasFavoritesWithinRadius` to
+  `hasVerdictedPlaces`/`hasVerdictedPlacesWithinRadius` (now genuinely about both buckets,
+  not just favorites) and `onUnfavorite` to `onRemoveVerdict` throughout — a merged single
+  deck means these no longer mean "favorite" specifically. The card's action button now
+  shows heart or bookmark depending on `suggestion.verdictValue`, no separate badge needed.
+- `PlaceDetailSheet.kt`: new `BookmarkButton`, inserted between the existing Edit and
+  Favorite buttons (row order: Edit, Bookmark, Favorite, per explicit placement
+  instruction). Two independent icon buttons, not a segmented control — tapping one while
+  the other is set silently clears it, mirroring the existing single-heart interaction
+  model.
+- `ExploreViewModel`/`ExploreScreen.kt`: added a "Want to go" layer row, inserted directly
+  after "Favorites" (so the final top-row order already reads Favorites/Want to go/All
+  POIs without needing #33's reorder work). `filterAndSort`'s `favoriteIds` parameter
+  renamed to `verdictIds` since it's now shared by whichever single verdict-based filter is
+  active — updated `FilterAndSortTest.kt`'s named-argument call sites to match.
+- Explicitly not touched, per the grill-me decisions: no geofencing/DWELL notifications for
+  want-to-go places; the Explore layer-menu multi-select/reorder/decluttering work (tracked
+  separately in #33).
+- Tests: 144 total (was 140), 32 failed (unchanged) — new `SuggestionWantToGoTest` (4
+  cases: a want-to-go place appears in the deck, a stray verdict value that's neither
+  favorite nor want-to-go is still excluded, each suggestion carries its own verdict value,
+  a favorite and a want-to-go place score identically under identical conditions), all
+  green. The 32 pre-existing failures are the same 28 Robolectric `UnsatisfiedLinkError`
+  classes plus the 4 `HomeSwipeDeckMathTest` failures already documented as pre-existing in
+  #32's entry above — confirmed unchanged by class/count.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`: clean.
+- Not verified on device: the merged deck's card icon swap, the new Explore "Want to go"
+  filter chip, and the `PlaceDetailSheet`'s Edit/Bookmark/Favorite row are all new Compose
+  wiring with no existing on-device confirmation to lean on — needs a real run on Robert's
+  phone.
+
 ## 2026-07-26 — Issue #32: POI search: Focus jumps back to first position while typing
 
 - Design worked out via a full /grill-me pass before writing any code (fix scope, debounce
@@ -469,77 +525,3 @@
 - Not verified on device: the Check-in tab's list/tap/confirmation-banner
   flow is declarative Compose wired the same way Home/Explore already are,
   but not run on Robert's phone this session.
-
-## 2026-07-24 — Issue #21: Filter suggestions by distance
-
-- Design was worked out via a full /grill-me pass before writing any code
-  (distance origin, no-location behavior, filter placement, empty-state
-  precedence, settings persistence, UI control, commit timing, scope,
-  test scope — all resolved with the user first). Implementation matched
-  that design exactly; no surprises during coding.
-- This is the app's first-ever persisted user setting — no DataStore or
-  SharedPreferences existed anywhere in the codebase before this issue.
-  Added `androidx.datastore:datastore-preferences:1.0.0` and a new
-  `SettingsRepository` (`data/repository/SettingsRepository.kt`) wrapping
-  a `Context.settingsDataStore` delegate declared in `AppContainer.kt`,
-  following the existing lazy-property-per-repository DI pattern exactly.
-  `suggestionRadiusKm` is a `Flow<Int>`, default 40, coerced to a minimum
-  of 1 on both read and write (no upper cap, per the issue).
-- `SuggestionEngine.withinRadius(pois, location, radiusMeters)`: a new
-  pure function, deliberately kept separate from `evaluate()`'s existing
-  closed-hours/bad-weather hard filters (rather than folded in) so
-  `HomeViewModel` can tell "nothing is within range" apart from "in range
-  but nothing currently fits" — the two need different empty-state copy.
-  `location == null` (no GPS fix yet) skips the filter entirely rather
-  than measuring against a guess — same principle as the existing
-  Cologne-fallback weather-only default, but the fallback itself is
-  *not* used for distance filtering (flagged as its own investigation,
-  issue #22, since nobody could say why Cologne specifically without
-  digging further).
-- `HomeViewModel`: added `settingsRepository` as a 6th constructor param
-  and a 5th flow in the existing 4-flow `uiState` combine (still within
-  the stdlib direct-lambda overload limit, no arity workaround needed
-  this time). New `HomeUiState.hasFavoritesWithinRadius` /`.radiusKm`
-  fields; `hasFavoritesWithinRadius` is `true` whenever there are no
-  favorites to judge in the first place or location is unknown, `false`
-  only when real favorites exist but all fall outside the radius.
-- `HomeScreen.kt`: new branch inserted between the existing `!hasFavorites`
-  and `deck.isEmpty()` hints — `!hasFavoritesWithinRadius -> CenteredHint(
-  "No suggestions within %d km.")`. Reused the existing `CenteredHint`
-  composable verbatim (a plain non-swipeable `Text`), which satisfies the
-  issue's "should not be swipeable" requirement for free — the swipe
-  gesture code in `SwipeableSuggestionCard` is never reached from any of
-  these hint branches.
-- Settings UI: new "Suggestions" section in `SettingsScreen.kt`, a single
-  `OutlinedTextField` (digits-only `onValueChange` filter, numeric
-  keyboard). Commits to `SettingsViewModel.setSuggestionRadiusKm` only on
-  blur (`Modifier.onFocusChanged`), not per keystroke, and reverts the
-  displayed text to the last-committed value if left blank/non-numeric —
-  first input-style control this screen has ever had (previously only
-  buttons).
-- Deliberately out of scope, per the design discussion: the radius only
-  filters Home's suggestion deck, not Explore's favorites/map (issue
-  title and body are both Home-specific); no "home address" concept was
-  introduced — distance is measured from the same live/last-known device
-  location `SuggestionEngine` already used for scoring.
-- Tests: 111 total (was 104), 0 new failures — the pre-existing 23
-  Robolectric `UnsatisfiedLinkError` failures (MapLibre native init
-  triggered by any test touching `ApplicationProvider.getApplicationContext()`,
-  documented since #15/#16) are untouched, same classes/count as before
-  this issue. New: `SuggestionRadiusTest` (4 cases — in-range, exact
-  boundary, all-excluded, null-location-skips-filter) and
-  `SettingsRepositoryTest` (3 cases — default, round-trip, non-positive
-  coerced to 1), the latter deliberately built on a temp-file
-  `PreferenceDataStoreFactory` DataStore instead of a Robolectric
-  `Context`, so it stays a fast, deterministic plain-JVM test rather than
-  inheriting the known MapLibre-init failure the other Context-based
-  repository tests hit.
-- Not verified on device: the on-blur commit behavior of the new text
-  field and the live "No suggestions within X km" re-filtering as the
-  setting changes are declarative Compose/Flow wiring with no new
-  branchy logic, but not exercised on Robert's phone this session.
-- Filed issue #22 as a follow-up: investigate the hardcoded Cologne
-  fallback location in `HomeViewModel.kt` (why Cologne specifically, and
-  whether it should exist in production builds at all) — found while
-  confirming this issue's "skip the filter when location is unknown"
-  design point.

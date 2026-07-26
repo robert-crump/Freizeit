@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
@@ -54,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
@@ -217,9 +219,11 @@ fun ExploreScreen(
                 categories = state.categories,
                 selectedCategory = state.selectedCategory,
                 favoritesOnly = state.favoritesOnly,
+                wantToGoOnly = state.wantToGoOnly,
                 showAllPois = state.showAllPois,
                 onSelectCategory = { category -> viewModel.selectCategory(category) },
                 onSelectFavorites = { viewModel.toggleFavoritesOnly() },
+                onSelectWantToGo = { viewModel.toggleWantToGoOnly() },
                 onSelectAllPois = { viewModel.selectAllPois() },
                 onDismiss = { showLayersPanel = false }
             )
@@ -250,9 +254,11 @@ private fun LayersPanel(
     categories: List<String>,
     selectedCategory: String?,
     favoritesOnly: Boolean,
+    wantToGoOnly: Boolean,
     showAllPois: Boolean,
     onSelectCategory: (String) -> Unit,
     onSelectFavorites: () -> Unit,
+    onSelectWantToGo: () -> Unit,
     onSelectAllPois: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
@@ -294,6 +300,14 @@ private fun LayersPanel(
                     selected = favoritesOnly,
                     onClick = onSelectFavorites,
                     leadingIcon = { Text("❤️") }
+                )
+                LayerRow(
+                    label = stringResource(R.string.explore_want_to_go_filter),
+                    selected = wantToGoOnly,
+                    onClick = onSelectWantToGo,
+                    leadingIcon = {
+                        Icon(Icons.Filled.Bookmark, contentDescription = null, tint = WantToGoBlue)
+                    }
                 )
                 LayerRow(
                     label = stringResource(R.string.explore_all_pois_filter),
