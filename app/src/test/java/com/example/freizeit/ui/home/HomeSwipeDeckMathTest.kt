@@ -16,21 +16,19 @@ class HomeSwipeDeckMathTest {
     }
 
     @Test
-    fun `top card is still partially visible right at the threshold`() {
-        val alpha = topCardAlpha(threshold, threshold)
-        assertTrue(alpha > 0f)
-        assertTrue(alpha < 1f)
+    fun `top card is fully faded right at the threshold`() {
+        assertEquals(0f, topCardAlpha(threshold, threshold), 0.001f)
     }
 
     @Test
-    fun `top card alpha bottoms out at 30 percent past the fade distance`() {
-        assertEquals(0.3f, topCardAlpha(threshold * 2f, threshold), 0.001f)
-        assertEquals(0.3f, topCardAlpha(threshold * 10f, threshold), 0.001f)
+    fun `top card alpha bottoms out at 0 once past the threshold`() {
+        assertEquals(0f, topCardAlpha(threshold * 2f, threshold), 0.001f)
+        assertEquals(0f, topCardAlpha(threshold * 10f, threshold), 0.001f)
     }
 
     @Test
-    fun `top card alpha never drops below 30 percent mid-drag`() {
-        assertTrue(topCardAlpha(threshold * 0.9f, threshold) >= 0.3f)
+    fun `top card alpha is still above zero just short of the threshold`() {
+        assertTrue(topCardAlpha(threshold * 0.9f, threshold) > 0f)
     }
 
     @Test
@@ -43,10 +41,10 @@ class HomeSwipeDeckMathTest {
     }
 
     @Test
-    fun `reveal progress reaches 1 exactly when top card alpha bottoms out`() {
+    fun `reveal progress reaches 1 once top card alpha has already bottomed out`() {
         val offset = threshold * 1.75f
         assertEquals(1f, revealProgress(offset, threshold), 0.001f)
-        assertEquals(0.3f, topCardAlpha(offset, threshold), 0.001f)
+        assertEquals(0f, topCardAlpha(offset, threshold), 0.001f)
     }
 
     @Test
