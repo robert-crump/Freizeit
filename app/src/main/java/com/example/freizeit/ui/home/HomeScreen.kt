@@ -125,7 +125,6 @@ fun HomeScreen(
             !state.hasFavoritesWithinRadius -> CenteredHint(
                 stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
             )
-            state.deck.isEmpty() -> CenteredHint(stringResource(R.string.home_no_suggestions))
             else -> SwipeableSuggestionCard(
                 deck = state.deck,
                 customNames = state.customNames,
@@ -549,6 +548,18 @@ private fun SuggestionCard(
                             color = MaterialTheme.colorScheme.error
                         )
                         OpenStatus.UNKNOWN -> {}
+                    }
+                }
+            }
+
+            if (suggestion.warnings.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    suggestion.warnings.forEach { warning ->
+                        Text(
+                            text = warning,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
