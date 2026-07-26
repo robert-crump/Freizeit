@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -32,6 +33,8 @@ const val CHECKIN_FAVORITE_RADIUS_METERS = 200.0
 
 /** Nothing farther than this is worth walking to for a check-in. */
 const val CHECKIN_MAX_RADIUS_METERS = 500.0
+
+private const val SEARCH_DEBOUNCE_MS = 250L
 
 data class CheckInCandidate(val poi: Poi, val distanceMeters: Double, val isFavorite: Boolean)
 
@@ -86,7 +89,9 @@ class CheckInViewModel(
         verdictDao.observeAll(),
         location,
         lastCheckedInName,
-        searchQuery
+        // Debounced so the nearby-ranking pass runs once typing pauses, instead of on
+        // every keystroke (mirrors ExploreViewModel's identical fix).
+        searchQuery.debounce(SEARCH_DEBOUNCE_MS)
     ) { pois, verdicts, loc, lastName, query ->
         val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
             ?: emptyList()

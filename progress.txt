@@ -1,5 +1,43 @@
 # Freizeit v2 progress log
 
+## 2026-07-26 — Issue #32: POI search: Focus jumps back to first position while typing
+
+- Design worked out via a full /grill-me pass before writing any code (fix scope, debounce
+  parity with Explore, shared-vs-duplicated constant, test coverage, clear-button debounce
+  tradeoff, rememberSaveable vs remember, device-verification ownership — all resolved with
+  the user first, same approach as #21).
+- Root cause: `CheckInScreen.kt`'s `OutlinedTextField` bound `value` directly to
+  `state.searchQuery`, which round-trips through `CheckInViewModel`'s un-debounced 5-way
+  `combine` (including `poiDao.observeAll()`) on `Dispatchers.Default` before echoing back —
+  Compose can't reconcile the cursor position against a stale/delayed value, so it resets to
+  the start. Identical bug already fixed in `ExploreScreen`'s search (`10ac5d3`) via a local
+  `rememberSaveable` buffer decoupled from ViewModel state; Check-in's search bar (added later
+  in #30) never got the same treatment.
+- Fix mirrors Explore's pattern exactly rather than diverging: `CheckInScreen.kt` gained a
+  local `searchText` (`rememberSaveable`) driving the text field, with `onValueChange`/
+  `onClear` updating both the local buffer and the ViewModel. `CheckInViewModel.kt` gained its
+  own private `SEARCH_DEBOUNCE_MS = 250L` (deliberately duplicated, not shared with
+  `ExploreViewModel`'s constant of the same name/value, so the two screens stay independently
+  tunable) and `.debounce(SEARCH_DEBOUNCE_MS)` on the `searchQuery` flow feeding the `combine`.
+- Deliberately not special-cased: `clearSearch()` still goes through the same debounced flow,
+  so Check-in's clear button carries the same ~250ms lag before reverting to the
+  favorites-nearby list that Explore's clear button already has — an accepted existing
+  tradeoff from the pattern being mirrored, not something to fix differently per screen.
+- No new test: cursor/focus behavior isn't practically unit-testable without a Compose UI test
+  harness (this codebase has none), and Explore's identical fix shipped with no test either —
+  same precedent followed rather than introducing new test infrastructure as a side effect of
+  a one-issue bug fix.
+- Tests: 140 total, 32 failed — identical count and failures to unmodified `main` (confirmed
+  via `git stash` comparison), so zero regressions from this change. The 32 are the 28
+  pre-existing Robolectric `UnsatisfiedLinkError` failures (documented since #10/#13/#15/#23)
+  plus 4 `HomeSwipeDeckMathTest` failures that are also pre-existing as of `df63710` (confirmed
+  failing identically on unmodified `main` — a swipe-deck alpha-math regression from the
+  "closed/rainy favorites" change that landed just before this session, unrelated to #32 and
+  not investigated further here). `compileDebugKotlin`: clean (the new `debounce()` call emits
+  the same pre-existing, unaddressed `FlowPreview` opt-in warning `ExploreViewModel.kt:135`
+  already has).
+- Not verified on device this session — user will verify directly on their phone.
+
 ## 2026-07-26 — Issue #22: Investigate hardcoded Cologne fallback location in HomeViewModel
 
 - Picked up on explicit user override: the issue carries no `ready-for-agent` label (no labels
@@ -505,64 +543,3 @@
   whether it should exist in production builds at all) — found while
   confirming this issue's "skip the filter when location is unknown"
   design point.
-
-## 2026-07-16 — Issue #16: Distinct map pin styling (color/icon) for new POI categories
-
-- Only open `ready-for-agent` issue this session — #15 (its blocker) closed
-  already, unblocking it.
-- Read `CategoryUi.kt`, `PoiMap.kt`, `MapStyle.kt`/`categoryColorExpression()`,
-  and `ExploreScreen.kt`'s `CategoryDot`/`LayersPanel`/`PoiRow` before writing
-  anything. Found the whole per-category-color path is already data-driven off
-  one list: `CATEGORY_ORDER` (used for both sort order and as the source of
-  `categoryColorExpression()`'s match stops) only listed the original 5, so
-  `categoryColor()` silently fell back to the shared gray for all 6 new
-  categories everywhere at once — the map circle layer, `CategoryDot` in the
-  list/panel, and the Layers panel's category rows. This matches #15's own
-  note that this was "the expected pre-#16 state, not a bug." So the fix is
-  two `CategoryUi.kt` edits, not three separate ones: extending
-  `CATEGORY_ORDER` alone fixes `categoryColorExpression()`, `CategoryDot`, and
-  `LayerRow` simultaneously since they all read through `categoryColor()`/
-  `categoryOrderIndex()`. No `PoiMap.kt` change needed — its circle-color
-  property already reads `categoryColorExpression()` verbatim.
-- `CATEGORY_ORDER` extended to all 11, ordered to match the extraction
-  registry's `CATEGORIES` list in `extract_pois.py` (`EXACT_CATEGORIES` then
-  `COARSE_CATEGORIES`: shop, tourism, leisure_other, office, craft, historic),
-  matching the doc comment's existing claim that this list "match[es] the
-  extraction registry."
-- `categoryColor()`: 6 new hex colors, chosen by computing HSL hues spread
-  across the gaps left by the original 5 (orange 32°, green 123°, brown ~17°,
-  red 0°, pink 336°) so every pair of the 11 stays ≥28° apart on the color
-  wheel even with all shown together in "All POIs" mode: shop `#1B7D98`
-  (blue-cyan, 193°), tourism `#1B986A` (teal, 158°), leisure_other `#7CA51D`
-  (olive/yellow-green, 78°, sitting in the wide gap between orange and green),
-  office `#1D38A5` (blue-indigo, 228°), craft `#511DA5` (violet, 263°),
-  historic `#A01DA5` (purple-magenta, 298°, 38° clear of pink).
-- Interpreted "icon" in the issue title/body as the existing dot-style — this
-  codebase has no per-category image/sprite icon system for any of the
-  original 5 categories either (`CategoryDot` is a plain colored circle,
-  `PoiMap.kt`'s pins are a `CircleLayer`, not a `SymbolLayer` with images), so
-  adding one now would be new infrastructure beyond "following the existing
-  pattern in `CategoryUi.kt`" that the issue explicitly asked to follow. Flagging
-  as a possible future issue if real icon glyphs (not just color) turn out to
-  matter once someone eyeballs the map with all 11 categories on screen.
-- Cluster circles/count labels needed no change: `clusterCircleLayer()` colors
-  every cluster from `MaterialTheme.colorScheme.secondary` regardless of the
-  categories inside it (count-based size tiers only), so mixed-category
-  clusters were already category-agnostic and stay legible by construction —
-  confirmed by reading `PoiMap.kt` rather than assuming.
-- Added `CategoryUiTest.kt` (new file, `ui/common` had no test coverage
-  before): asserts `CATEGORY_ORDER` is exactly the 11 in extraction-registry
-  order, all 11 colors are pairwise distinct (`.toSet().size` check — would
-  catch an accidental hex collision even if hue math above has a bug), the 6
-  new categories don't hit the shared fallback gray, and they sort after
-  `ice_cream` and before an unknown category.
-- Tests: 104 total (was 100), 23 failed (was 23) — all 4 new `CategoryUiTest`
-  cases green; the 23 failures are the pre-existing `PoiImportTest`
-  Robolectric `UnsatisfiedLinkError` set from #15/#13/#10 (`MapLibre.getInstance()`
-  under the JVM test env), untouched by this issue (no `PoiImportTest` file
-  was edited).
-- Not verified on device: this is exactly the kind of change (color-only, on
-  a rendering path that already worked for 5 categories) that can't be
-  distinguished from "compiles but colors happen to look bad together" without
-  actually eyeballing the Layers panel and "All POIs" map on Robert's phone —
-  flagging clearly rather than claiming visual confirmation I couldn't do.
