@@ -82,6 +82,10 @@ class HomeViewModel(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
+    /** Refreshed at construction and on every resume (see [refreshLocation] and HomeScreen's
+     *  ON_RESUME observer) so reopening the app at a new spot re-filters/re-ranks the deck and
+     *  re-centers the mini-map — but nothing polls location continuously while foregrounded, so
+     *  the deck stays put mid-swipe (#34). */
     private val location = MutableStateFlow<LatLon?>(null)
 
     /** Favorited + want-to-go pois + whether the (city-wide) poi table has anything at all,
