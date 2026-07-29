@@ -20,36 +20,25 @@ class FilterAndSortTest {
     )
 
     @Test
-    fun `showAll filters to the active categories`() {
-        val result = filterAndSort(pois, setOf("cafe"), null, showAll = true)
+    fun `active category filters to just that category`() {
+        val result = filterAndSort(pois, activeCategory = "cafe", location = null)
         assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
     }
 
     @Test
-    fun `showAll with multiple active categories matches any of them`() {
-        val result = filterAndSort(pois, setOf("cafe", "park"), null, showAll = true)
-        assertEquals(setOf("node/1", "node/2", "node/3"), result.map { it.poi.id }.toSet())
-    }
-
-    @Test
-    fun `showAll with zero active categories shows nothing`() {
-        assertEquals(0, filterAndSort(pois, emptySet(), null, showAll = true).size)
-    }
-
-    @Test
-    fun `showAll false shows nothing regardless of active categories`() {
-        assertEquals(0, filterAndSort(pois, setOf("cafe"), null, showAll = false).size)
+    fun `null active category shows nothing`() {
+        assertEquals(0, filterAndSort(pois, activeCategory = null, location = null).size)
     }
 
     @Test
     fun `no filter active shows nothing`() {
-        assertEquals(0, filterAndSort(pois, emptySet(), null).size)
+        assertEquals(0, filterAndSort(pois, activeCategory = null, location = null).size)
     }
 
     @Test
     fun `with location sorts nearest first and fills distances`() {
         val home = LatLon(50.90, 6.90)
-        val result = filterAndSort(pois, setOf("cafe"), home, showAll = true)
+        val result = filterAndSort(pois, activeCategory = "cafe", location = home)
 
         assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
         assertEquals(0.0, result[0].distanceMeters!!, 0.001)
@@ -58,7 +47,7 @@ class FilterAndSortTest {
 
     @Test
     fun `without location sorts by name with unnamed last`() {
-        val result = filterAndSort(pois, setOf("cafe"), null, showAll = true)
+        val result = filterAndSort(pois, activeCategory = "cafe", location = null)
 
         assertEquals(listOf("node/1", "node/3"), result.map { it.poi.id })
         assertNull(result[1].distanceMeters)
@@ -66,26 +55,26 @@ class FilterAndSortTest {
 
     @Test
     fun `favorites filter keeps only the ids in the favorite set regardless of category`() {
-        val result = filterAndSort(pois, emptySet(), null, verdictIds = setOf("node/2"))
+        val result = filterAndSort(pois, activeCategory = null, location = null, verdictIds = setOf("node/2"))
         assertEquals(listOf("node/2"), result.map { it.poi.id })
     }
 
     @Test
-    fun `null favorites filter falls back to showAll's active categories`() {
-        val result = filterAndSort(pois, setOf("cafe"), null, verdictIds = null, showAll = true)
+    fun `null favorites filter falls back to the active category`() {
+        val result = filterAndSort(pois, activeCategory = "cafe", location = null, verdictIds = null)
         assertEquals(2, result.size)
     }
 
     @Test
     fun `search matches a substring of the name case-insensitively across categories`() {
-        val result = filterAndSort(pois, emptySet(), null, searchQuery = "HAR")
+        val result = filterAndSort(pois, activeCategory = null, location = null, searchQuery = "HAR")
         assertEquals(listOf("node/4"), result.map { it.poi.id }) // "Charlie"
     }
 
     @Test
     fun `search takes priority over category and favorites filters`() {
         val result = filterAndSort(
-            pois, activeCategories = setOf("playground"), location = null,
+            pois, activeCategory = "playground", location = null,
             verdictIds = setOf("node/1"), searchQuery = "alpha"
         )
         assertEquals(listOf("node/2"), result.map { it.poi.id })
@@ -94,7 +83,7 @@ class FilterAndSortTest {
     @Test
     fun `search matches a custom name even when the OSM name differs`() {
         val result = filterAndSort(
-            pois, emptySet(), null, searchQuery = "hidden gem",
+            pois, activeCategory = null, location = null, searchQuery = "hidden gem",
             customNames = mapOf("node/3" to "Our Hidden Gem")
         )
         assertEquals(listOf("node/3"), result.map { it.poi.id })
@@ -102,34 +91,25 @@ class FilterAndSortTest {
 
     @Test
     fun `search matches a new coarse category the same as the original five`() {
-        val result = filterAndSort(pois, emptySet(), null, searchQuery = "bakery")
+        val result = filterAndSort(pois, activeCategory = null, location = null, searchQuery = "bakery")
         assertEquals(listOf("node/5"), result.map { it.poi.id })
     }
 
     @Test
-    fun `showAll with every category active passes every poi through`() {
+    fun `favorites filter takes priority over the active category`() {
         val result = filterAndSort(
-            pois, activeCategories = pois.map { it.category }.toSet(), location = null, showAll = true
+            pois, activeCategory = "park", location = null,
+            verdictIds = setOf("node/1")
         )
-        assertEquals(pois.map { it.id }.toSet(), result.map { it.poi.id }.toSet())
-        assertEquals(pois.size, result.size)
+        assertEquals(listOf("node/1"), result.map { it.poi.id })
     }
 
     @Test
-    fun `favorites filter takes priority over showAll`() {
+    fun `search takes priority over the active category`() {
         val result = filterAndSort(
-            pois, activeCategories = emptySet(), location = null,
-            verdictIds = setOf("node/2"), showAll = true
+            pois, activeCategory = "park", location = null,
+            searchQuery = "bravo"
         )
-        assertEquals(listOf("node/2"), result.map { it.poi.id })
-    }
-
-    @Test
-    fun `search takes priority over showAll`() {
-        val result = filterAndSort(
-            pois, activeCategories = emptySet(), location = null,
-            searchQuery = "alpha", showAll = true
-        )
-        assertEquals(listOf("node/2"), result.map { it.poi.id })
+        assertEquals(listOf("node/1"), result.map { it.poi.id })
     }
 }
