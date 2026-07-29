@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.example.freizeit.BuildConfig
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.ui.MainActivity
@@ -73,6 +74,16 @@ object GeofenceNotifications {
             .addAction(0, context.getString(R.string.notification_checkin_action_dismiss), dismissIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .apply {
+                if (BuildConfig.DEBUG) {
+                    // Debug builds shorten the DWELL delay (issue #34) so testers don't mistake
+                    // the fast-firing notification for a bug where dwell time is being ignored.
+                    setSubText(
+                        "Debug build: fired after " +
+                            "${GeofenceSyncManager.DEBUG_LOITERING_DELAY_MILLIS / 1000}s dwell, not 15 min"
+                    )
+                }
+            }
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
