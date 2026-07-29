@@ -1,5 +1,60 @@
 # Freizeit v2 progress log
 
+## 2026-07-29 — POI marker redesign: category icons on themed circles
+
+- No GitHub issue; user asked directly for this after a full /grill-me session covering every
+  branch of the design (color-vs-icon, layer badging, basemap theming, icon set, marker size,
+  bitmap generation strategy, cluster styling, stroke contrast, UI scope, fallback icon, position
+  dot) before any code was touched.
+- Biggest decision: category color is dropped from the map entirely — `categoryColor()` (11
+  hand-tuned hues) stays in `ui/common/CategoryUi.kt` for other UI (untouched, out of scope per
+  explicit decision) but no longer drives the Explore map's POI markers. A Material icon is now
+  the sole category signal; the circle itself is purely theme-driven (dark circle in dark theme,
+  light circle in light theme).
+- New `ui/explore/MarkerIcons.kt`: `CATEGORY_ICONS` maps all 11 categories + `UNKNOWN_CATEGORY`
+  fallback (`Icons.Filled.Place`) to a `material-icons-extended` `ImageVector` (already a
+  dependency, no new library). `rememberMarkerBitmaps(darkTheme)` rasterizes each into a real
+  `android.graphics.Bitmap` at runtime via `rememberVectorPainter` + `CanvasDrawScope` (circle
+  fill, opposite-color stroke, centered tinted icon) — chosen over checking in ~22 static PNG/
+  vector assets so colors/sizing stay driven by code constants, not hand-maintained files.
+  Marker diameter deliberately kept at the old CircleLayer's 24px (12px radius) rather than
+  growing it for icon legibility — explicit tradeoff accepted during the interview; some icons
+  (Museum, Interests, Handyman) may read as a blob at that size and could need swapping once seen
+  on a real device.
+- `ui/explore/MapStyle.kt`: added `POSITRON_STYLE_URL` (CARTO's light counterpart to the existing
+  `dark-matter-gl-style`) and `mapStyleUrl(darkTheme)`; `markerBackgroundColor`/
+  `markerForegroundColor` (fixed hexes, independent of the app's dynamic Material theme, same
+  pattern as the existing `POSITION_DOT_COLOR`); `categoryIconExpression()` (new `icon-image`
+  match expression, mirrors the existing `categoryColorExpression()` still used by
+  `PlaceMiniMap.kt`'s Home-carousel mini map — deliberately not touched, out of scope, it's a
+  different map with no "layers" toggle).
+- `PoiMap.kt`: `poiCircleLayer()` replaced by `poiSymbolLayer()` (`iconImage` instead of
+  `circleColor`). `isSystemInDarkTheme()` read once per composable body and captured by the
+  `DisposableEffect(mapView)` closure that builds the style — since `ExploreMapHolder` already
+  retains the `MapView`/style across Home<->Explore tab switches for the life of the Activity,
+  this reads the theme even less often than the interview's "only re-theme on next screen entry"
+  answer, not more; a live system-theme flip mid-session is a no-op until the Activity recreates,
+  matching the decision not to rebuild sources/layers on the fly. Favorites/Want to go/All POIs
+  layers deliberately get no marker distinction beyond filtering, matching today's behavior
+  exactly (explicit decision, not an oversight). Cluster circles (`clusterCircleLayer`,
+  `clusterCountLayer`) switched from `MaterialTheme.colorScheme.secondary` to the same themed
+  background/foreground pair as individual markers, and their stroke/text color now also flips
+  opposite the fill — extending the individual-marker contrast fix to clusters for consistency,
+  not separately asked about in the interview but a direct consequence of the same problem
+  (white-on-white text on a light basemap) already solved there. "You are here" position dot
+  (`POSITION_DOT_COLOR`) explicitly left untouched per the interview, even though it's no longer
+  guaranteed to contrast against the now-optional light basemap.
+- Tests: 147 total, 0 failures (`testDebugUnitTest`) — notably the ~28 Robolectric
+  `UnsatisfiedLinkError` failures documented as pre-existing since #10/#13/#15/#23 and reconfirmed
+  through #33 are gone in this environment; not investigated further since nothing in this change
+  touches DAO/Robolectric setup, and it reads as an environment fix rather than a regression risk.
+  `compileDebugKotlin` and `assembleDebug` both clean.
+- Not verified on device: this is the first real exercise of a light MapLibre style in the app
+  (previously always dark-matter) and of runtime `style.addImage()`/`SymbolLayer` icons (previously
+  only `CircleLayer`s existed) — needs a real run in both system light and dark mode to confirm
+  icon legibility at the kept-small marker size, the Positron basemap's look, and that cluster
+  circles read correctly against it.
+
 ## 2026-07-26 — Issue #33: Explore layer menu: reorder, multi-select categories, declutter
 
 - Only `ready-for-agent` issue open. Split out of #31's grill-me session specifically so it
@@ -451,73 +506,3 @@
   removed): still 3/3 failed. `compileDebugKotlin` passed clean.
 - Not verified on device: no UI changed, only the ranking score and reason
   strings on cards already rendered by the existing deck — not screenshotted.
-
-## 2026-07-25 — Issue #24: Permission opt-in flow for auto check-in
-
-- Picked over #25/#26/#27 (all unblocked now that #23 is closed): this is the one
-  that unblocks #28 (auto-detect proximity notification, the epic's core feature,
-  currently `ready-for-human` pending this permission groundwork) — #25 is a
-  docs-only amendment and #26/#27 are UI/ranking polish on top of already-shipped
-  check-in, neither unblocks anything else.
-- The issue text claims "there is no existing permission-request flow to extend,
-  this is net-new" — false. `HomeScreen.kt`/`ExploreScreen.kt`/`CheckInScreen.kt`
-  all already request `ACCESS_FINE/COARSE_LOCATION` unconditionally in a
-  `LaunchedEffect(Unit)` on first composition, no rationale, no opt-in gate (Home
-  is the start destination, so this fires at effectively first app launch).
-  Deliberately left untouched — that's pre-existing, separate behavior for
-  foreground GPS fixes used by suggestion ranking, not this issue's scope. Made
-  sure the new auto-check-in toggle's permission chain is independently gated
-  (only ever launched from the Settings toggle's `onCheckedChange`) rather than
-  reusing/short-circuiting on the fact that Home may have already gotten
-  foreground location granted for free.
-- `SettingsRepository`: new `autoCheckInEnabled: Flow<Boolean>` /
-  `setAutoCheckInEnabled()`, a second `booleanPreferencesKey` alongside
-  `suggestionRadiusKm`'s existing `intPreferencesKey`, same DataStore file, same
-  upsert-flow shape. Default `false` (off by default, per the issue).
-- New `util/AutoCheckInPermissions.kt`: thin `ContextCompat.checkSelfPermission`
-  wrappers for the three permissions, mirroring `LocationHelper.hasPermission`'s
-  existing style (no test file — same as `LocationHelper`, which also has none).
-  Background-location/notifications read as already-granted below API 29/33
-  respectively, since those permissions don't exist as a runtime concept there —
-  keeps the Settings status rows from showing a permanent false "Denied" on
-  older OS versions.
-- `AndroidManifest.xml`: added `ACCESS_BACKGROUND_LOCATION` and
-  `POST_NOTIFICATIONS` declarations (previously only fine/coarse foreground
-  location existed).
-- `SettingsScreen.kt`: new "Auto check-in" section, `Switch`-bound to the
-  DataStore flag directly (single source of truth — the switch only ever shows
-  on once the DataStore write actually happens at the end of a successful
-  chain, never optimistically). Turning it off just writes `false` immediately,
-  no permission dance needed. Turning it on shows an `AlertDialog` disclosure/
-  rationale screen first (reused the `AlertDialog` pattern from Explore's
-  existing `CustomNameDialog` — no `Dialog`/nav-route infrastructure needed,
-  consistent with this app having no sub-screen nav pattern yet, confirmed by
-  `FreizeitDestinationTest`'s hardcoded 4-route assertion). Confirming the
-  dialog kicks off three chained `rememberLauncherForActivityResult` callbacks
-  (foreground → background if SDK ≥29 → notifications if SDK ≥33, each
-  triggering the next from its own result callback), ending in
-  `onEnabledChange(true)` only if foreground location was actually granted — a
-  full foreground denial stops the chain immediately and shows an inline denied
-  hint instead of silently leaving a half-configured feature enabled.
-  Per-permission Granted/Denied status rows (shown once the feature is enabled)
-  refresh via a `DisposableEffect`/`LifecycleEventObserver` on `ON_RESUME`
-  (mirroring `PlaceMiniMap.kt`'s existing mapView lifecycle pattern) so a manual
-  grant/revoke via the system app-info screen is picked up on return to the app,
-  not just after a launcher callback.
-- Tests: 122 total (was 120 per #23's log — 118+3 VisitDao/CheckInRanking minus
-  the trimmed #5 entry doesn't affect the count, just progress.txt itself), 26
-  failed (unchanged) — the +2 are two new plain-JVM `SettingsRepositoryTest`
-  cases (default-false, round-trip), confirmed via the per-class XML report
-  that all 5 `SettingsRepositoryTest` cases are green and the 26 failures are
-  the same 6 pre-existing Robolectric `UnsatisfiedLinkError` classes
-  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/
-  BackupRepositoryTest/PoiImportTest) documented since #10/#13/#15/#23 — no new
-  class appears in the failing set.
-- Not verified on device: the actual OS permission dialogs (esp. the Android
-  10+ two-step background-location dance, which on real devices routes through
-  a separate "Allow all the time" system settings screen rather than a second
-  in-app dialog on some OEM skins) and the disclosure `AlertDialog` itself are
-  unexercised beyond compiling/unit-testing the DataStore and chain-sequencing
-  logic — needs a real run on Robert's phone, particularly to confirm the
-  chain's sequencing survives Android's own background-location system UI
-  detour rather than assuming a plain permission-dialog round trip throughout.
