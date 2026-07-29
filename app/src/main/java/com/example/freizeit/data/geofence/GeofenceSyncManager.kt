@@ -164,17 +164,19 @@ class GeofenceSyncManager(
         AutoCheckInPermissions.hasForegroundLocation(context) &&
             AutoCheckInPermissions.hasBackgroundLocation(context)
 
-    private companion object {
-        const val GEOFENCE_PENDING_INTENT_REQUEST_CODE = 1
+    companion object {
+        private const val GEOFENCE_PENDING_INTENT_REQUEST_CODE = 1
         /** Play Services' hard per-app cap on simultaneously active geofences. */
-        const val MAX_GEOFENCES = 100
+        private const val MAX_GEOFENCES = 100
 
         /**
          * How long a device must stay continuously inside a geofence before DWELL fires — the
          * "staying" side of the passing-by-vs-staying distinction. Shorter in debug builds so a
          * test cycle isn't a real 15-minute wait; still exercises the real DWELL path end to end.
+         * [GeofenceNotifications] surfaces this shortened delay on the notification itself so a
+         * debug build doesn't read as "dwell time ignored" (issue #34).
          */
-        const val LOITERING_DELAY_MILLIS = 15 * 60 * 1000
+        private const val LOITERING_DELAY_MILLIS = 15 * 60 * 1000
         const val DEBUG_LOITERING_DELAY_MILLIS = 30 * 1000
         val loiteringDelayMillis: Int
             get() = if (BuildConfig.DEBUG) DEBUG_LOITERING_DELAY_MILLIS else LOITERING_DELAY_MILLIS
@@ -184,6 +186,6 @@ class GeofenceSyncManager(
          * the geofence boundary, which would otherwise spuriously EXIT-then-ENTER and reset the
          * loitering clock. Traded off against added latency on genuine transitions.
          */
-        const val NOTIFICATION_RESPONSIVENESS_MILLIS = 2 * 60 * 1000
+        private const val NOTIFICATION_RESPONSIVENESS_MILLIS = 2 * 60 * 1000
     }
 }
