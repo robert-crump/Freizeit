@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Attractions
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Icecream
 import androidx.compose.material.icons.filled.Interests
@@ -13,7 +14,6 @@ import androidx.compose.material.icons.filled.Park
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Storefront
-import androidx.compose.material.icons.filled.Toys
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
@@ -43,7 +43,7 @@ fun markerIconId(category: String): String = "marker-$category"
 
 /** One Material icon per known POI category, plus a generic fallback for anything unmapped. */
 private val CATEGORY_ICONS: Map<String, ImageVector> = mapOf(
-    "playground" to Icons.Filled.Toys,
+    "playground" to Icons.Filled.ChildCare,
     "park" to Icons.Filled.Park,
     "cafe" to Icons.Filled.LocalCafe,
     "restaurant" to Icons.Filled.Restaurant,
@@ -57,8 +57,9 @@ private val CATEGORY_ICONS: Map<String, ImageVector> = mapOf(
     UNKNOWN_CATEGORY to Icons.Filled.Place
 )
 
-/** Marker circle diameter, matching the previous plain-color CircleLayer's 12px radius. */
-private val MARKER_DIAMETER = 24.dp
+/** Marker circle diameter — 25% larger than the original plain-color CircleLayer's 24px
+ *  (12px radius), for icon legibility. Icon size scales with it via [ICON_SCALE]. */
+private val MARKER_DIAMETER = 30.dp
 private val MARKER_STROKE_WIDTH = 1.5.dp
 
 /** Fraction of the circle's diameter the icon glyph occupies, leaving room for the stroke. */
