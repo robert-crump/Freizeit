@@ -36,9 +36,6 @@ import org.maplibre.geojson.Point
 private const val MINI_MAP_ZOOM = 15.0
 private const val MINI_MAP_BORDER_PX = 90
 
-/** Icon scale for the selected POI's marker vs. an unselected one (roughly the old 14/9 dot ratio). */
-private const val POI_ICON_SELECTED_SCALE = 1.5f
-
 /** Radius of the "you are here" dot (the only remaining plain CircleLayer on this map). */
 private const val USER_DOT_RADIUS = 9f
 private const val POI_DOT_SOURCE_ID = "suggestions-poi"
@@ -49,9 +46,8 @@ private const val USER_DOT_LAYER_ID = "suggestions-user-layer"
 /**
  * Static, non-interactive overview map for the Home carousel: shows every suggestion POI
  * plus the user's current location, camera fit once to include all of them. Every POI renders
- * as its category's icon-in-circle marker (same as the Explore map); the one whose id matches
- * [selectedPoiId] renders larger. Tapping any marker reports it via [onPoiClick] so the caller
- * can keep the carousel in sync.
+ * as its category's icon-in-circle marker, same size as the Explore map's. Tapping any marker
+ * reports it via [onPoiClick] so the caller can keep the carousel in sync.
  */
 @Composable
 fun SuggestionsMiniMap(
@@ -159,22 +155,16 @@ private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer
             PropertyFactory.circleStrokeColor(Color.WHITE)
         )
 
-private fun poiSymbolLayer(): SymbolLayer {
-    val selected = Expression.toBool(Expression.get("selected"))
-    return SymbolLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
+private fun poiSymbolLayer(): SymbolLayer =
+    // Deliberately no size-by-selection: this map's only current caller (SuggestionCard) always
+    // passes a single, already-selected POI, so a size bump would just make every marker bigger
+    // than the Explore map's — icons here should read at the same size as Explore's, always.
+    SymbolLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
         .withProperties(
             PropertyFactory.iconImage(categoryIconExpression()),
-            PropertyFactory.iconSize(
-                Expression.switchCase(
-                    selected,
-                    Expression.literal(POI_ICON_SELECTED_SCALE),
-                    Expression.literal(1f)
-                )
-            ),
             PropertyFactory.iconAllowOverlap(true),
             PropertyFactory.iconIgnorePlacement(true)
         )
-}
 
 private fun renderSuggestions(
     state: SuggestionsMapState,
