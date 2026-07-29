@@ -54,6 +54,29 @@
   only `CircleLayer`s existed) — needs a real run in both system light and dark mode to confirm
   icon legibility at the kept-small marker size, the Positron basemap's look, and that cluster
   circles read correctly against it.
+- Follow-up, same day: bumped `MARKER_DIAMETER` 24dp → 30dp (25% larger, icon scales with it via
+  the existing `ICON_SCALE` fraction) per direct user feedback that icons were too small. Swapped
+  `playground`'s icon from `Icons.Filled.Toys` to `Icons.Filled.ChildCare` — checked the actual
+  `material-icons-extended` AAR's `classes.jar` first (no literal "Playground" icon exists in that
+  library; only `ChildCare`/`ChildFriendly`/`Toys` matched "child"-ish names), confirming
+  `ChildCare` compiles before committing rather than guessing at a class name.
+- Follow-up: extended the same icon-in-circle treatment to `PlaceMiniMap.kt`'s `SuggestionsMiniMap`
+  (the embedded map inside Home's swipe-deck `SuggestionCard`), which still had the old
+  `CircleLayer` + `categoryColorExpression()`. Now shares `mapStyleUrl`/`categoryIconExpression`/
+  `rememberMarkerBitmaps` with the Explore map. `categoryColorExpression()` had no remaining
+  callers afterward, so it and its now-unused imports were deleted from `MapStyle.kt`. Explicit
+  scope decision (asked, not assumed): the small `CategoryDot` swatch next to the category label
+  stays a plain color dot — it's shared with `PlaceDetailSheet.kt`, which this redesign still
+  doesn't touch.
+- Bug fix, same follow-up: the Suggestion Card's markers rendered 1.5x larger than Explore's.
+  `poiSymbolLayer()`'s `iconSize` carried over the old dot-radius logic's selected/unselected
+  scale (14/9 ratio), but `SuggestionsMiniMap`'s only caller always passes a single POI with
+  `selectedPoiId == that POI's own id` — every marker there was therefore always "selected" and
+  always scaled up. Removed the size-by-selection expression entirely so both maps render icons
+  at the same 1x size; `POI_ICON_SELECTED_SCALE` deleted as now-unused.
+- No device verification on any of these three follow-ups beyond `compileDebugKotlin`/
+  `testDebugUnitTest`/`assembleDebug` staying clean after each — the user is iterating from
+  on-device screenshots between requests, not this agent.
 
 ## 2026-07-26 — Issue #33: Explore layer menu: reorder, multi-select categories, declutter
 
