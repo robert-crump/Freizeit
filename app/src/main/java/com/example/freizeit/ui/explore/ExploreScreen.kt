@@ -7,15 +7,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,6 +29,8 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,7 +54,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -164,6 +168,14 @@ fun ExploreScreen(
                         focusRequest = focusRequest,
                         modifier = Modifier.fillMaxSize()
                     )
+                    if (searchSuggestions.isEmpty()) {
+                        PoiCategoryChipRow(
+                            categories = state.categories,
+                            activeCategory = state.activeCategory,
+                            onSelectCategory = viewModel::selectCategory,
+                            modifier = Modifier.align(Alignment.TopStart)
+                        )
+                    }
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -217,15 +229,10 @@ fun ExploreScreen(
 
         if (showLayersPanel) {
             LayersPanel(
-                categories = state.categories,
-                activeCategories = state.activeCategories,
                 favoritesOnly = state.favoritesOnly,
                 wantToGoOnly = state.wantToGoOnly,
-                showAllPois = state.showAllPois,
-                onToggleCategory = { category -> viewModel.toggleCategory(category) },
                 onSelectFavorites = { viewModel.toggleFavoritesOnly() },
                 onSelectWantToGo = { viewModel.toggleWantToGoOnly() },
-                onSelectAllPois = { viewModel.selectAllPois() },
                 onDismiss = { showLayersPanel = false }
             )
         }
@@ -244,25 +251,19 @@ fun ExploreScreen(
 }
 
 /**
- * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell). The top-level rows
- * (Favorites/Want to go/All POIs) are mutually exclusive toggle switches — only one is ever
- * active on the map at a time. Category rows are only shown while "All POIs" is active (#33):
- * they're a multi-select filter within it, not a fourth top-level layer, so they stay visible
- * across category taps and only disappear when switching to Favorites or Want to go. The panel
- * itself stays open across toggles so multiple layers/categories can be tried in a row; only the
- * scrim or the close button dismisses it.
+ * Scrim + centered [Card] modal (mirrors Velometrics' layers FAB shell). Favorites/Want to go
+ * are mutually exclusive toggle switches — only one is ever active on the map at a time, and
+ * also mutually exclusive with the category chip row above the map (see [PoiCategoryChipRow]),
+ * which replaced this panel's old "All POIs" row and per-category list. The panel itself stays
+ * open across toggles so both rows can be tried in turn; only the scrim or the close button
+ * dismisses it.
  */
 @Composable
 private fun LayersPanel(
-    categories: List<String>,
-    activeCategories: Set<String>,
     favoritesOnly: Boolean,
     wantToGoOnly: Boolean,
-    showAllPois: Boolean,
-    onToggleCategory: (String) -> Unit,
     onSelectFavorites: () -> Unit,
     onSelectWantToGo: () -> Unit,
-    onSelectAllPois: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -312,21 +313,6 @@ private fun LayersPanel(
                         Icon(Icons.Filled.Bookmark, contentDescription = null, tint = WantToGoBlue)
                     }
                 )
-                LayerRow(
-                    label = stringResource(R.string.explore_all_pois_filter),
-                    selected = showAllPois,
-                    onClick = onSelectAllPois,
-                    leadingIcon = { Icon(Icons.Filled.Layers, contentDescription = null) }
-                )
-                if (showAllPois) {
-                    categories.forEach { category ->
-                        CategoryLayerRow(
-                            category = category,
-                            active = category in activeCategories,
-                            onClick = { onToggleCategory(category) }
-                        )
-                    }
-                }
             }
         }
     }
@@ -356,36 +342,55 @@ private fun LayerRow(
 }
 
 /**
- * Multi-select category row (#33) — no [Switch], since several can be active at once. Active
- * state reads from text weight/color contrast instead: full-strength + semi-bold when active,
- * dimmed + regular when not. Spacing is tighter than [LayerRow]'s since these form a denser list.
+ * Single-select category chip row, floated over the map's top edge (below the search bar,
+ * hidden while search suggestions are showing — see the caller). Every chip shares one color
+ * (no per-category coding, matching the map markers' own move away from that — see
+ * [markerForegroundColor]/[markerBackgroundColor]): outlined in the foreground color when
+ * unselected, filled with it when selected, with icon+label flipping to the background color
+ * for contrast — the same relationship the marker circle/icon pair already has. Icon and label
+ * sizing come from [FilterChip]'s own defaults (no custom size overrides), matching Velometrics'
+ * chip row.
  */
 @Composable
-private fun CategoryLayerRow(
-    category: String,
-    active: Boolean,
-    onClick: () -> Unit,
+private fun PoiCategoryChipRow(
+    categories: List<String>,
+    activeCategory: String?,
+    onSelectCategory: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 0.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    val darkTheme = isSystemInDarkTheme()
+    val foreground = markerForegroundColor(darkTheme)
+    val background = markerBackgroundColor(darkTheme)
+    LazyRow(
+        modifier = modifier.padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp)
     ) {
-        CategoryDot(category)
-        Text(
-            categoryDisplayName(category),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (active) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-            }
-        )
+        items(categories, key = { it }) { category ->
+            val selected = category == activeCategory
+            FilterChip(
+                selected = selected,
+                onClick = { onSelectCategory(category) },
+                label = { Text(categoryDisplayName(category)) },
+                leadingIcon = {
+                    Icon(categoryIcon(category), contentDescription = null)
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Color.Transparent,
+                    labelColor = foreground,
+                    iconColor = foreground,
+                    selectedContainerColor = foreground,
+                    selectedLabelColor = background,
+                    selectedLeadingIconColor = background
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = selected,
+                    borderColor = foreground,
+                    selectedBorderColor = foreground
+                )
+            )
+        }
     }
 }
 

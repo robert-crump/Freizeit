@@ -1,5 +1,55 @@
 # Freizeit v2 progress log
 
+## 2026-07-29 — Explore layers: replace "All POIs" row with a Velometrics-style chip row
+
+- No GitHub issue; user asked directly, worked out via a full /grill-me session before any code
+  was touched (chip selection model, Favorites/Want to go placement, filter exclusivity, chip
+  ordering, chip visuals/color scope, selected-state indication, chip row layout, chip-vs-search
+  interaction — every branch resolved with the user first, several answers landing differently
+  than the Velometrics source material they were modeled on).
+- Biggest decision, arrived at only after checking Velometrics' actual chip code: single-select,
+  not the multi-select #33 gave categories. Tapping a chip shows only that category; tapping the
+  active chip again clears it. This collapses `ExploreViewModel`'s `activeCategories: Set<String>`
+  + `showAllPois: Boolean` into one nullable `activeCategory: String?` (mirrors Velometrics'
+  `activePoiChip` pattern), still mutually exclusive with `favoritesOnly`/`wantToGoOnly`/search.
+  `selectCategory(category)` replaces `toggleCategory`/`selectAllPois` entirely.
+- `filterAndSort`'s `activeCategories: Set<String>` + `showAll: Boolean` params collapsed to a
+  single `activeCategory: String?`; the `showAll` branch (`it.category in activeCategories`)
+  became `activeCategory != null -> it.category == activeCategory`. `FilterAndSortTest.kt`
+  rewritten for the single-select shape (16 → 13 cases; dropped the multi-select-specific cases,
+  kept priority-order coverage for search/favorites/category).
+- Favorites and Want to go stay in the Layers FAB panel (now just those two `LayerRow`s) per
+  explicit choice — categories move out entirely rather than folding Favorites/Want to go into
+  the chip row too. `LayersPanel`'s `categories`/`activeCategories`/`showAllPois` params and the
+  "All POIs" `LayerRow` are gone; `CategoryLayerRow` (the old dimmed/bold multi-select row from
+  #33) is deleted outright, not deprecated.
+- New `PoiCategoryChipRow` in `ExploreScreen.kt`: categories sorted alphabetically by
+  `categoryDisplayName` (not `CATEGORY_ORDER`'s curated hue-spacing order, which stays untouched
+  for `MapStyle.kt`'s order-agnostic `categoryIconExpression()`). Explicit decision: chips carry
+  no per-category color at all — reusing the map markers' own move away from category color
+  (`ab93390`/`2d31b3e`), every chip shares the single theme-driven `markerForegroundColor`/
+  `markerBackgroundColor` pair instead. Unselected: transparent container, outline + icon + label
+  in the foreground color. Selected: container fills with the foreground color, icon + label flip
+  to the background color — deliberately mirroring the marker circle/icon contrast relationship,
+  not a new color scheme. New `categoryIcon(category)` exported from `MarkerIcons.kt` (previously
+  private `CATEGORY_ICONS`) so the chip row's leading icon is the exact same icon as that
+  category's marker. Icon/label sizing left at `FilterChip`'s own defaults, matching how
+  Velometrics' own chip code has no explicit size overrides either.
+- Chip row floats over the map's top edge (inside the map `Box`, top-aligned) rather than sitting
+  in the non-overlapping search-bar `Row` above it — explicit choice to match Velometrics' visual
+  style over Freizeit's own layout convention. Hidden entirely whenever the search-suggestions
+  dropdown is showing (`searchSuggestions.isEmpty()` gate) rather than stacking the two, since
+  both float over the same map-top area.
+- `explore_all_pois_filter` string resource deleted (no longer referenced anywhere).
+- Tests: 144 total (was 147), 0 failures — the -3 nets out `FilterAndSortTest`'s 16 → 13 cases;
+  confirmed via each test's own XML report, no other test file touched or regressed.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean (the pre-existing
+  `FlowPreview` opt-in warning on `ExploreViewModel.kt`'s `searchQuery.debounce(...)` is unchanged
+  from before this session).
+- Not verified on device: the chip row's floated-over-map placement, the fill/outline selected-
+  state contrast in both light and dark theme, and the hide-while-search-suggestions-show
+  behavior are all new Compose wiring — needs a real run on Robert's phone.
+
 ## 2026-07-29 — POI marker redesign: category icons on themed circles
 
 - No GitHub issue; user asked directly for this after a full /grill-me session covering every
@@ -486,46 +536,3 @@
   semantics but still surprise on a real back-gesture vs. button tap —
   needs a real run on Robert's phone.
 
-## 2026-07-25 — Issue #27: Visit-frequency ranking boost for favorites
-
-- Picked over #25/#26 (both unblocked, #23 closed): #25 is a docs-only decision
-  amendment and #26 is a UI screen with no ranking impact, while #27 changes what
-  the Home deck actually surfaces — "more of the best" — and comes with a crisp,
-  testable spec (`log(1 + visit count in trailing 90 days)`). #29 (closest-100
-  geofence selection) is blocked by #28, which is still `ready-for-human`, so
-  not agent-pickable yet.
-- `SuggestionContext` gained a `visits: Map<String, List<Long>>` field — full
-  check-in history per place id, not pre-filtered — so `SuggestionEngine`
-  applies the trailing-90-day window itself (via `context.nowMillis`) rather
-  than trusting a caller-side cutoff. Mirrors how `verdicts`/`now` are already
-  threaded through: the engine stays the single source of truth for what's
-  "recent," consistent with its own "every rule is asserted by unit tests" doc
-  comment.
-- New score term in `evaluate()`: `VISIT_FREQUENCY_WEIGHT * ln(1.0 + recentVisits)`,
-  `VISIT_FREQUENCY_WEIGHT = 10.0`. Chosen so a handful of visits (3 → ~13.9 pts)
-  clearly outweighs the ~8-point novelty jitter and the few-point proximity gap
-  between two nearby favorites, without swamping the distance-decay term (up to
-  ~55 pts) that keeps "close by" the dominant signal. Also appends a reason
-  string ("visited 3× recently") for card transparency, consistent with the
-  other score terms.
-- Wired `VisitDao` into `HomeViewModel`: added to the constructor + `Factory`,
-  folded `visitDao.observeAll()` into the existing `poisVerdictsAndNames`
-  `combine()` (still exactly 5 flows, the direct-overload limit) rather than
-  adding a 6th flow to the outer `combine`, and grouped visits by `placeId` into
-  `PoiSlice.visits` for `SuggestionContext`.
-- Tests: new `SuggestionVisitFrequencyTest` (4 cases: no visits → no boost/no
-  reason line; several recent visits → boost applied and outranks a same-slot
-  favorite with none; visits outside the 90-day window → no contribution; a
-  visit exactly at the 90-day boundary still counts). All existing
-  `SuggestionContext(...)` call sites keep compiling unchanged since `visits`
-  defaults to `emptyMap()`.
-- `testDebugUnitTest --tests "com.example.freizeit.domain.suggestion.*"`: green
-  (all suggestion-package tests, including the 4 new ones). Full
-  `testDebugUnitTest` has 26 pre-existing failures in unrelated `data.dao`/
-  `data.repository` tests (`UnsatisfiedLinkError` at `TileServerOptions`/
-  `NativeConnectivityListener` — a native MapLibre/SQLite linking issue on this
-  machine's Robolectric setup) — confirmed pre-existing by running the same
-  failing test (`VisitDaoTest`) against `git stash -u` (this change fully
-  removed): still 3/3 failed. `compileDebugKotlin` passed clean.
-- Not verified on device: no UI changed, only the ranking score and reason
-  strings on cards already rendered by the existing deck — not screenshotted.

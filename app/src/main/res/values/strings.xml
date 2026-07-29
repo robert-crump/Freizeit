@@ -24,7 +24,6 @@
     <string name="explore_unnamed">Unnamed %1$s</string>
     <string name="explore_favorites_filter">Favorites</string>
     <string name="explore_want_to_go_filter">Want to go</string>
-    <string name="explore_all_pois_filter">All POIs</string>
     <string name="explore_layers_button">Layers</string>
     <string name="explore_layers_title">Layers</string>
     <string name="explore_layers_close">Close layers panel</string>

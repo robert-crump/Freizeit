@@ -41,6 +41,9 @@ const val UNKNOWN_CATEGORY = "unknown"
 /** Registered MapLibre image name for a category's marker bitmap. */
 fun markerIconId(category: String): String = "marker-$category"
 
+/** Same icon shown on a POI's map marker, exposed for the Explore chip row's leading icon. */
+fun categoryIcon(category: String): ImageVector = CATEGORY_ICONS[category] ?: CATEGORY_ICONS.getValue(UNKNOWN_CATEGORY)
+
 /** One Material icon per known POI category, plus a generic fallback for anything unmapped. */
 private val CATEGORY_ICONS: Map<String, ImageVector> = mapOf(
     "playground" to Icons.Filled.ChildCare,
