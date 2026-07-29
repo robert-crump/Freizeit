@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
 import android.view.ViewGroup
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -11,7 +12,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.toArgb
@@ -86,7 +86,12 @@ fun PoiMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val clusterColor = MaterialTheme.colorScheme.secondary.toArgb()
+    // Read once: the map/style is retained across Home<->Explore tab switches (ExploreMapHolder),
+    // so a live system theme change while Explore is open won't re-style the map mid-session.
+    val darkTheme = isSystemInDarkTheme()
+    val markerBitmaps = rememberMarkerBitmaps(darkTheme)
+    val markerBackground = markerBackgroundColor(darkTheme).toArgb()
+    val markerForeground = markerForegroundColor(darkTheme).toArgb()
 
     val (mapView, state) = remember(context) { ExploreMapHolder.obtain(context) }
     state.onPoiClick = onPoiClick
@@ -106,19 +111,20 @@ fun PoiMap(
 
                 map.setStyle(
                     Style.Builder()
-                        .fromUri(DARK_MATTER_STYLE_URL)
+                        .fromUri(mapStyleUrl(darkTheme))
                         .withSource(
                             GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
                         )
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, clusterColor, upperBound = 20))
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, clusterColor, lowerBound = 20, upperBound = 100))
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, clusterColor, lowerBound = 100))
-                        .withLayer(clusterCountLayer())
-                        .withLayer(poiCircleLayer())
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, markerBackground, markerForeground, upperBound = 20))
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, markerBackground, markerForeground, lowerBound = 20, upperBound = 100))
+                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, markerBackground, markerForeground, lowerBound = 100))
+                        .withLayer(clusterCountLayer(markerForeground))
+                        .withLayer(poiSymbolLayer())
                         .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
                         .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
                         .withLayer(locationDotLayer(POSITION_DOT_COLOR))
                 ) { style ->
+                    markerBitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
                     state.style = style
                     state.poiSource = style.getSourceAs(POI_SOURCE_ID)
                     state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
@@ -242,19 +248,19 @@ private object ExploreMapHolder {
 private fun poiClusterOptions(): GeoJsonOptions =
     GeoJsonOptions().withCluster(true).withClusterMaxZoom(CLUSTER_MAX_ZOOM).withClusterRadius(CLUSTER_RADIUS)
 
-private fun poiCircleLayer(): CircleLayer =
-    CircleLayer(POI_LAYER_ID, POI_SOURCE_ID)
+private fun poiSymbolLayer(): SymbolLayer =
+    SymbolLayer(POI_LAYER_ID, POI_SOURCE_ID)
         .withProperties(
-            PropertyFactory.circleColor(categoryColorExpression()),
-            PropertyFactory.circleRadius(12f),
-            PropertyFactory.circleStrokeWidth(1.5f),
-            PropertyFactory.circleStrokeColor(Color.WHITE)
+            PropertyFactory.iconImage(categoryIconExpression()),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true)
         )
         .withFilter(Expression.not(Expression.has("point_count")))
 
 private fun clusterCircleLayer(
     layerId: String,
-    color: Int,
+    fillColor: Int,
+    strokeColor: Int,
     lowerBound: Int? = null,
     upperBound: Int? = null
 ): CircleLayer {
@@ -271,19 +277,19 @@ private fun clusterCircleLayer(
     }
     return CircleLayer(layerId, POI_SOURCE_ID)
         .withProperties(
-            PropertyFactory.circleColor(color),
+            PropertyFactory.circleColor(fillColor),
             PropertyFactory.circleRadius(radius),
             PropertyFactory.circleStrokeWidth(1.5f),
-            PropertyFactory.circleStrokeColor(Color.WHITE)
+            PropertyFactory.circleStrokeColor(strokeColor)
         )
         .withFilter(Expression.all(*filters.toTypedArray()))
 }
 
-private fun clusterCountLayer(): SymbolLayer =
+private fun clusterCountLayer(textColor: Int): SymbolLayer =
     SymbolLayer(CLUSTER_COUNT_LAYER_ID, POI_SOURCE_ID)
         .withProperties(
             PropertyFactory.textField(Expression.toString(Expression.get("point_count"))),
-            PropertyFactory.textColor(Color.WHITE),
+            PropertyFactory.textColor(textColor),
             PropertyFactory.textSize(13f),
             PropertyFactory.textIgnorePlacement(true),
             PropertyFactory.textAllowOverlap(true)
