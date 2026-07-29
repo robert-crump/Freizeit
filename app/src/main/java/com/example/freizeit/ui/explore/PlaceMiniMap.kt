@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.explore
 
 import android.graphics.Color
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +27,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -33,8 +35,12 @@ import org.maplibre.geojson.Point
 
 private const val MINI_MAP_ZOOM = 15.0
 private const val MINI_MAP_BORDER_PX = 90
-private const val POI_DOT_RADIUS = 9f
-private const val POI_DOT_HIGHLIGHT_RADIUS = 14f
+
+/** Icon scale for the selected POI's marker vs. an unselected one (roughly the old 14/9 dot ratio). */
+private const val POI_ICON_SELECTED_SCALE = 1.5f
+
+/** Radius of the "you are here" dot (the only remaining plain CircleLayer on this map). */
+private const val USER_DOT_RADIUS = 9f
 private const val POI_DOT_SOURCE_ID = "suggestions-poi"
 private const val POI_DOT_LAYER_ID = "suggestions-poi-layer"
 private const val USER_DOT_SOURCE_ID = "suggestions-user"
@@ -42,9 +48,10 @@ private const val USER_DOT_LAYER_ID = "suggestions-user-layer"
 
 /**
  * Static, non-interactive overview map for the Home carousel: shows every suggestion POI
- * plus the user's current location, camera fit once to include all of them. Every POI dot is
- * colored by its category; the one whose id matches [selectedPoiId] renders larger. Tapping
- * any dot reports it via [onPoiClick] so the caller can keep the carousel in sync.
+ * plus the user's current location, camera fit once to include all of them. Every POI renders
+ * as its category's icon-in-circle marker (same as the Explore map); the one whose id matches
+ * [selectedPoiId] renders larger. Tapping any marker reports it via [onPoiClick] so the caller
+ * can keep the carousel in sync.
  */
 @Composable
 fun SuggestionsMiniMap(
@@ -56,6 +63,9 @@ fun SuggestionsMiniMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    // Read once, same rationale as PoiMap's Explore map: no live re-theming mid-session.
+    val darkTheme = isSystemInDarkTheme()
+    val markerBitmaps = rememberMarkerBitmaps(darkTheme)
 
     val state = remember { SuggestionsMapState() }
     state.poiById = pois.associateBy { it.id }
@@ -85,12 +95,13 @@ fun SuggestionsMiniMap(
             }
             map.setStyle(
                 Style.Builder()
-                    .fromUri(DARK_MATTER_STYLE_URL)
+                    .fromUri(mapStyleUrl(darkTheme))
                     .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
-                    .withLayer(poiDotLayer())
+                    .withLayer(poiSymbolLayer())
                     .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
                     .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, POSITION_DOT_COLOR))
             ) { style ->
+                markerBitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
                 state.style = style
                 state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
                 state.userSource = style.getSourceAs(USER_DOT_SOURCE_ID)
@@ -143,25 +154,25 @@ private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer
     CircleLayer(layerId, sourceId)
         .withProperties(
             PropertyFactory.circleColor(color),
-            PropertyFactory.circleRadius(POI_DOT_RADIUS),
+            PropertyFactory.circleRadius(USER_DOT_RADIUS),
             PropertyFactory.circleStrokeWidth(2f),
             PropertyFactory.circleStrokeColor(Color.WHITE)
         )
 
-private fun poiDotLayer(): CircleLayer {
+private fun poiSymbolLayer(): SymbolLayer {
     val selected = Expression.toBool(Expression.get("selected"))
-    return CircleLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
+    return SymbolLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
         .withProperties(
-            PropertyFactory.circleColor(categoryColorExpression()),
-            PropertyFactory.circleRadius(
+            PropertyFactory.iconImage(categoryIconExpression()),
+            PropertyFactory.iconSize(
                 Expression.switchCase(
                     selected,
-                    Expression.literal(POI_DOT_HIGHLIGHT_RADIUS),
-                    Expression.literal(POI_DOT_RADIUS)
+                    Expression.literal(POI_ICON_SELECTED_SCALE),
+                    Expression.literal(1f)
                 )
             ),
-            PropertyFactory.circleStrokeWidth(2f),
-            PropertyFactory.circleStrokeColor(Color.WHITE)
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true)
         )
 }
 
