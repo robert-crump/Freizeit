@@ -1,9 +1,7 @@
 package com.example.freizeit.ui.explore
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import com.example.freizeit.ui.common.CATEGORY_ORDER
-import com.example.freizeit.ui.common.categoryColor
 import org.maplibre.android.style.expressions.Expression
 
 /**
@@ -38,15 +36,6 @@ fun markerBackgroundColor(darkTheme: Boolean): Color =
 /** Marker stroke + icon tint: always the opposite of [markerBackgroundColor], for contrast. */
 fun markerForegroundColor(darkTheme: Boolean): Color =
     if (darkTheme) MARKER_FOREGROUND_DARK else MARKER_FOREGROUND_LIGHT
-
-/** Data-driven `circle-color` expression matching [categoryColor] for every known category. */
-fun categoryColorExpression(): Expression {
-    val fallback = Expression.color(categoryColor("").toArgb())
-    val stops = CATEGORY_ORDER.map { category ->
-        Expression.stop(category, Expression.color(categoryColor(category).toArgb()))
-    }.toTypedArray()
-    return Expression.match(Expression.get("category"), fallback, *stops)
-}
 
 /** Data-driven `icon-image` expression mapping category -> registered marker bitmap name. */
 fun categoryIconExpression(): Expression {
