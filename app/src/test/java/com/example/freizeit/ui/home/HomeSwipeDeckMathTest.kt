@@ -63,4 +63,31 @@ class HomeSwipeDeckMathTest {
         assertTrue(isPastSwipeThreshold(threshold * 1.01f, threshold))
         assertTrue(isPastSwipeThreshold(-threshold * 1.01f, threshold))
     }
+
+    @Test
+    fun `previous is the reveal target once dragged negative`() {
+        assertTrue(isRevealTarget(offsetPx = -1f, isPrevious = true, isNext = false))
+        assertFalse(isRevealTarget(offsetPx = -1f, isPrevious = false, isNext = true))
+    }
+
+    @Test
+    fun `next is the reveal target at rest and once dragged positive`() {
+        assertTrue(isRevealTarget(offsetPx = 0f, isPrevious = false, isNext = true))
+        assertTrue(isRevealTarget(offsetPx = 1f, isPrevious = false, isNext = true))
+        assertFalse(isRevealTarget(offsetPx = 1f, isPrevious = true, isNext = false))
+    }
+
+    @Test
+    fun `current always outranks either neighbor`() {
+        assertTrue(revealZIndex(isCurrent = true, isRevealTarget = false) > revealZIndex(isCurrent = false, isRevealTarget = true))
+        assertTrue(revealZIndex(isCurrent = true, isRevealTarget = true) > revealZIndex(isCurrent = false, isRevealTarget = true))
+    }
+
+    @Test
+    fun `the actively revealed neighbor outranks the idle one`() {
+        assertTrue(
+            revealZIndex(isCurrent = false, isRevealTarget = true) >
+                revealZIndex(isCurrent = false, isRevealTarget = false)
+        )
+    }
 }

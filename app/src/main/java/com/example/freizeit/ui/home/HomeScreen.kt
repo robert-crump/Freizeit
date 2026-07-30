@@ -60,6 +60,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -233,6 +234,20 @@ internal fun revealProgress(offsetPx: Float, thresholdPx: Float): Float =
 internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean =
     abs(offsetPx) > thresholdPx
 
+/** True if the given neighbor is the one the current drag is actively growing into view. */
+internal fun isRevealTarget(offsetPx: Float, isPrevious: Boolean, isNext: Boolean): Boolean =
+    (offsetPx < 0f && isPrevious) || (offsetPx >= 0f && isNext)
+
+/** Highest z-index (2) for the current card so it's never occluded by a growing neighbor;
+ *  the neighbor the drag is actively revealing (1) so it isn't occluded by the idle one's fixed
+ *  peek footprint as it grows past it; the idle neighbor (0) last, unseen behind both.
+ */
+internal fun revealZIndex(isCurrent: Boolean, isRevealTarget: Boolean): Float = when {
+    isCurrent -> 2f
+    isRevealTarget -> 1f
+    else -> 0f
+}
+
 /**
  * One favorite or want-to-go place at a time, backed by a peeking card behind it so the deck
  * reads as stackable. Dragging translates and fades the top card while the peek card grows into
@@ -288,8 +303,15 @@ private fun SwipeableSuggestionCard(
     val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
     val previousCard = if (deck.size <= 1) null else deck[(localIndex - 1).mod(deck.size)]
     // One keyed window covering every role (previous/current/next), current last so it draws on
-    // top. A 2-card deck's "previous" and "next" are the same POI, and distinctBy keeps the
-    // first occurrence — so it's deduped to a single neighbor entry that reveals either way.
+    // top *at rest*. A 2-card deck's "previous" and "next" are the same POI, and distinctBy
+    // keeps the first occurrence — so it's deduped to a single neighbor entry that reveals
+    // either way. This emission order is what makes nextCard's idle peek sliver show (rather
+    // than previousCard's identical one) as the deck's "stackable" affordance at rest — but kept
+    // static during an active drag, it also means nextCard's idle peek would sit on top of
+    // previousCard while THAT'S the one being dragged into view, since nextCard is emitted after
+    // it. isRevealTarget/revealZIndex below fix that per-frame without touching this order (and
+    // so without disturbing the key-based state reuse this order was chosen for): the actively
+    // revealed neighbor always paints above the idle one, current always above both.
     // All three roles must come from this one loop (one call site) rather than the current card
     // being rendered from a separate key() elsewhere: Compose only preserves a composable's
     // state (and here, its MapView) across recompositions when the same key recurs at the same
@@ -350,11 +372,8 @@ private fun SwipeableSuggestionCard(
                 // single deduped neighbor is both, so it reveals either way.
                 val isPrevious = entry.poi.id == previousCard?.poi?.id
                 val isNext = entry.poi.id == nextCard?.poi?.id
-                val progress = when {
-                    effectiveOffset < 0f && isPrevious -> revealProgress(effectiveOffset, thresholdPx)
-                    effectiveOffset >= 0f && isNext -> revealProgress(effectiveOffset, thresholdPx)
-                    else -> 0f
-                }
+                val isRevealTarget = isRevealTarget(effectiveOffset, isPrevious, isNext)
+                val progress = if (isRevealTarget) revealProgress(effectiveOffset, thresholdPx) else 0f
                 // A single SuggestionCard call site regardless of role: role-dependent behavior
                 // is expressed as plain values (modifier, callbacks) fed into that one call,
                 // never as which composable call executes — an if/else choosing between two
@@ -374,6 +393,7 @@ private fun SwipeableSuggestionCard(
                     modifier = if (isCurrent) {
                         Modifier
                             .fillMaxWidth()
+                            .zIndex(revealZIndex(isCurrent = true, isRevealTarget = isRevealTarget))
                             .graphicsLayer {
                                 translationX = effectiveOffset
                                 alpha = topCardAlpha(effectiveOffset, thresholdPx)
@@ -381,6 +401,7 @@ private fun SwipeableSuggestionCard(
                     } else {
                         Modifier
                             .matchParentSize()
+                            .zIndex(revealZIndex(isCurrent = false, isRevealTarget = isRevealTarget))
                             .graphicsLayer {
                                 scaleX = lerp(PEEK_REST_SCALE, 1f, progress)
                                 scaleY = lerp(PEEK_REST_SCALE, 1f, progress)
