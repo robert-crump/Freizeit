@@ -1,5 +1,38 @@
 # Freizeit v2 progress log
 
+## 2026-07-30 — Issue #19 (partial): swipe-deck flicker fix
+
+- Not picked from the tracker cold — diagnosed live with the user via `/grill-me` against a
+  specific repro (swiping Home's suggestion deck one direction briefly flashes a stale, unrelated
+  card before landing on the correct one; the other direction never does), then implemented that
+  fix. Addresses only issue #19's third bullet ("Flicker is still there when swiping through card
+  deck"); its other two bullets (remove fading animation, wrap_content sizing) are untouched and
+  out of scope for this session, so the issue stays open rather than closing.
+- Root cause, confirmed with the user before touching code: `SwipeableSuggestionCard`
+  (`HomeScreen.kt`)'s window is always emitted in a fixed `[previousCard, nextCard, card]` order,
+  and later Box children paint on top of earlier ones — deliberately, so `nextCard`'s idle peek
+  sliver (not `previousCard`'s identical one) is what shows as the deck's "stackable" affordance
+  at rest. But that static order held during an active drag too: revealing `previousCard` grows
+  it past `nextCard`'s small idle-peek footprint, and since `nextCard` is emitted after (so always
+  painted above) `previousCard`, `nextCard`'s idle sliver stayed visible on top of the growing
+  card for the whole reveal — reads as a wrong-card flash that self-corrects once the drag commits
+  and the window recomputes. Only affects revealing `previousCard`, matching the reported
+  direction asymmetry: revealing `nextCard` never has this problem since the idle card
+  (`previousCard`) is the one underneath in that case.
+- Fix: added `isRevealTarget`/`revealZIndex` (pure, alongside the existing
+  `topCardAlpha`/`revealProgress`/`isPastSwipeThreshold`) and wired `Modifier.zIndex()` into both
+  branches of the per-entry modifier — current always highest, then whichever neighbor the drag is
+  actively revealing, then the idle one. Deliberately zIndex rather than reordering the `window`
+  list itself: reordering keyed children every drag frame is exactly the kind of churn the
+  existing "one keyed window, stable call site" state-preservation design (see the long comment
+  above `window`) was written to avoid; zIndex changes paint order without touching emission order
+  or the keyed slots, so it's a strictly additive, orthogonal fix.
+- Tests: 297 total, 0 failures (4 new `HomeSwipeDeckMathTest` cases for the two new pure
+  functions). `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
+- Not verified on device: the actual visual fix (does the flash genuinely disappear on a real
+  phone, dragged at realistic speed) has no on-device confirmation yet — the diagnosis and fix
+  were validated via the pure z-order/paint-order reasoning the user confirmed, not a device run.
+
 ## 2026-07-30 — Issue #37: full-screen search overlay + Map oval (remainder of #35)
 
 - Picked as the only open `ready-for-agent` issue. Every design decision was already resolved
@@ -494,19 +527,3 @@
   the >100 favorites cap taking effect, and the lazy-deregistration behavior all need a real run,
   ideally with a synthetic >100-favorite dataset since reaching that count organically is
   unlikely during normal testing.
-
-## 2026-07-25 — Issue #25: Amend product doc for the geofencing reversal
-
-- Only unblocked `ready-for-agent` issue: #29 is blocked by #28, which is
-  still `ready-for-human` (not agent-pickable). #25 itself has no blockers.
-- `docs/ideas/freizeit-2.0-family-concierge.md`'s "Not Doing" entry for
-  "Geofencing / background location" struck through (not deleted) with a
-  dated addendum explaining the reversal: #20 (check-in) needs background
-  proximity detection to prompt a check-in while the app is closed, which a
-  next-open prompt can't provide; #28 is the issue that actually implements
-  the geofencing, flagged `ready-for-human` for its Play Store policy
-  surface rather than a routine agent pickup. Kept the original rationale
-  text intact above the strikethrough so the doc still reads as a decision
-  history, per the issue's explicit ask.
-- Docs-only change, no code touched — no test run, no `progress.txt` test
-  count line needed.
