@@ -146,7 +146,7 @@ class HomeViewModel(
         .flowOn(Dispatchers.Default)
         // Home's ViewModel outlives tab switches (bottom-nav saveState/restoreState), so stay
         // subscribed instead of dropping Room collection 5s after Home loses its last observer —
-        // that cold-restart was the visible 0.5-1s lag when returning from Explore.
+        // that cold-restart was the visible 0.5-1s lag when returning from Map.
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
     init {
@@ -214,7 +214,7 @@ class HomeViewModel(
     }
 
     companion object {
-        // Aachen, center of the POI extraction bbox — same fallback as the Explore map
+        // Aachen, center of the POI extraction bbox — same fallback as the Map screen's map
         // (issue #22: the old constant was labeled "Cologne" and pointed there, ~60km
         // outside the actual extraction bbox set by tools/poi_extraction, Aachen +/-20km).
         private const val FALLBACK_LAT = 50.7753

@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -34,7 +34,7 @@ data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
 
 private const val SEARCH_DEBOUNCE_MS = 250L
 
-data class ExploreUiState(
+data class MapUiState(
     val pois: List<PoiWithDistance> = emptyList(),
     val categories: List<String> = emptyList(),
     val activeCategory: String? = null,
@@ -46,15 +46,39 @@ data class ExploreUiState(
     val searchQuery: String = ""
 )
 
+/** Start index of every "word" in [text] — a run of letters/digits preceded by either the
+ *  string start or a non-letter/digit character. Used by [matchesSearch] to anchor prefix
+ *  matches at word boundaries instead of matching anywhere inside a word. */
+private fun wordStartIndices(text: String): List<Int> =
+    text.indices.filter { i ->
+        text[i].isLetterOrDigit() && (i == 0 || !text[i - 1].isLetterOrDigit())
+    }
+
+/**
+ * True if [query] is a prefix (case-insensitive) of [name] starting at some word boundary —
+ * e.g. "Len" or "Caf" both match "Leni's Café" (first and second word), "hidden gem" matches
+ * "Our Hidden Gem" (anchored at "Hidden"), but "len" does NOT match "Bottleneck" even though it
+ * contains the substring "len" mid-word. A plain `.contains()` would wrongly match the latter.
+ */
+private fun matchesSearch(name: String, query: String): Boolean {
+    val trimmedQuery = query.trim()
+    if (trimmedQuery.isEmpty()) return false
+    return wordStartIndices(name).any { start ->
+        name.length - start >= trimmedQuery.length &&
+            name.regionMatches(start, trimmedQuery, 0, trimmedQuery.length, ignoreCase = true)
+    }
+}
+
 /**
  * Pure filter+sort so the semantics are unit-testable. Exactly one filter is ever
- * active, in priority order: a non-blank [searchQuery] matches custom-or-OSM name
- * substrings across all categories; otherwise [verdictIds] (non-null) restricts to
- * whichever single verdict bucket is active — favorites-only or want-to-go-only, the
- * caller decides which set to pass in, never both at once (#31); otherwise a non-null
- * [activeCategory] restricts to pois of that one category — the chip row is single-select
- * (replaces #33's multi-select "All POIs" mode); with none of the above active, nothing
- * matches. With a location, sorts nearest first, otherwise by name (unnamed places last).
+ * active, in priority order: a non-blank [searchQuery] matches custom-or-OSM names via
+ * [matchesSearch] (word-boundary prefix, not a plain substring) across all categories;
+ * otherwise [verdictIds] (non-null) restricts to whichever single verdict bucket is active —
+ * favorites-only or want-to-go-only, the caller decides which set to pass in, never both at
+ * once (#31); otherwise a non-null [activeCategory] restricts to pois of that one category —
+ * the chip row is single-select (replaces #33's multi-select "All POIs" mode); with none of
+ * the above active, nothing matches. With a location, sorts nearest first, otherwise by name
+ * (unnamed places last).
  */
 fun filterAndSort(
     pois: List<Poi>,
@@ -68,7 +92,7 @@ fun filterAndSort(
         when {
             !searchQuery.isNullOrBlank() -> {
                 val name = customNames[it.id] ?: it.name
-                name != null && name.contains(searchQuery, ignoreCase = true)
+                name != null && matchesSearch(name, searchQuery)
             }
             verdictIds != null -> it.id in verdictIds
             activeCategory != null -> it.category == activeCategory
@@ -91,7 +115,7 @@ fun filterAndSort(
     }
 }
 
-class ExploreViewModel(
+class MapViewModel(
     private val appContext: Context,
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
@@ -134,7 +158,7 @@ class ExploreViewModel(
         activeCategory, favoritesOnly, wantToGoOnly
     ) { active, favOnly, wantToGo -> LayerSelection(active, favOnly, wantToGo) }
 
-    val uiState: StateFlow<ExploreUiState> = combine(
+    val uiState: StateFlow<MapUiState> = combine(
         poisVerdictsAndNames,
         layerSelection,
         location,
@@ -150,7 +174,7 @@ class ExploreViewModel(
             wantToGo -> verdictMap.values.filter { it.value == Verdict.VALUE_WANT_TO_GO }.map { it.placeId }.toSet()
             else -> null
         }
-        ExploreUiState(
+        MapUiState(
             pois = filterAndSort(pois, active, loc, verdictIds, query.ifBlank { null }, customNames),
             categories = categories,
             activeCategory = active,
@@ -163,7 +187,7 @@ class ExploreViewModel(
         )
     }
         .flowOn(Dispatchers.Default)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ExploreUiState())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
 
     init {
         refreshLocation()
@@ -241,7 +265,7 @@ class ExploreViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as FreizeitApplication
-                ExploreViewModel(
+                MapViewModel(
                     app,
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),

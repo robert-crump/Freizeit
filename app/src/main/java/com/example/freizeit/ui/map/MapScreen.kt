@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import android.Manifest
 import androidx.activity.compose.BackHandler
@@ -71,9 +71,9 @@ private const val SEARCH_SUGGESTION_MAX_RESULTS = 8
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExploreScreen(
+fun MapScreen(
     modifier: Modifier = Modifier,
-    viewModel: ExploreViewModel = viewModel(factory = ExploreViewModel.Factory)
+    viewModel: MapViewModel = viewModel(factory = MapViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedPoi by viewModel.selectedPoi.collectAsStateWithLifecycle()
@@ -100,7 +100,7 @@ fun ExploreScreen(
     var showLayersPanel by rememberSaveable { mutableStateOf(false) }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter+sort
-    // pass (see ExploreViewModel) completes.
+    // pass (see MapViewModel) completes.
     var searchText by rememberSaveable { mutableStateOf("") }
     var searchBarHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
@@ -123,7 +123,7 @@ fun ExploreScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.explore_search_icon))
+                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.map_search_icon))
                 OutlinedTextField(
                     value = searchText,
                     onValueChange = {
@@ -131,7 +131,7 @@ fun ExploreScreen(
                         viewModel.setSearchQuery(it)
                     },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text(stringResource(R.string.explore_search_placeholder)) },
+                    placeholder = { Text(stringResource(R.string.map_search_placeholder)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     trailingIcon = if (searchText.isNotEmpty()) {
@@ -140,7 +140,7 @@ fun ExploreScreen(
                                 searchText = ""
                                 viewModel.clearSearch()
                             }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_search_clear))
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_search_clear))
                             }
                         }
                     } else null
@@ -150,7 +150,7 @@ fun ExploreScreen(
             Box(modifier = Modifier.weight(1f)) {
                 if (state.pois.isEmpty() && state.categories.isEmpty()) {
                     Text(
-                        text = stringResource(R.string.explore_empty),
+                        text = stringResource(R.string.map_empty),
                         modifier = Modifier
                             .align(Alignment.Center)
                             .padding(24.dp),
@@ -184,7 +184,7 @@ fun ExploreScreen(
                         horizontalAlignment = Alignment.End
                     ) {
                         FloatingActionButton(onClick = { showLayersPanel = true }) {
-                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.explore_layers_button))
+                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.map_layers_button))
                         }
                         FloatingActionButton(
                             onClick = {
@@ -192,7 +192,7 @@ fun ExploreScreen(
                                 recenterRequest++
                             }
                         ) {
-                            Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.explore_locate_me))
+                            Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
                         }
                     }
                 }
@@ -294,19 +294,19 @@ private fun LayersPanel(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(stringResource(R.string.explore_layers_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.map_layers_title), style = MaterialTheme.typography.titleMedium)
                     IconButton(onClick = onDismiss) {
-                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.explore_layers_close))
+                        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_layers_close))
                     }
                 }
                 LayerRow(
-                    label = stringResource(R.string.explore_favorites_filter),
+                    label = stringResource(R.string.map_favorites_filter),
                     selected = favoritesOnly,
                     onClick = onSelectFavorites,
                     leadingIcon = { Text("❤️") }
                 )
                 LayerRow(
-                    label = stringResource(R.string.explore_want_to_go_filter),
+                    label = stringResource(R.string.map_want_to_go_filter),
                     selected = wantToGoOnly,
                     onClick = onSelectWantToGo,
                     leadingIcon = {

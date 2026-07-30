@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.util.LatLon
@@ -66,9 +66,27 @@ class FilterAndSortTest {
     }
 
     @Test
-    fun `search matches a substring of the name case-insensitively across categories`() {
-        val result = filterAndSort(pois, activeCategory = null, location = null, searchQuery = "HAR")
+    fun `search matches a word-boundary prefix of the name case-insensitively across categories`() {
+        val result = filterAndSort(pois, activeCategory = null, location = null, searchQuery = "CHAR")
         assertEquals(listOf("node/4"), result.map { it.poi.id }) // "Charlie"
+    }
+
+    @Test
+    fun `search does not match a query that only occurs mid-word`() {
+        val bottleneck = poi("node/6", "cafe", 50.93, 6.93, "Bottleneck")
+        // "len" is a substring of "Bottleneck" (bott-LEN-eck) but not a prefix of any of its
+        // words, so a plain .contains() would wrongly match it — word-boundary prefix must not.
+        val result = filterAndSort(pois + bottleneck, activeCategory = null, location = null, searchQuery = "len")
+        assertEquals(emptyList<String>(), result.map { it.poi.id })
+    }
+
+    @Test
+    fun `search matches a prefix anchored at a later word in the name`() {
+        val leni = poi("node/7", "cafe", 50.93, 6.93, "Leni's Café")
+        val byFirstWord = filterAndSort(pois + leni, activeCategory = null, location = null, searchQuery = "Len")
+        val bySecondWord = filterAndSort(pois + leni, activeCategory = null, location = null, searchQuery = "Caf")
+        assertEquals(listOf("node/7"), byFirstWord.map { it.poi.id })
+        assertEquals(listOf("node/7"), bySecondWord.map { it.poi.id })
     }
 
     @Test

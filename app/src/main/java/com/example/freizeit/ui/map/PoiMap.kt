@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import android.content.Context
 import android.graphics.Color
@@ -86,19 +86,19 @@ fun PoiMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Read once: the map/style is retained across Home<->Explore tab switches (ExploreMapHolder),
-    // so a live system theme change while Explore is open won't re-style the map mid-session.
+    // Read once: the map/style is retained across Home<->Map tab switches (MapViewHolder),
+    // so a live system theme change while the Map screen is open won't re-style the map mid-session.
     val darkTheme = isSystemInDarkTheme()
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
     val markerBackground = markerBackgroundColor(darkTheme).toArgb()
     val markerForeground = markerForegroundColor(darkTheme).toArgb()
 
-    val (mapView, state) = remember(context) { ExploreMapHolder.obtain(context) }
+    val (mapView, state) = remember(context) { MapViewHolder.obtain(context) }
     state.onPoiClick = onPoiClick
 
     DisposableEffect(mapView) {
-        if (!ExploreMapHolder.configured) {
-            ExploreMapHolder.configured = true
+        if (!MapViewHolder.configured) {
+            MapViewHolder.configured = true
             mapView.getMapAsync { map ->
                 state.map = map
                 map.cameraPosition = CameraPosition.Builder()
@@ -178,7 +178,7 @@ fun PoiMap(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            // Deliberately not mapView.onDestroy(): the MapView is retained by ExploreMapHolder
+            // Deliberately not mapView.onDestroy(): the MapView is retained by MapViewHolder
             // across tab switches so its style/GL surface don't get rebuilt on every visit.
         }
     }
@@ -215,13 +215,13 @@ private class PoiMapState {
 }
 
 /**
- * Retains the Explore [MapView] (and its loaded style/sources) across Home<->Explore tab
- * switches. Compose Navigation fully disposes and recomposes the Explore destination on every
+ * Retains the Map screen's [MapView] (and its loaded style/sources) across Home<->Map tab
+ * switches. Compose Navigation fully disposes and recomposes the Map destination on every
  * switch, so without this the map would refetch its remote style and rebuild its GL surface on
  * every visit. Reset when the hosting Activity changes (e.g. a config change not handled
  * in-place), since a MapView can't outlive the Context it was created with.
  */
-private object ExploreMapHolder {
+private object MapViewHolder {
     private var mapView: MapView? = null
     private var state: PoiMapState? = null
     private var owningContext: Context? = null

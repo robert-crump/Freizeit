@@ -34,7 +34,7 @@ interface VerdictDao {
     suspend fun deleteAll()
 }
 
-/** One tap sets/changes a verdict; passing null clears it. Shared by Home and Explore. */
+/** One tap sets/changes a verdict; passing null clears it. Shared by Home and Map. */
 suspend fun VerdictDao.setVerdict(poi: Poi, value: String?) {
     if (value == null) {
         delete(poi.id)

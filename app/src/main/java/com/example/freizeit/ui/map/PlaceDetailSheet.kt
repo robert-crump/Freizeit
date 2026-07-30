@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -221,7 +221,7 @@ fun CategoryDot(category: String, modifier: Modifier = Modifier) {
 
 @Composable
 fun Poi.displayName(customName: String? = null): String =
-    customName ?: name ?: stringResource(R.string.explore_unnamed, categoryDisplayName(category).lowercase())
+    customName ?: name ?: stringResource(R.string.map_unnamed, categoryDisplayName(category).lowercase())
 
 /** "Marktplatz 8, 4750 Bütgenbach" from whichever address parts exist. */
 fun Poi.addressLine(): String? {

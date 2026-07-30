@@ -1,5 +1,57 @@
 # Freizeit v2 progress log
 
+## 2026-07-30 — Issue #35 (partial): rename Explore -> Map; fix search substring false-positive
+
+- Full /grill-me session held first (every branch of the redesign resolved with the user,
+  decisions posted to #35 as a comment before any code was touched). Mid-implementation the
+  user asked to stop after finishing only what was already started and file the rest as
+  follow-up issues, so this session lands just the rename + a standalone search bug fix; the
+  actual full-screen search overlay/oval redesign is split out to #37, which carries the full
+  grill-me decision spec forward.
+- Renamed `Explore` -> `Map` across code, not just the nav label (explicit grill-me decision):
+  `ui/explore` package -> `ui/map` (`git mv`, all 7 main files + `FilterAndSortTest.kt`),
+  `ExploreScreen`/`ExploreViewModel`/`ExploreUiState`/`ExploreMapHolder` -> `MapScreen`/
+  `MapViewModel`/`MapUiState`/`MapViewHolder`, `FreizeitDestination.EXPLORE` -> `.MAP` (route
+  `"explore"` -> `"map"`), every `explore_*` string resource -> `map_*` (wording unchanged),
+  `tab_explore` ("Explore") -> `tab_map` ("Map"), plus comments in `PoiMap.kt`/`PlaceMiniMap.kt`/
+  `MarkerIcons.kt`/`HomeViewModel.kt`/`CheckInScreen.kt`/`CheckInViewModel.kt`/`VerdictDao.kt`
+  that referenced the old names.
+- Bug fix found during the grill-me session itself: `filterAndSort`'s search matched via a plain
+  `name.contains(query, ignoreCase = true)`, so a query like "Len" would wrongly match a POI
+  named "Bottleneck" (the substring "len" sits mid-word, bott-LEN-eck). New `matchesSearch()` in
+  `MapViewModel.kt` anchors the match at word boundaries instead — `wordStartIndices()` finds
+  every letter/digit run's start, then checks whether the query is a case-insensitive prefix of
+  the name starting from any of those points. This still matches "Len" or "Caf" against "Leni's
+  Café" (first/second word) and "hidden gem" against "Our Hidden Gem" (anchored at "Hidden"),
+  but no longer matches "len" against "Bottleneck". `filterAndSort`'s public signature is
+  unchanged (still takes `searchQuery: String?`), so no caller needed updating.
+- Deliberately did NOT change `ExploreViewModel`'s (now `MapViewModel`'s) live per-keystroke
+  `setSearchQuery`/debounced-search/suggestion-dropdown behavior in this session — that whole
+  interaction model is being replaced by the full-screen search overlay from #35's grill-me
+  decisions (committed-vs-live search state, `focusTarget` hoisting to share with the overlay,
+  removing the old dropdown), which is explicitly out of scope for this session per the user's
+  "finish what you started, file the rest as follow-ups" instruction. An earlier draft of
+  `MapViewModel.kt` in this session had already added that committed-search/`focusTarget`
+  plumbing ahead of the overlay that would consume it; reverted back to the original
+  live-search/debounce shape (renamed only) so this commit stays a clean, self-contained rename
+  + bug fix with no half-built API surface. #37 has the full remaining implementation checklist.
+- `FilterAndSortTest.kt`: renamed the old substring test to describe word-boundary-prefix
+  matching (query "HAR"->"CHAR" against "Charlie"), and added two new cases: a "Bottleneck"
+  POI confirming "len" no longer matches it, and a "Leni's Café" POI confirming both "Len" and
+  "Caf" match it (first and second word). `FreizeitDestinationTest.kt`'s route list updated
+  `"explore"` -> `"map"`.
+- Tests: 146 total (was 144), 0 failures — the +2 nets out `FilterAndSortTest`'s 13 -> 15 cases
+  (rename + 2 new); confirmed via its own XML report (15/15 pass) and `FreizeitDestinationTest`'s
+  (3/3 pass). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no
+  new warnings (the pre-existing `FlowPreview` opt-in warning on the `searchQuery.debounce(...)`
+  call is unchanged, now at `MapViewModel.kt`'s new location).
+- Not verified on device: the rename touches every string resource and file path involved in the
+  Map tab, so it's worth a quick sanity check that the tab still renders "Map" and the map/
+  search/layers panel all still work identically to before — purely mechanical rename risk, not
+  new Compose wiring, but not yet eyeballed on Robert's phone.
+- Issue #35 left open (not closed): most of its scope (the actual visual/interaction redesign)
+  is deferred to #37.
+
 ## 2026-07-29 — Explore layers: replace "All POIs" row with a Velometrics-style chip row
 
 - No GitHub issue; user asked directly, worked out via a full /grill-me session before any code
@@ -475,64 +527,4 @@
   path. Given the HITL flag on this issue, worth exercising these before
   merge rather than trusting the Play Services API surface read correctly.
 
-## 2026-07-25 — Issue #26: Check-in history screen
-
-- Picked over #25 (a docs-only decision amendment, no code) and #29 (blocked
-  by #28, which is still `ready-for-human`): #26 was the only unblocked,
-  code-affecting `ready-for-agent` issue left. #23 (its blocker) closed
-  2026-07-24.
-- The issue's nav requirements ("Check-in tab stays highlighted while history
-  is shown", "back returns to the Check-in entry screen, not another tab")
-  needed real nested navigation, not just a boolean-toggle `when` inside
-  `CheckInScreen` — this app already uses `androidx.navigation-compose`
-  (`FreizeitApp.kt`'s `NavHost` + per-tab `composable()` routes), just never a
-  nested graph before. Used `NavGraphBuilder.navigation(startDestination =
-  "checkin/entry", route = "checkin")` wrapping two `composable()`s
-  (`checkin/entry` → `CheckInScreen`, `checkin/history` → the new
-  `CheckInHistoryScreen`) in place of the old single `composable("checkin")`.
-  This gets both requirements for free: a nested destination's `hierarchy`
-  includes its parent graph's route, so the bottom bar's existing `currentDestination
-  ?.hierarchy?.any { it.route == destination.route }` check still matches
-  "checkin" while on the history screen with no changes to that code, and
-  `navController.popBackStack()` from history lands back on `checkin/entry`
-  specifically (the previous back-stack entry), never another tab.
-  `FreizeitDestination` enum itself (and `FreizeitDestinationTest`'s
-  four-route assertion) is untouched — the nested routes are private route
-  string constants in `FreizeitApp.kt`, not new enum entries.
-- New `CheckInHistoryViewModel` (thin, same `Factory`/`APPLICATION_KEY`
-  pattern as `CheckInViewModel`) exposes `VisitDao.observeAll()` directly as
-  a `StateFlow<List<Visit>>` — that query already sorts `ORDER BY visitedAt
-  DESC` (added in #23), so "reverse-chronological" needed no new DAO method.
-  Each row shows `Visit.snapshotName` (falls back to a generic "Unnamed
-  place" string, matching how `snapshotName` is nullable) and `visitedAt`
-  formatted via the same `DateTimeFormatter.ofLocalizedDateTime(FormatStyle
-  .MEDIUM)` one-liner `SettingsScreen.kt` already uses for its import
-  timestamp — copied rather than extracted to a shared util, matching this
-  codebase's existing per-file-private-formatter convention (not shared
-  anywhere else either).
-- `CheckInScreen.kt`: added a `TextButton` ("History") in a new top `Row`
-  (`Arrangement.End`), and a required `onHistoryClick: () -> Unit` param
-  wired from `FreizeitApp.kt`'s nested graph — no confirmation dialog or
-  Snackbar, consistent with the rest of this screen's minimal-UI style.
-- Deliberately no `TopAppBar`: grepped the whole app first and confirmed zero
-  existing `TopAppBar` usage anywhere (every screen relies on the bottom nav
-  alone for chrome) — added a plain `Row` with an `IconButton`
-  (`Icons.AutoMirrored.Filled.ArrowBack`) + title `Text` instead, so this
-  doesn't become the app's first and only screen with a real app bar.
-- Tests: no new test files. No new pure/business logic was introduced (the
-  ranking/query logic is #23's already-tested `rankNearbyForCheckIn`/
-  `VisitDao.observeAll`) — this issue is wiring + a new nav route + a new
-  formatting-only screen, and this codebase has zero Compose UI test
-  infrastructure (`createComposeRule` et al.) to exercise the nav graph
-  itself against. `testDebugUnitTest`: 124 total, 26 failed — same count and
-  same pre-existing Robolectric `UnsatisfiedLinkError` classes as #27's
-  baseline (`VisitDaoTest`/`BackupRepositoryTest`/`PoiImportTest`/etc.),
-  confirming this change added no regressions. `compileDebugKotlin` passed
-  clean; `FreizeitDestinationTest` (4-route assertion) still green.
-- Not verified on device: the nested-graph back-stack behavior (tab staying
-  highlighted, back landing on the entry screen rather than popping out of
-  the tab entirely) is exactly the kind of thing that can look right by
-  reading the Navigation library's documented `hierarchy`/`popBackStack`
-  semantics but still surprise on a real back-gesture vs. button tap —
-  needs a real run on Robert's phone.
 
