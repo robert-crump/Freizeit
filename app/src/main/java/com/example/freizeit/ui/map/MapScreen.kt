@@ -15,12 +15,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
@@ -35,7 +33,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -50,33 +47,26 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.WantToGoBlue
-import com.example.freizeit.util.GeoDistance
-import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
-
-/** Below this many characters, matches are too broad to be useful as jump-to suggestions. */
-private const val SEARCH_SUGGESTION_MIN_LENGTH = 2
-private const val SEARCH_SUGGESTION_MAX_RESULTS = 8
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     modifier: Modifier = Modifier,
-    viewModel: MapViewModel = viewModel(factory = MapViewModel.Factory)
+    viewModel: MapViewModel,
+    onOpenSearch: (String) -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedPoi by viewModel.selectedPoi.collectAsStateWithLifecycle()
+    val focusTarget by viewModel.focusTarget.collectAsStateWithLifecycle()
+    val focusRequest by viewModel.focusRequest.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -95,134 +85,60 @@ fun MapScreen(
     }
 
     var recenterRequest by rememberSaveable { mutableIntStateOf(0) }
-    var focusRequest by rememberSaveable { mutableIntStateOf(0) }
-    var focusTarget by remember { mutableStateOf<LatLon?>(null) }
     var showLayersPanel by rememberSaveable { mutableStateOf(false) }
-    // The text field's own source of truth: typing must feel instant, so it can't be
-    // driven by state.searchQuery, which only updates after the debounced filter+sort
-    // pass (see MapViewModel) completes.
-    var searchText by rememberSaveable { mutableStateOf("") }
-    var searchBarHeightPx by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
 
     BackHandler(enabled = showLayersPanel) { showLayersPanel = false }
 
-    val searchSuggestions = if (searchText.trim().length >= SEARCH_SUGGESTION_MIN_LENGTH) {
-        state.pois.take(SEARCH_SUGGESTION_MAX_RESULTS)
-    } else {
-        emptyList()
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
+        if (state.pois.isEmpty() && state.categories.isEmpty()) {
+            Text(
+                text = stringResource(R.string.map_empty),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .onGloballyPositioned { searchBarHeightPx = it.size.height }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.map_search_icon))
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = {
-                        searchText = it
-                        viewModel.setSearchQuery(it)
-                    },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text(stringResource(R.string.map_search_placeholder)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    trailingIcon = if (searchText.isNotEmpty()) {
-                        {
-                            IconButton(onClick = {
-                                searchText = ""
-                                viewModel.clearSearch()
-                            }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_search_clear))
-                            }
-                        }
-                    } else null
+                    .align(Alignment.Center)
+                    .padding(24.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            PoiMap(
+                pois = state.pois,
+                location = state.location,
+                onPoiClick = viewModel::selectPoi,
+                customNames = state.customNames,
+                recenterRequest = recenterRequest,
+                focusTarget = focusTarget,
+                focusRequest = focusRequest,
+                modifier = Modifier.fillMaxSize()
+            )
+            Column(modifier = Modifier.align(Alignment.TopCenter)) {
+                SearchOval(
+                    committedQuery = state.committedSearchQuery,
+                    onOvalClick = { onOpenSearch(state.committedSearchQuery ?: "") },
+                    onClear = viewModel::clearSearch
+                )
+                PoiCategoryChipRow(
+                    categories = state.categories,
+                    activeCategory = state.activeCategory,
+                    onSelectCategory = viewModel::selectCategory
                 )
             }
-
-            Box(modifier = Modifier.weight(1f)) {
-                if (state.pois.isEmpty() && state.categories.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.map_empty),
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(24.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    PoiMap(
-                        pois = state.pois,
-                        location = state.location,
-                        onPoiClick = viewModel::selectPoi,
-                        customNames = state.customNames,
-                        recenterRequest = recenterRequest,
-                        focusTarget = focusTarget,
-                        focusRequest = focusRequest,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                    if (searchSuggestions.isEmpty()) {
-                        PoiCategoryChipRow(
-                            categories = state.categories,
-                            activeCategory = state.activeCategory,
-                            onSelectCategory = viewModel::selectCategory,
-                            modifier = Modifier.align(Alignment.TopStart)
-                        )
-                    }
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.End
-                    ) {
-                        FloatingActionButton(onClick = { showLayersPanel = true }) {
-                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.map_layers_button))
-                        }
-                        FloatingActionButton(
-                            onClick = {
-                                viewModel.refreshLocation()
-                                recenterRequest++
-                            }
-                        ) {
-                            Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
-                        }
-                    }
-                }
-            }
-        }
-
-        if (searchSuggestions.isNotEmpty()) {
-            Surface(
+            Column(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = with(density) { searchBarHeightPx.toDp() })
-                    .padding(horizontal = 12.dp)
-                    .fillMaxWidth(),
-                shadowElevation = 4.dp,
-                shape = MaterialTheme.shapes.medium
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
-                    items(searchSuggestions, key = { it.poi.id }) { item ->
-                        PoiSuggestionRow(
-                            item = item,
-                            customNames = state.customNames,
-                            onClick = {
-                                viewModel.selectPoi(item)
-                                focusTarget = LatLon(item.poi.lat, item.poi.lon)
-                                focusRequest++
-                                searchText = ""
-                                viewModel.clearSearch()
-                            }
-                        )
+                FloatingActionButton(onClick = { showLayersPanel = true }) {
+                    Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.map_layers_button))
+                }
+                FloatingActionButton(
+                    onClick = {
+                        viewModel.refreshLocation()
+                        recenterRequest++
                     }
+                ) {
+                    Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
                 }
             }
         }
@@ -247,6 +163,54 @@ fun MapScreen(
             onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
             onDismiss = { viewModel.selectPoi(null) }
         )
+    }
+}
+
+/**
+ * Floats inside the map's own [Box] (top-aligned), same convention as [PoiCategoryChipRow] below
+ * it. Placeholder "Search here" when no search is committed; once one is (via the overlay's
+ * keyboard Search action or a row tap), shows the query text + a trailing clear X instead.
+ * Tapping the oval body (not the X) reopens the full-screen overlay with that query preloaded.
+ */
+@Composable
+private fun SearchOval(
+    committedQuery: String?,
+    onOvalClick: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clickable(onClick = onOvalClick),
+        shape = RoundedCornerShape(percent = 50),
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.map_search_icon))
+            Text(
+                text = committedQuery ?: stringResource(R.string.map_search_oval_placeholder),
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (committedQuery != null) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.weight(1f)
+            )
+            if (committedQuery != null) {
+                IconButton(onClick = onClear) {
+                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_search_clear))
+                }
+            }
+        }
     }
 }
 
@@ -342,14 +306,14 @@ private fun LayerRow(
 }
 
 /**
- * Single-select category chip row, floated over the map's top edge (below the search bar,
- * hidden while search suggestions are showing — see the caller). Every chip shares one color
- * (no per-category coding, matching the map markers' own move away from that — see
- * [markerForegroundColor]/[markerBackgroundColor]): outlined in the foreground color when
- * unselected, filled with it when selected, with icon+label flipping to the background color
- * for contrast — the same relationship the marker circle/icon pair already has. Icon and label
- * sizing come from [FilterChip]'s own defaults (no custom size overrides), matching Velometrics'
- * chip row.
+ * Single-select category chip row, floated over the map's top edge, below the search oval — now
+ * always visible (no longer hidden while a search dropdown shows; that dropdown no longer lives
+ * on this screen at all, see [SearchOverlay]). Every chip shares one color (no per-category
+ * coding, matching the map markers' own move away from that — see [markerForegroundColor]/
+ * [markerBackgroundColor]): outlined in the foreground color when unselected, filled with it when
+ * selected, with icon+label flipping to the background color for contrast — the same relationship
+ * the marker circle/icon pair already has. Icon and label sizing come from [FilterChip]'s own
+ * defaults (no custom size overrides), matching Velometrics' chip row.
  */
 @Composable
 private fun PoiCategoryChipRow(
@@ -389,45 +353,6 @@ private fun PoiCategoryChipRow(
                     borderColor = foreground,
                     selectedBorderColor = foreground
                 )
-            )
-        }
-    }
-}
-
-@Composable
-private fun PoiSuggestionRow(
-    item: PoiWithDistance,
-    customNames: Map<String, String>,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val poi = item.poi
-    val streetPart = listOfNotNull(poi.street, poi.housenumber).joinToString(" ").ifBlank { null }
-    val subtitle = listOfNotNull(
-        item.distanceMeters?.let { GeoDistance.format(it) },
-        categoryDisplayName(poi.category),
-        streetPart,
-        poi.city
-    ).joinToString(" | ")
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        CategoryDot(item.poi.category)
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.poi.displayName(customNames[item.poi.id]),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
