@@ -71,7 +71,6 @@ import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.common.categoryDisplayName
-import com.example.freizeit.ui.map.CategoryDot
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -540,18 +539,6 @@ private fun SuggestionCard(
                     .height(200.dp)
                     .clip(RoundedCornerShape(12.dp))
             )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CategoryDot(poi.category)
-                Text(
-                    text = categoryDisplayName(poi.category),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
 
             poi.openingHours?.let { hours ->
                 Row(
