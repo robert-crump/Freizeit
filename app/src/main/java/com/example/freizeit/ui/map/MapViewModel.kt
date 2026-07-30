@@ -24,7 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -32,10 +31,9 @@ import kotlinx.coroutines.withContext
 
 data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
 
-private const val SEARCH_DEBOUNCE_MS = 250L
-
 data class MapUiState(
     val pois: List<PoiWithDistance> = emptyList(),
+    val allPois: List<Poi> = emptyList(),
     val categories: List<String> = emptyList(),
     val activeCategory: String? = null,
     val location: LatLon? = null,
@@ -43,7 +41,7 @@ data class MapUiState(
     val customNames: Map<String, String> = emptyMap(),
     val favoritesOnly: Boolean = false,
     val wantToGoOnly: Boolean = false,
-    val searchQuery: String = ""
+    val committedSearchQuery: String? = null
 )
 
 /** Start index of every "word" in [text] — a run of letters/digits preceded by either the
@@ -128,10 +126,17 @@ class MapViewModel(
     private val location = MutableStateFlow<LatLon?>(null)
     private val favoritesOnly = MutableStateFlow(false)
     private val wantToGoOnly = MutableStateFlow(false)
-    private val searchQuery = MutableStateFlow("")
+    private val committedSearchQuery = MutableStateFlow<String?>(null)
 
     private val _selectedPoi = MutableStateFlow<PoiWithDistance?>(null)
     val selectedPoi: StateFlow<PoiWithDistance?> = _selectedPoi
+
+    // Shared with the full-screen search overlay (hoisted alongside this ViewModel in
+    // FreizeitApp) so a row tap there can drive the Map screen's camera jump.
+    private val _focusTarget = MutableStateFlow<LatLon?>(null)
+    val focusTarget: StateFlow<LatLon?> = _focusTarget
+    private val _focusRequest = MutableStateFlow(0)
+    val focusRequest: StateFlow<Int> = _focusRequest
 
     private val poisVerdictsAndNames = combine(
         poiDao.observeAll(),
@@ -162,9 +167,7 @@ class MapViewModel(
         poisVerdictsAndNames,
         layerSelection,
         location,
-        // Debounced so a filter+sort pass (and the map's full overlay rebuild) runs once
-        // typing pauses, instead of on every keystroke.
-        searchQuery.debounce(SEARCH_DEBOUNCE_MS)
+        committedSearchQuery
     ) { poisVerdictsNames, layer, loc, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
         val (active, favOnly, wantToGo) = layer
@@ -175,7 +178,8 @@ class MapViewModel(
             else -> null
         }
         MapUiState(
-            pois = filterAndSort(pois, active, loc, verdictIds, query.ifBlank { null }, customNames),
+            pois = filterAndSort(pois, active, loc, verdictIds, query, customNames),
+            allPois = pois,
             categories = categories,
             activeCategory = active,
             location = loc,
@@ -183,7 +187,7 @@ class MapViewModel(
             customNames = customNames,
             favoritesOnly = favOnly,
             wantToGoOnly = wantToGo,
-            searchQuery = query
+            committedSearchQuery = query
         )
     }
         .flowOn(Dispatchers.Default)
@@ -203,7 +207,7 @@ class MapViewModel(
         if (activeCategory.value != null) {
             favoritesOnly.value = false
             wantToGoOnly.value = false
-            searchQuery.value = ""
+            committedSearchQuery.value = null
         }
     }
 
@@ -213,7 +217,7 @@ class MapViewModel(
         if (favoritesOnly.value) {
             wantToGoOnly.value = false
             activeCategory.value = null
-            searchQuery.value = ""
+            committedSearchQuery.value = null
         }
     }
 
@@ -223,14 +227,17 @@ class MapViewModel(
         if (wantToGoOnly.value) {
             favoritesOnly.value = false
             activeCategory.value = null
-            searchQuery.value = ""
+            committedSearchQuery.value = null
         }
     }
 
-    /** Mutually exclusive with the chip row and the layer rows. */
-    fun setSearchQuery(query: String) {
-        searchQuery.value = query
-        if (query.isNotBlank()) {
+    /** Commits a search overlay query to the map, mutually exclusive with the chip row and the
+     *  layer rows. Called both by the overlay's keyboard Search action and by tapping one of
+     *  its rows (which also focuses/selects that POI). */
+    fun commitSearch(query: String) {
+        val trimmed = query.trim()
+        committedSearchQuery.value = trimmed.ifBlank { null }
+        if (trimmed.isNotBlank()) {
             favoritesOnly.value = false
             wantToGoOnly.value = false
             activeCategory.value = null
@@ -238,7 +245,14 @@ class MapViewModel(
     }
 
     fun clearSearch() {
-        searchQuery.value = ""
+        committedSearchQuery.value = null
+    }
+
+    /** Jumps the map camera to [latLon] — bumps [focusRequest] so [PoiMap]'s LaunchedEffect
+     *  re-fires even if the same POI is focused twice in a row. */
+    fun focusOn(latLon: LatLon) {
+        _focusTarget.value = latLon
+        _focusRequest.value += 1
     }
 
     fun refreshLocation() {
