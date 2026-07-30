@@ -1,13 +1,14 @@
 # Freizeit v2 progress log
 
-## 2026-07-30 — Issue #19 (partial): swipe-deck flicker fix
+## 2026-07-30 — Issue #19: swipe-deck flicker fix
 
 - Not picked from the tracker cold — diagnosed live with the user via `/grill-me` against a
   specific repro (swiping Home's suggestion deck one direction briefly flashes a stale, unrelated
   card before landing on the correct one; the other direction never does), then implemented that
   fix. Addresses only issue #19's third bullet ("Flicker is still there when swiping through card
   deck"); its other two bullets (remove fading animation, wrap_content sizing) are untouched and
-  out of scope for this session, so the issue stays open rather than closing.
+  out of scope for this session — closed anyway per the user's explicit instruction after
+  confirming the flicker fix on device; re-file the other two separately if still wanted.
 - Root cause, confirmed with the user before touching code: `SwipeableSuggestionCard`
   (`HomeScreen.kt`)'s window is always emitted in a fixed `[previousCard, nextCard, card]` order,
   and later Box children paint on top of earlier ones — deliberately, so `nextCard`'s idle peek
@@ -29,9 +30,7 @@
   or the keyed slots, so it's a strictly additive, orthogonal fix.
 - Tests: 297 total, 0 failures (4 new `HomeSwipeDeckMathTest` cases for the two new pure
   functions). `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
-- Not verified on device: the actual visual fix (does the flash genuinely disappear on a real
-  phone, dragged at realistic speed) has no on-device confirmation yet — the diagnosis and fix
-  were validated via the pure z-order/paint-order reasoning the user confirmed, not a device run.
+- Verified on device by the user: the flash is gone.
 
 ## 2026-07-30 — Issue #37: full-screen search overlay + Map oval (remainder of #35)
 
