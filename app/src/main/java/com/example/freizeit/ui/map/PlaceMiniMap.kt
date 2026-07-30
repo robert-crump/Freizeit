@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import android.graphics.Color
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -46,7 +46,7 @@ private const val USER_DOT_LAYER_ID = "suggestions-user-layer"
 /**
  * Static, non-interactive overview map for the Home carousel: shows every suggestion POI
  * plus the user's current location, camera fit once to include all of them. Every POI renders
- * as its category's icon-in-circle marker, same size as the Explore map's. Tapping any marker
+ * as its category's icon-in-circle marker, same size as the Map screen's map. Tapping any marker
  * reports it via [onPoiClick] so the caller can keep the carousel in sync.
  */
 @Composable
@@ -59,7 +59,7 @@ fun SuggestionsMiniMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Read once, same rationale as PoiMap's Explore map: no live re-theming mid-session.
+    // Read once, same rationale as PoiMap's Map screen: no live re-theming mid-session.
     val darkTheme = isSystemInDarkTheme()
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
 
@@ -158,7 +158,7 @@ private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer
 private fun poiSymbolLayer(): SymbolLayer =
     // Deliberately no size-by-selection: this map's only current caller (SuggestionCard) always
     // passes a single, already-selected POI, so a size bump would just make every marker bigger
-    // than the Explore map's — icons here should read at the same size as Explore's, always.
+    // than the Map screen's map — icons here should read at the same size as it, always.
     SymbolLayer(POI_DOT_LAYER_ID, POI_DOT_SOURCE_ID)
         .withProperties(
             PropertyFactory.iconImage(categoryIconExpression()),

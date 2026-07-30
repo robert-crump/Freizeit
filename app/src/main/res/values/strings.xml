@@ -1,12 +1,12 @@
 <resources>
     <string name="app_name">Freizeit</string>
     <string name="tab_home">Home</string>
-    <string name="tab_explore">Explore</string>
+    <string name="tab_map">Map</string>
     <string name="tab_checkin">Check-in</string>
     <string name="tab_settings">Settings</string>
     <!-- Home -->
     <string name="home_empty">No place data yet. Import the pois.json from the extraction script in Settings.</string>
-    <string name="home_no_favorites">You haven\'t favorited or bookmarked any places yet. Head to Explore and tap the heart or bookmark on a place to see it here.</string>
+    <string name="home_no_favorites">You haven\'t favorited or bookmarked any places yet. Head to Map and tap the heart or bookmark on a place to see it here.</string>
     <string name="home_no_suggestions_within_radius">No suggestions within %1$d km.</string>
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
@@ -18,18 +18,18 @@
     <string name="home_closed_now">Closed now</string>
     <string name="home_visit_prompt">Were you at %1$s?</string>
     <string name="home_visit_didnt_go">Didn\'t go</string>
-    <!-- Explore -->
-    <string name="explore_empty">No places yet. Import a POI file in Settings.</string>
-    <string name="explore_locate_me">Locate me</string>
-    <string name="explore_unnamed">Unnamed %1$s</string>
-    <string name="explore_favorites_filter">Favorites</string>
-    <string name="explore_want_to_go_filter">Want to go</string>
-    <string name="explore_layers_button">Layers</string>
-    <string name="explore_layers_title">Layers</string>
-    <string name="explore_layers_close">Close layers panel</string>
-    <string name="explore_search_icon">Search</string>
-    <string name="explore_search_clear">Clear search</string>
-    <string name="explore_search_placeholder">Search places by name</string>
+    <!-- Map -->
+    <string name="map_empty">No places yet. Import a POI file in Settings.</string>
+    <string name="map_locate_me">Locate me</string>
+    <string name="map_unnamed">Unnamed %1$s</string>
+    <string name="map_favorites_filter">Favorites</string>
+    <string name="map_want_to_go_filter">Want to go</string>
+    <string name="map_layers_button">Layers</string>
+    <string name="map_layers_title">Layers</string>
+    <string name="map_layers_close">Close layers panel</string>
+    <string name="map_search_icon">Search</string>
+    <string name="map_search_clear">Clear search</string>
+    <string name="map_search_placeholder">Search places by name</string>
     <!-- Check-in -->
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
     <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>

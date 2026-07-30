@@ -45,8 +45,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
-import com.example.freizeit.ui.explore.CategoryDot
-import com.example.freizeit.ui.explore.displayName
+import com.example.freizeit.ui.map.CategoryDot
+import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LocationHelper
 
@@ -61,7 +61,7 @@ fun CheckInScreen(
     var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter pass
-    // (see CheckInViewModel) completes. Mirrors ExploreScreen's identical fix (#32).
+    // (see CheckInViewModel) completes. Mirrors MapScreen's identical fix (#32).
     var searchText by rememberSaveable { mutableStateOf("") }
 
     val permissionLauncher = rememberLauncherForActivityResult(

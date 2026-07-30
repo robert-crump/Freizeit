@@ -90,7 +90,7 @@ class CheckInViewModel(
         location,
         lastCheckedInName,
         // Debounced so the nearby-ranking pass runs once typing pauses, instead of on
-        // every keystroke (mirrors ExploreViewModel's identical fix).
+        // every keystroke (mirrors MapViewModel's identical fix).
         searchQuery.debounce(SEARCH_DEBOUNCE_MS)
     ) { pois, verdicts, loc, lastName, query ->
         val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }

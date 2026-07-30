@@ -71,9 +71,9 @@ import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.common.categoryDisplayName
-import com.example.freizeit.ui.explore.CategoryDot
-import com.example.freizeit.ui.explore.SuggestionsMiniMap
-import com.example.freizeit.ui.explore.displayName
+import com.example.freizeit.ui.map.CategoryDot
+import com.example.freizeit.ui.map.SuggestionsMiniMap
+import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.LatLon

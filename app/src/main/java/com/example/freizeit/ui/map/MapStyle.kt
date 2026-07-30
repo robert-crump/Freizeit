@@ -1,4 +1,4 @@
-package com.example.freizeit.ui.explore
+package com.example.freizeit.ui.map
 
 import androidx.compose.ui.graphics.Color
 import com.example.freizeit.ui.common.CATEGORY_ORDER

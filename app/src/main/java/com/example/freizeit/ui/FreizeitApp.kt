@@ -31,7 +31,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.freizeit.R
 import com.example.freizeit.ui.checkin.CheckInHistoryScreen
 import com.example.freizeit.ui.checkin.CheckInScreen
-import com.example.freizeit.ui.explore.ExploreScreen
+import com.example.freizeit.ui.map.MapScreen
 import com.example.freizeit.ui.home.HomeScreen
 import com.example.freizeit.ui.settings.SettingsScreen
 
@@ -42,7 +42,7 @@ enum class FreizeitDestination(
     val unselectedIcon: ImageVector
 ) {
     HOME("home", R.string.tab_home, Icons.Filled.Home, Icons.Outlined.Home),
-    EXPLORE("explore", R.string.tab_explore, Icons.Filled.Place, Icons.Outlined.Place),
+    MAP("map", R.string.tab_map, Icons.Filled.Place, Icons.Outlined.Place),
     CHECKIN("checkin", R.string.tab_checkin, Icons.Filled.CheckCircle, Icons.Outlined.CheckCircle),
     SETTINGS("settings", R.string.tab_settings, Icons.Filled.Settings, Icons.Outlined.Settings)
 }
@@ -92,7 +92,7 @@ fun FreizeitApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(FreizeitDestination.HOME.route) { HomeScreen() }
-            composable(FreizeitDestination.EXPLORE.route) { ExploreScreen() }
+            composable(FreizeitDestination.MAP.route) { MapScreen() }
             navigation(
                 startDestination = CHECKIN_ENTRY_ROUTE,
                 route = FreizeitDestination.CHECKIN.route

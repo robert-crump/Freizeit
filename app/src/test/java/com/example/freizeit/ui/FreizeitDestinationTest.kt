@@ -8,7 +8,7 @@ class FreizeitDestinationTest {
     @Test
     fun `has exactly the four tabs`() {
         assertEquals(
-            listOf("home", "explore", "checkin", "settings"),
+            listOf("home", "map", "checkin", "settings"),
             FreizeitDestination.entries.map { it.route }
         )
     }
