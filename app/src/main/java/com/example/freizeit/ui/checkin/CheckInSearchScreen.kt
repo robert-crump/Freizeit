@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -117,8 +116,11 @@ fun CheckInSearchScreen(
 
     BackHandler(onBack = ::handleBack)
 
+    // Unlike Map's SearchOverlay (hoisted above the Scaffold), this is an ordinary NavHost route
+    // rendered inside Scaffold's content slot, which already reserves the status-bar inset via
+    // innerPadding — an extra statusBarsPadding() here would double it up.
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

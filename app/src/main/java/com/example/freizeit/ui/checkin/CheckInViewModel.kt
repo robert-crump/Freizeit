@@ -66,7 +66,7 @@ fun rankNearbyForCheckIn(
 }
 
 data class CheckInUiState(
-    /** Favorites within [CHECKIN_FAVORITE_RADIUS_METERS], shown by default. */
+    /** All favorites, nearest first — the quick-pick list shown before a search is typed. */
     val favoritesNearby: List<CheckInCandidate> = emptyList(),
     val searchQuery: String = "",
     /**
@@ -119,9 +119,7 @@ class CheckInViewModel(
             nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
         }
         CheckInUiState(
-            favoritesNearby = nearby.filter {
-                it.isFavorite && it.distanceMeters <= CHECKIN_FAVORITE_RADIUS_METERS
-            },
+            favoritesNearby = nearby.filter { it.isFavorite }.sortedBy { it.distanceMeters },
             searchQuery = search.query,
             searchResults = if (search.showAll) matches else matches.take(CHECKIN_SEARCH_RESULTS_LIMIT),
             hasMoreSearchResults = !search.showAll && matches.size > CHECKIN_SEARCH_RESULTS_LIMIT,
