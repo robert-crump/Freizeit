@@ -5,6 +5,8 @@ import androidx.room.Insert
 import androidx.room.Query
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
+import com.example.freizeit.util.LastVisit
+import java.time.LocalDateTime
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -47,3 +49,8 @@ suspend fun VisitDao.checkIn(
             snapshotCategory = poi.category
         )
     )
+
+/** Shared "Last visit" lookup so every UI host (map, list, Home) formats it the same way
+ *  instead of each calling [VisitDao.lastVisitedAt] and formatting independently. */
+suspend fun VisitDao.lastVisitLabel(placeId: String, now: LocalDateTime = LocalDateTime.now()): String? =
+    LastVisit.format(lastVisitedAt(placeId), now)

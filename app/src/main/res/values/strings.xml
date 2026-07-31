@@ -70,6 +70,7 @@
     <string name="detail_no_longer_in_osm">No longer in OSM</string>
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>
+    <string name="detail_last_visit">Last visit: %1$s</string>
     <string name="detail_verdict_favorite">Favorite</string>
     <string name="detail_verdict_want_to_go">Want to go</string>
     <string name="detail_edit_name">Edit name</string>

@@ -52,6 +52,7 @@ fun PlaceDetailSheet(
     onVerdictChange: (String?) -> Unit,
     customName: String?,
     onCustomNameChange: (String?) -> Unit,
+    lastVisit: String? = null,
     onDismiss: () -> Unit
 ) {
     val poi = item.poi
@@ -112,6 +113,13 @@ fun PlaceDetailSheet(
             item.distanceMeters?.let {
                 Text(
                     text = stringResource(R.string.detail_distance, GeoDistance.format(it)),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            lastVisit?.let {
+                Text(
+                    text = stringResource(R.string.detail_last_visit, it),
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
