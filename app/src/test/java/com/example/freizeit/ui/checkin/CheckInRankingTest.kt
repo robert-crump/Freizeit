@@ -56,13 +56,15 @@ class CheckInRankingTest {
     }
 
     @Test
-    fun `places beyond 500m are excluded entirely`() {
-        // ~667m
-        val tooFar = poi("too-far", 0.006)
+    fun `places far beyond the old 500m cutoff are still included, sorted after closer ones`() {
+        // ~667m, well past the old cap
+        val farAway = poi("far-away", 0.006)
+        // ~56m
+        val nearNonFavorite = poi("near-non-favorite", 0.0005)
 
-        val result = rankNearbyForCheckIn(listOf(tooFar), emptyMap(), home)
+        val result = rankNearbyForCheckIn(listOf(farAway, nearNonFavorite), emptyMap(), home)
 
-        assertEquals(emptyList<CheckInCandidate>(), result)
+        assertEquals(listOf("near-non-favorite", "far-away"), result.map { it.poi.id })
     }
 
     @Test
