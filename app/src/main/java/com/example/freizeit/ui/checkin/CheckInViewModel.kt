@@ -33,6 +33,11 @@ const val CHECKIN_FAVORITE_RADIUS_METERS = 200.0
 
 private const val SEARCH_DEBOUNCE_MS = 250L
 
+/** Below this many characters, matches are too broad to be a useful search result — mirrors
+ *  Map's SearchOverlay.SEARCH_MIN_LENGTH. Below it, the search screen shows favoritesNearby
+ *  quick-picks instead. */
+private const val SEARCH_MIN_LENGTH = 2
+
 /** Search shows only the nearest matches at first, expandable via [CheckInUiState.hasMoreSearchResults]. */
 const val CHECKIN_SEARCH_RESULTS_LIMIT = 20
 
@@ -75,7 +80,7 @@ data class CheckInUiState(
     /** Name of the place last checked into this session, shown as a brief confirmation. */
     val lastCheckedInName: String? = null
 ) {
-    val isSearching: Boolean get() = searchQuery.isNotBlank()
+    val isSearching: Boolean get() = searchQuery.trim().length >= SEARCH_MIN_LENGTH
 }
 
 private data class SearchState(val query: String, val showAll: Boolean)
@@ -108,7 +113,7 @@ class CheckInViewModel(
         val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
             ?: emptyList()
         val trimmedQuery = search.query.trim()
-        val matches = if (trimmedQuery.isEmpty()) {
+        val matches = if (trimmedQuery.length < SEARCH_MIN_LENGTH) {
             emptyList()
         } else {
             nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
