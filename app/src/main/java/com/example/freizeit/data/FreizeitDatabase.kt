@@ -7,13 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.freizeit.data.dao.ImportInfoDao
-import com.example.freizeit.data.dao.PendingVisitDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.entity.ImportInfo
-import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.PoiCustomName
 import com.example.freizeit.data.entity.Verdict
@@ -21,10 +19,10 @@ import com.example.freizeit.data.entity.Visit
 
 @Database(
     entities = [
-        Poi::class, Verdict::class, ImportInfo::class, PendingVisit::class, PoiCustomName::class,
+        Poi::class, Verdict::class, ImportInfo::class, PoiCustomName::class,
         Visit::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class FreizeitDatabase : RoomDatabase() {
@@ -32,7 +30,6 @@ abstract class FreizeitDatabase : RoomDatabase() {
     abstract fun poiDao(): PoiDao
     abstract fun verdictDao(): VerdictDao
     abstract fun importInfoDao(): ImportInfoDao
-    abstract fun pendingVisitDao(): PendingVisitDao
     abstract fun poiCustomNameDao(): PoiCustomNameDao
     abstract fun visitDao(): VisitDao
 
@@ -115,13 +112,23 @@ abstract class FreizeitDatabase : RoomDatabase() {
             }
         }
 
+        /** Drops pending_visit — the "Go" feature (and its 2h-later visit-confirmation banner)
+         *  is retired; visits are recorded only via Check-in now. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `pending_visit`")
+            }
+        }
+
         fun build(context: Context): FreizeitDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
                 FreizeitDatabase::class.java,
                 "freizeit.db"
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+                )
                 .build()
     }
 }
