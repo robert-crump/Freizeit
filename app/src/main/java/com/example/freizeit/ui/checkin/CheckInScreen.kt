@@ -123,6 +123,19 @@ fun CheckInScreen(
                                 items(state.searchResults, key = { it.poi.id }) { candidate ->
                                     CheckInRow(candidate = candidate, onClick = { pendingCheckIn = candidate })
                                 }
+                                if (state.hasMoreSearchResults) {
+                                    item {
+                                        Text(
+                                            text = stringResource(R.string.checkin_search_more_results),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(onClick = viewModel::showMoreSearchResults)
+                                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

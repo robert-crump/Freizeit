@@ -43,7 +43,8 @@
     <string name="checkin_search_clear">Clear search</string>
     <string name="checkin_search_placeholder">Search places by name</string>
     <string name="checkin_search_waiting_location">Waiting for your location to search nearby places.</string>
-    <string name="checkin_search_empty">No matches nearby.</string>
+    <string name="checkin_search_empty">No matches.</string>
+    <string name="checkin_search_more_results">More results</string>
     <string name="checkin_favorites_nearby_header">Favorites nearby:</string>
     <string name="checkin_favorites_nearby_empty">No favorite places nearby. Search to check in elsewhere.</string>
     <string name="checkin_confirm_checkin">Check-in</string>

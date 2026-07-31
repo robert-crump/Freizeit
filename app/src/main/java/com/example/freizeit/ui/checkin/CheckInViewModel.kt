@@ -31,27 +31,27 @@ import kotlinx.coroutines.withContext
 /** Favorites within this range get top billing over everything else. */
 const val CHECKIN_FAVORITE_RADIUS_METERS = 200.0
 
-/** Nothing farther than this is worth walking to for a check-in. */
-const val CHECKIN_MAX_RADIUS_METERS = 500.0
-
 private const val SEARCH_DEBOUNCE_MS = 250L
+
+/** Search shows only the nearest matches at first, expandable via [CheckInUiState.hasMoreSearchResults]. */
+const val CHECKIN_SEARCH_RESULTS_LIMIT = 20
 
 data class CheckInCandidate(val poi: Poi, val distanceMeters: Double, val isFavorite: Boolean)
 
 /**
  * Pure so the ranking is unit-testable. Favorites within [CHECKIN_FAVORITE_RADIUS_METERS] come
- * first (sorted by distance), then every other candidate within [CHECKIN_MAX_RADIUS_METERS]
- * (also by distance) — including farther-out favorites, which don't get top billing but still
- * show up in the ordinary distance-sorted list.
+ * first (sorted by distance), then every other candidate (also by distance) — including
+ * farther-out favorites, which don't get top billing but still show up in the ordinary
+ * distance-sorted list. Unbounded by distance: a place on the other side of town is still a
+ * valid check-in (e.g. checking in at home after forgetting to at the place you actually visited).
  */
 fun rankNearbyForCheckIn(
     pois: List<Poi>,
     verdicts: Map<String, Verdict>,
     location: LatLon
 ): List<CheckInCandidate> {
-    val candidates = pois.mapNotNull { poi ->
+    val candidates = pois.map { poi ->
         val distance = GeoDistance.metersBetween(location.lat, location.lon, poi.lat, poi.lon)
-        if (distance > CHECKIN_MAX_RADIUS_METERS) return@mapNotNull null
         CheckInCandidate(poi, distance, verdicts[poi.id]?.value == Verdict.VALUE_FAVORITE)
     }
     val (topBilled, rest) = candidates.partition {
@@ -64,14 +64,21 @@ data class CheckInUiState(
     /** Favorites within [CHECKIN_FAVORITE_RADIUS_METERS], shown by default. */
     val favoritesNearby: List<CheckInCandidate> = emptyList(),
     val searchQuery: String = "",
-    /** Matches (favorite or not) within [CHECKIN_MAX_RADIUS_METERS], populated only while searching. */
+    /**
+     * Name matches, distance-unbounded, capped to [CHECKIN_SEARCH_RESULTS_LIMIT] nearest unless
+     * [hasMoreSearchResults] has been consumed via [CheckInViewModel.showMoreSearchResults].
+     */
     val searchResults: List<CheckInCandidate> = emptyList(),
+    /** True when matches beyond the [CHECKIN_SEARCH_RESULTS_LIMIT] cap are being withheld. */
+    val hasMoreSearchResults: Boolean = false,
     val hasLocation: Boolean = false,
     /** Name of the place last checked into this session, shown as a brief confirmation. */
     val lastCheckedInName: String? = null
 ) {
     val isSearching: Boolean get() = searchQuery.isNotBlank()
 }
+
+private data class SearchState(val query: String, val showAll: Boolean)
 
 class CheckInViewModel(
     private val appContext: Context,
@@ -83,29 +90,36 @@ class CheckInViewModel(
     private val location = MutableStateFlow<LatLon?>(null)
     private val lastCheckedInName = MutableStateFlow<String?>(null)
     private val searchQuery = MutableStateFlow("")
+    private val showAllSearchResults = MutableStateFlow(false)
 
     val uiState: StateFlow<CheckInUiState> = combine(
         poiDao.observeAll(),
         verdictDao.observeAll(),
         location,
         lastCheckedInName,
-        // Debounced so the nearby-ranking pass runs once typing pauses, instead of on
-        // every keystroke (mirrors MapViewModel's identical fix).
-        searchQuery.debounce(SEARCH_DEBOUNCE_MS)
-    ) { pois, verdicts, loc, lastName, query ->
+        combine(
+            // Debounced so the nearby-ranking pass runs once typing pauses, instead of on
+            // every keystroke (mirrors MapViewModel's identical fix).
+            searchQuery.debounce(SEARCH_DEBOUNCE_MS),
+            showAllSearchResults,
+            ::SearchState
+        )
+    ) { pois, verdicts, loc, lastName, search ->
         val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
             ?: emptyList()
-        val trimmedQuery = query.trim()
+        val trimmedQuery = search.query.trim()
+        val matches = if (trimmedQuery.isEmpty()) {
+            emptyList()
+        } else {
+            nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
+        }
         CheckInUiState(
             favoritesNearby = nearby.filter {
                 it.isFavorite && it.distanceMeters <= CHECKIN_FAVORITE_RADIUS_METERS
             },
-            searchQuery = query,
-            searchResults = if (trimmedQuery.isEmpty()) {
-                emptyList()
-            } else {
-                nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
-            },
+            searchQuery = search.query,
+            searchResults = if (search.showAll) matches else matches.take(CHECKIN_SEARCH_RESULTS_LIMIT),
+            hasMoreSearchResults = !search.showAll && matches.size > CHECKIN_SEARCH_RESULTS_LIMIT,
             hasLocation = loc != null,
             lastCheckedInName = lastName
         )
@@ -127,10 +141,16 @@ class CheckInViewModel(
 
     fun setSearchQuery(query: String) {
         searchQuery.value = query
+        showAllSearchResults.value = false
     }
 
     fun clearSearch() {
         searchQuery.value = ""
+        showAllSearchResults.value = false
+    }
+
+    fun showMoreSearchResults() {
+        showAllSearchResults.value = true
     }
 
     /** Returns the new visit's id, so the caller can offer Undo. */
