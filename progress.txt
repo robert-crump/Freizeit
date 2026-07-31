@@ -1,5 +1,56 @@
 # Freizeit v2 progress log
 
+## 2026-07-31 — Issue #38: "Last visit" property on POIs
+
+- No GitHub issue existed beforehand — worked out via a full /grill-me session (data source:
+  derived-vs-denormalized, which visit sources count, display bucketing scheme, never-visited
+  handling, suggestion-card reason-text interaction, scoring impact, surface scope, drawer data
+  wiring, test coverage, placement in both surfaces, day-boundary semantics — every branch
+  resolved with the user first), then filed as #38 (with the resolved spec as its body) purely so
+  `/next-issue`'s close-on-completion convention had something to close; not picked from the
+  tracker cold.
+- Derived, not denormalized: no new Room column/migration. New pure `util/LastVisit.kt`
+  (`LastVisit.format(lastVisitedAt: Long?, now, zone)`, mirrors `GeoDistance`'s
+  object-with-pure-`format`-function shape) buckets by calendar day (local zone, not elapsed
+  hours) via `ChronoUnit.MONTHS`/`DAYS`/`YEARS.between` on `LocalDate`s: "Today" (0d) → "N days
+  ago" (1-7d, exact count) → ">N weeks ago" (`totalMonths < 1`, else weeks bucket) → "N months
+  ago" (no ">" prefix, `totalMonths < 12`) → ">N years ago". Null input (never visited) returns
+  null; the UI omits the field entirely rather than showing "Never visited". New `VisitDao.
+  lastVisitLabel(placeId, now)` extension (alongside the existing `checkIn()` extension) is the
+  one shared place that combines the existing `lastVisitedAt()` query with formatting, so every
+  UI host does the lookup identically instead of each rolling its own.
+- `SuggestionEngine.Suggestion` gained `lastVisit: String?`, computed in `evaluate()` from
+  `context.visits[poi.id]?.maxOrNull()` (not windowed by the existing 90-day frequency-scoring
+  lookback — last visit shows the true most-recent check-in regardless of how old). The old vague
+  `"visited recently"`/`"visited N× recently"` reason-list entry is deleted now that the explicit
+  label replaces it; the score boost itself (`VISIT_FREQUENCY_WEIGHT * ln(1.0 + recentVisits)`) is
+  untouched — display-only change, scoring/ranking behavior identical to before.
+- `HomeScreen.kt`'s `SuggestionCard`: new standalone `Text` row (not folded into the existing
+  " · "-joined reasons string) shown only when `suggestion.lastVisit != null`, placed after the
+  reasons row and before the Check-in button.
+- `PlaceDetailSheet.kt` gained a `lastVisit: String?` param, rendered right after the distance
+  line (grouped with the other "quick facts" ahead of the static address/hours lines). Its only
+  caller, `MapScreen.kt`, sources the value from a new `MapViewModel.selectedPoiLastVisit:
+  StateFlow<String?>` — `MapViewModel` gained a `VisitDao` constructor dependency (wired through
+  `Factory`) and `selectPoi()` now also kicks off a one-shot `visitDao.lastVisitLabel(...)` lookup
+  on `Dispatchers.IO`, guarded by an id check against the current selection so a fast re-select
+  can't let a stale async result land after the fact. Deliberately a snapshot on select, not a
+  live/reactive value — the sheet doesn't need to update while sitting open.
+- New string `detail_last_visit` ("Last visit: %1$s"), reused by both surfaces.
+- Tests: 160 total, 0 failures. New `LastVisitTest` (15 cases, one per bucket boundary: today
+  incl. just-after-midnight, 1 day singular, 2-6 days plural, the 7/8-day exact-day-to-week
+  transition, the 13/14-day week-bucket transition, 29-days-still-a-week vs. the calendar-accurate
+  month transition via `minusMonths`, 11/12-month-to-year transition, plural years, null input,
+  and a future-timestamp clock-skew case reading as "Today"). `SuggestionVisitFrequencyTest`'s
+  four cases rewritten: the two that used to assert on the now-deleted "visited..." reason string
+  now assert score parity against a same-context no-visits baseline instead (the actual thing
+  being tested — presence/absence of the frequency boost), plus one new assertion that
+  `lastVisit` reflects the most recent of several visit timestamps. `compileDebugKotlin`/
+  `testDebugUnitTest`/`assembleDebug`: all clean, no new warnings.
+- Not verified on device: both display sites (suggestion-card standalone line, bottom-drawer
+  line placement/wording) are new Compose wiring with no prior on-device confirmation — needs a
+  real run on Robert's phone.
+
 ## 2026-07-31 — Check-in date/time picker
 
 - No GitHub issue; user asked directly for this, worked out via a full /grill-me session before
@@ -504,37 +555,4 @@
   the same pre-existing, unaddressed `FlowPreview` opt-in warning `ExploreViewModel.kt:135`
   already has).
 - Not verified on device this session — user will verify directly on their phone.
-
-## 2026-07-26 — Issue #22: Investigate hardcoded Cologne fallback location in HomeViewModel
-
-- Picked up on explicit user override: the issue carries no `ready-for-agent` label (no labels
-  at all — filed as a self-assigned follow-up from #21, never triaged). Proceeded anyway since
-  the user named it directly and it turned out to be fully specified once investigated.
-- Answered the issue's three questions by reading code, not guessing:
-  - **Interaction with #21's radius filter**: none. `HomeViewModel.uiState`'s `combine` block
-    (`HomeViewModel.kt:110-138`) feeds `SuggestionEngine.withinRadius` the raw `loc` from the
-    `location` `StateFlow` — real GPS fix or `null` — never the `FALLBACK_LAT`/`FALLBACK_LON`
-    constants. `withinRadius` already treats `null` as "skip filtering" (its doc comment cites
-    #21 directly). The fallback constants are read in exactly two places, both camera/fetch
-    centering, never suggestion filtering: `HomeViewModel.refreshLocation()`'s
-    `weatherRepository.refresh(...)` call and `PoiMap.kt`'s initial camera target.
-  - **Why "Cologne" and whether it should exist at all**: it shouldn't have been Cologne —
-    that was a bug, not a documented decision. `git log -S` traces `FALLBACK_LAT = 50.94` /
-    `FALLBACK_LON = 6.96` (Köln's actual coordinates) to the 2026-07-06 v2-rewrite squash
-    commit, which predates the POI extraction bbox decision entirely. `tools/poi_extraction`
-    fixed the bbox to Aachen center +/-20km on 2026-07-16 (`4de3c36`, lat 50.5956-50.9550, lon
-    5.7996-6.3682) and nobody circled back to the fallback constants. Cologne's longitude
-    (6.96) sits outside the bbox's max lon (6.3682) — the old fallback pointed to a spot with
-    zero POI coverage, so a no-GPS user would see an empty Explore map and get weather for a
-    city ~60km from every POI in the app. The fallback itself should exist (better than 0,0 or
-    a blank map/weather widget when GPS is unavailable) — only the coordinates were wrong.
-  - Fixed both call sites (`HomeViewModel.kt`, `PoiMap.kt`) to the actual bbox center
-    (50.7753, 6.0839 — Aachen), with comments naming the real source (`tools/poi_extraction`)
-    instead of the incorrect "Cologne" label, and a note in `HomeViewModel.kt` cross-referencing
-    #22 so the history of the mistake stays visible.
-- No test references either fallback constant directly (checked `app/src/test` for
-  `HomeViewModel`/`PoiMap`); the 50.94/6.96 literals in `SuggestionFixture.kt` and
-  `OpenMeteoClientTest.kt` are unrelated fixture coordinates, not references to the constants.
-- Tests: 138 total, 28 failed (unchanged) — same pre-existing Robolectric `UnsatisfiedLinkError`
-  set (MapLibre native init) documented since #10/#13/#15/#23 and reconfirmed as of #29.
 

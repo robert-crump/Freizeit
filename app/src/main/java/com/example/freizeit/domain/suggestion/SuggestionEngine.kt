@@ -6,6 +6,7 @@ import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.opening.OpeningHours
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.util.GeoDistance
+import com.example.freizeit.util.LastVisit
 import com.example.freizeit.util.LatLon
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -43,7 +44,10 @@ data class Suggestion(
     val warnings: List<String> = emptyList(),
     /** [Verdict.VALUE_FAVORITE] or [Verdict.VALUE_WANT_TO_GO] — which bucket this card
      *  came from, so the UI can show the matching icon/action (#31). */
-    val verdictValue: String
+    val verdictValue: String,
+    /** Human-readable recency of the most recent check-in (any source, no 90-day window,
+     *  unlike the frequency scoring below), or null if never visited. Display only. */
+    val lastVisit: String? = null
 )
 
 /**
@@ -171,12 +175,12 @@ object SuggestionEngine {
         val recentVisits = context.visits[poi.id]?.count { it >= windowStartMillis } ?: 0
         if (recentVisits > 0) {
             score += VISIT_FREQUENCY_WEIGHT * ln(1.0 + recentVisits)
-            reasons += if (recentVisits == 1) "visited recently" else "visited $recentVisits× recently"
         }
+        val lastVisit = LastVisit.format(context.visits[poi.id]?.maxOrNull(), context.now)
 
         score += noveltyJitter(context.noveltySeed, poi.id)
 
-        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons, warnings, verdictValue)
+        return Suggestion(poi, score, distanceMeters, travelMinutes, openStatus, reasons, warnings, verdictValue, lastVisit)
     }
 
     /** Deterministic 0..8 point jitter so the same day always ranks the same. */

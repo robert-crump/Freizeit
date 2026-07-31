@@ -65,6 +65,7 @@ fun MapScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedPoi by viewModel.selectedPoi.collectAsStateWithLifecycle()
+    val selectedPoiLastVisit by viewModel.selectedPoiLastVisit.collectAsStateWithLifecycle()
     val focusTarget by viewModel.focusTarget.collectAsStateWithLifecycle()
     val focusRequest by viewModel.focusRequest.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -161,6 +162,7 @@ fun MapScreen(
             onVerdictChange = { viewModel.setVerdict(item.poi, it) },
             customName = state.customNames[item.poi.id],
             onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
+            lastVisit = selectedPoiLastVisit,
             onDismiss = { viewModel.selectPoi(null) }
         )
     }

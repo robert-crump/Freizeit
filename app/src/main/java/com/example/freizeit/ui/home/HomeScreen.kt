@@ -539,6 +539,14 @@ private fun SuggestionCard(
                 )
             }
 
+            suggestion.lastVisit?.let {
+                Text(
+                    text = stringResource(R.string.detail_last_visit, it),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             Button(onClick = onCheckIn, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.home_checkin))
             }

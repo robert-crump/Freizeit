@@ -11,6 +11,8 @@ import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
+import com.example.freizeit.data.dao.VisitDao
+import com.example.freizeit.data.dao.lastVisitLabel
 import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
@@ -117,7 +119,8 @@ class MapViewModel(
     private val appContext: Context,
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
-    private val poiCustomNameDao: PoiCustomNameDao
+    private val poiCustomNameDao: PoiCustomNameDao,
+    private val visitDao: VisitDao
 ) : ViewModel() {
 
     // Single-select category chip (replaces #33's multi-select "All POIs" mode) — mutually
@@ -130,6 +133,12 @@ class MapViewModel(
 
     private val _selectedPoi = MutableStateFlow<PoiWithDistance?>(null)
     val selectedPoi: StateFlow<PoiWithDistance?> = _selectedPoi
+
+    /** "Last visit" label for whichever POI [selectedPoi] currently holds — recomputed on
+     *  every [selectPoi] call rather than kept live, since the sheet is a one-shot snapshot
+     *  view, not something that needs to update while sitting open. */
+    private val _selectedPoiLastVisit = MutableStateFlow<String?>(null)
+    val selectedPoiLastVisit: StateFlow<String?> = _selectedPoiLastVisit
 
     // Shared with the full-screen search overlay (hoisted alongside this ViewModel in
     // FreizeitApp) so a row tap there can drive the Map screen's camera jump.
@@ -265,6 +274,15 @@ class MapViewModel(
 
     fun selectPoi(poi: PoiWithDistance?) {
         _selectedPoi.value = poi
+        _selectedPoiLastVisit.value = null
+        if (poi != null) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val label = visitDao.lastVisitLabel(poi.poi.id)
+                if (_selectedPoi.value?.poi?.id == poi.poi.id) {
+                    _selectedPoiLastVisit.value = label
+                }
+            }
+        }
     }
 
     fun setVerdict(poi: Poi, value: String?) {
@@ -283,7 +301,8 @@ class MapViewModel(
                     app,
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
-                    app.container.database.poiCustomNameDao()
+                    app.container.database.poiCustomNameDao(),
+                    app.container.database.visitDao()
                 )
             }
         }
