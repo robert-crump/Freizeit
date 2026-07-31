@@ -1,13 +1,10 @@
 package com.example.freizeit.ui.home
 
 import android.Manifest
-import android.content.Intent
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -28,14 +25,12 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,12 +61,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
-import com.example.freizeit.data.entity.PendingVisit
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
-import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -129,14 +122,6 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        state.pendingVisit?.let { visit ->
-            VisitBanner(
-                visit = visit,
-                onVerdict = { viewModel.resolveVisit(it) },
-                onDidNotGo = { viewModel.resolveVisit(null) }
-            )
-        }
-
         WeatherStrip(state.weather)
 
         when {
@@ -150,13 +135,6 @@ fun HomeScreen(
                 deck = state.deck,
                 customNames = state.customNames,
                 location = state.location,
-                onGo = { suggestion ->
-                    val poi = suggestion.poi
-                    viewModel.recordGo(poi, state.customNames[poi.id])
-                    val label = Uri.encode(state.customNames[poi.id] ?: poi.name ?: poi.category)
-                    val navUri = Uri.parse("geo:${poi.lat},${poi.lon}?q=${poi.lat},${poi.lon}($label)")
-                    context.startActivity(Intent(Intent.ACTION_VIEW, navUri))
-                },
                 onCheckIn = { suggestion -> pendingCheckIn = suggestion },
                 onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
                 modifier = Modifier.fillMaxWidth()
@@ -275,7 +253,6 @@ private fun SwipeableSuggestionCard(
     deck: List<Suggestion>,
     customNames: Map<String, String>,
     location: LatLon?,
-    onGo: (Suggestion) -> Unit,
     onCheckIn: (Suggestion) -> Unit,
     onRemoveVerdict: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
@@ -383,7 +360,6 @@ private fun SwipeableSuggestionCard(
                     suggestion = entry,
                     customName = customNames[entry.poi.id],
                     location = location,
-                    onGo = if (isCurrent) ({ onGo(entry) }) else ({}),
                     onCheckIn = if (isCurrent) ({ onCheckIn(entry) }) else ({}),
                     onRemoveVerdict = if (isCurrent) {
                         { commit(direction = 1) { onRemoveVerdict(entry) } }
@@ -409,39 +385,6 @@ private fun SwipeableSuggestionCard(
                             }
                     }
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun VisitBanner(
-    visit: PendingVisit,
-    onVerdict: (String) -> Unit,
-    onDidNotGo: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = stringResource(
-                    R.string.home_visit_prompt,
-                    visit.snapshotName ?: categoryDisplayName(visit.snapshotCategory)
-                ),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                TextButton(onClick = { onVerdict(Verdict.VALUE_FAVORITE) }) { Text("❤️") }
-                TextButton(onClick = onDidNotGo) { Text(stringResource(R.string.home_visit_didnt_go)) }
             }
         }
     }
@@ -501,14 +444,13 @@ private const val HEART_ICON_TOP_NUDGE_DP = 10
 
 /**
  * Self-contained swipeable unit (issue #17): name, a single-POI mini-map (current location vs.
- * this favorite), opening hours if known, and the Go/Check-in/unfavorite actions all travel together.
+ * this favorite), opening hours if known, and the Check-in/unfavorite actions all travel together.
  */
 @Composable
 private fun SuggestionCard(
     suggestion: Suggestion,
     customName: String?,
     location: LatLon?,
-    onGo: () -> Unit,
     onCheckIn: () -> Unit,
     onRemoveVerdict: () -> Unit,
     modifier: Modifier = Modifier
@@ -605,23 +547,8 @@ private fun SuggestionCard(
                 )
             }
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Button(onClick = onGo, modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.home_go))
-                }
-                OutlinedButton(
-                    onClick = onCheckIn,
-                    modifier = Modifier.weight(1f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(stringResource(R.string.home_checkin))
-                }
+            Button(onClick = onCheckIn, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.home_checkin))
             }
         }
     }

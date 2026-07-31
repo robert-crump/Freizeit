@@ -10,14 +10,11 @@
     <string name="home_no_suggestions_within_radius">No suggestions within %1$d km.</string>
     <string name="home_weather_unavailable">Weather unavailable — suggestions ignore it for now.</string>
     <string name="home_weather_temp">%1$d°</string>
-    <string name="home_go">Go</string>
     <string name="home_checkin">Check-in</string>
     <string name="home_unfavorite">Remove from favorites</string>
     <string name="home_remove_want_to_go">Remove from want to go</string>
     <string name="home_open_now">Open now</string>
     <string name="home_closed_now">Closed now</string>
-    <string name="home_visit_prompt">Were you at %1$s?</string>
-    <string name="home_visit_didnt_go">Didn\'t go</string>
     <!-- Map -->
     <string name="map_empty">No places yet. Import a POI file in Settings.</string>
     <string name="map_locate_me">Locate me</string>

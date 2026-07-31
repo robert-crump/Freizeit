@@ -5,8 +5,8 @@ import androidx.room.PrimaryKey
 
 /**
  * A logged check-in at a place, manual or (future) auto-detected. Same
- * denormalized-snapshot rationale as [Verdict]/[PendingVisit]: a visit must
- * outlive the poi row it refers to, since POIs can vanish on re-import.
+ * denormalized-snapshot rationale as [Verdict]: a visit must outlive the
+ * poi row it refers to, since POIs can vanish on re-import.
  */
 @Entity(tableName = "visit")
 data class Visit(
