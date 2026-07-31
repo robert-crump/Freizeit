@@ -17,15 +17,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -35,11 +38,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.example.freizeit.R
-import com.example.freizeit.ui.checkin.CheckInHistoryScreen
+import com.example.freizeit.ui.checkin.CheckInCandidate
+import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.checkin.CheckInScreen
+import com.example.freizeit.ui.checkin.CheckInSearchScreen
+import com.example.freizeit.ui.checkin.CheckInViewModel
 import com.example.freizeit.ui.map.MapScreen
 import com.example.freizeit.ui.map.MapViewModel
 import com.example.freizeit.ui.map.SearchOverlay
+import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.home.HomeScreen
 import com.example.freizeit.ui.settings.SettingsScreen
 
@@ -56,7 +63,7 @@ enum class FreizeitDestination(
 }
 
 private const val CHECKIN_ENTRY_ROUTE = "checkin/entry"
-private const val CHECKIN_HISTORY_ROUTE = "checkin/history"
+private const val CHECKIN_SEARCH_ROUTE = "checkin/search"
 
 @Composable
 fun FreizeitApp() {
@@ -68,6 +75,14 @@ fun FreizeitApp() {
     val mapViewModel: MapViewModel = viewModel(factory = MapViewModel.Factory)
     var searchOverlayOpen by rememberSaveable { mutableStateOf(false) }
     var searchOverlayPreload by rememberSaveable { mutableStateOf("") }
+
+    // Hoisted here (mirrors mapViewModel above) so the "Checked in to X" banner and Undo
+    // snackbar, driven from a row tap on checkin/search, surface back on checkin/entry once the
+    // confirm flow auto-pops there (#39). CheckInCandidate isn't Parcelable, so plain remember.
+    val checkInViewModel: CheckInViewModel = viewModel(factory = CheckInViewModel.Factory)
+    val checkInState by checkInViewModel.uiState.collectAsStateWithLifecycle()
+    var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
+    val checkInSnackbarHostState = remember { SnackbarHostState() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -120,10 +135,18 @@ fun FreizeitApp() {
                     route = FreizeitDestination.CHECKIN.route
                 ) {
                     composable(CHECKIN_ENTRY_ROUTE) {
-                        CheckInScreen(onHistoryClick = { navController.navigate(CHECKIN_HISTORY_ROUTE) })
+                        CheckInScreen(
+                            onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
+                            lastCheckedInName = checkInState.lastCheckedInName,
+                            checkInSnackbarHostState = checkInSnackbarHostState
+                        )
                     }
-                    composable(CHECKIN_HISTORY_ROUTE) {
-                        CheckInHistoryScreen(onBack = { navController.popBackStack() })
+                    composable(CHECKIN_SEARCH_ROUTE) {
+                        CheckInSearchScreen(
+                            viewModel = checkInViewModel,
+                            onBack = { navController.popBackStack() },
+                            onCandidateSelected = { candidate -> pendingCheckIn = candidate }
+                        )
                     }
                 }
                 composable(FreizeitDestination.SETTINGS.route) { SettingsScreen() }
@@ -137,5 +160,21 @@ fun FreizeitApp() {
                 onDismiss = { searchOverlayOpen = false }
             )
         }
+
+        // Hoisted here (not inside CheckInScreen/CheckInSearchScreen) so a single instance
+        // shares pendingCheckIn/checkInSnackbarHostState across both routes, and so confirming
+        // can pop back to checkin/entry regardless of which route triggered it (#39).
+        CheckInDateTimeFlow(
+            pendingPoi = pendingCheckIn?.poi,
+            placeName = pendingCheckIn?.poi?.displayName() ?: "",
+            snackbarHostState = checkInSnackbarHostState,
+            onDismiss = { pendingCheckIn = null },
+            onConfirmed = { poi, visitedAt ->
+                val visitId = checkInViewModel.checkIn(poi, visitedAt)
+                navController.popBackStack(CHECKIN_ENTRY_ROUTE, inclusive = false)
+                visitId
+            },
+            onUndo = { visitId -> checkInViewModel.undoCheckIn(visitId) }
+        )
     }
 }

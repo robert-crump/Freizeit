@@ -1,5 +1,74 @@
 # Freizeit v2 progress log
 
+## 2026-07-31 — Issue #39: Rework Check-in screen: history as entry, + FAB opens full-screen search
+
+- Only `ready-for-agent` issue open; every design decision (nav structure, search-screen
+  behavior, confirm-flow pop-back, hoisting) was already resolved in the issue body itself
+  (written from a prior /grill-me session per its own convention), so implemented directly
+  from that spec with no new interview needed.
+- `checkin/entry` is now just the check-in history list (today's `CheckInHistoryScreen` content,
+  folded directly into `CheckInScreen.kt`; `CheckInHistoryScreen.kt` deleted). Topbar back arrow
+  removed (tab roots don't have one); title text "Check-in history" kept as-is. FAB switched
+  from a History icon to "+" (`Icons.Filled.Add`), hidden while `state.isSelecting` (the
+  `SelectionTopBar` owns the screen then). `CheckInHistoryViewModel` (selection/delete/undo)
+  is untouched, still scoped locally to this route. Empty-state string (`checkin_history_empty`)
+  now reads "No check-ins yet — tap + to check in somewhere."
+- New `checkin/search` route (replaces `checkin/history`) → new `CheckInSearchScreen.kt`,
+  modeled on Map's `SearchOverlay.kt` shell (full-screen `Surface`, back arrow + autofocused
+  field, `statusBarsPadding()` since it's outside Scaffold's insets) but — unlike the overlay —
+  pushed as an ordinary NavHost route via `navController.navigate()`, not hoisted above the
+  Scaffold, so the bottom nav bar stays visible underneath (matches the old `checkin/history`
+  route's behavior, explicit issue requirement, not an overlay like Map's). Reuses
+  `CheckInViewModel`'s existing debounced (250ms) name-match + distance-ranking search rather
+  than switching to Map's undebounced in-memory filter (explicit issue instruction). Below 2
+  characters shows `favoritesNearby` as quick-picks instead of a blank list — raised
+  `CheckInViewModel`'s search-trigger gate from non-blank (1 char) to a new private
+  `SEARCH_MIN_LENGTH = 2` (mirrors `SearchOverlay`'s constant of the same name), applied to both
+  `CheckInUiState.isSearching` and the `matches` computation. Leaving the search screen (back
+  arrow or system back) now calls `viewModel.clearSearch()` before `onBack()` — added because
+  unlike Map's oval there's no "committed search" concept here, so a stale query must not survive
+  to the next time search is opened (would otherwise desync from the search field's local
+  `rememberSaveable` buffer, which always restarts blank).
+- Result rows (both search matches and the favorites-nearby quick-picks — one shared row
+  composable, `CheckInResultRow`) switched to Map's `SearchResultRow` visual style: icon-in-circle
+  (`categoryIcon`/`markerBackgroundColor`/`markerForegroundColor`, same themed pair as the map
+  markers) with distance below it, bold POI name + city subtitle. The old `CheckInRow` (category-
+  name subtitle + ❤️ favorite badge) is deleted outright, not kept as an option, per the issue's
+  explicit consistency call. Location-permission request (`ACCESS_COARSE_LOCATION`/
+  `ACCESS_FINE_LOCATION`) moved from `CheckInScreen`'s `LaunchedEffect` to `CheckInSearchScreen`'s
+  — the history entry screen has no use for location anymore.
+- Confirm flow (`CheckInDateTimeFlow`) is unchanged internally but hoisted: `FreizeitApp.kt` now
+  holds `CheckInViewModel` + `pendingCheckIn: CheckInCandidate?` (plain `remember`, not
+  `rememberSaveable` — `CheckInCandidate` isn't `Parcelable`) + `checkInSnackbarHostState` at the
+  top level, mirroring the existing `mapViewModel`/`searchOverlayOpen` hoisting pattern from #37.
+  `CheckInDateTimeFlow` itself is called unconditionally in the outer `Box`, sibling to the
+  `NavHost`/`SearchOverlay`. Its `onConfirmed` callback does the actual check-in
+  (`checkInViewModel.checkIn`) and then `navController.popBackStack(CHECKIN_ENTRY_ROUTE,
+  inclusive = false)` — using the named-destination form rather than a bare `popBackStack()` so it
+  robustly lands on the entry screen regardless of stack depth. `CheckInScreen` (entry) renders
+  `lastCheckedInName` (read from the hoisted `checkInViewModel.uiState`) and hosts
+  `checkInSnackbarHostState` directly, so the "Checked in to X" banner and Undo snackbar surface
+  there post-pop-back, not on the search screen the tap originated from. `CheckInHistoryViewModel`'s
+  own delete-undo snackbar keeps its own separate local `SnackbarHostState` (unrelated concern,
+  not merged with the check-in-confirm one).
+- New string `checkin_search_button` ("Check in", the "+" FAB's content description) replaces the
+  now-unused `checkin_history_button` ("History"). No new back/search-field strings needed —
+  reused `checkin_history_back`/`checkin_search_icon`/`checkin_search_clear`/
+  `checkin_search_placeholder` as-is, matching #37's precedent of not minting near-duplicates.
+- Tests: 160 total, 0 failures — no test file needed changes (`CheckInRankingTest.kt` covers
+  `rankNearbyForCheckIn`, untouched by this session; `FreizeitDestinationTest.kt` covers only the
+  four top-level tab routes, unaffected by the `checkin/*` sub-route rename).
+  `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean, no new warnings (the two
+  pre-existing ones — `CheckInViewModel.kt`'s `FlowPreview` opt-in and `PoiMap.kt`'s unused
+  `customNames` param — are both unchanged from before this session).
+- Not verified on device: the entire re-architecture (entry-screen FAB swap, full-screen search
+  push-route with bottom-nav-bar-visible-underneath, the 2-char favorites-vs-search gate, the
+  auto-pop-back-on-confirm plus banner/snackbar reappearing on the now-updated history list) is
+  new navigation/Compose wiring with no prior on-device confirmation — needs a real run on
+  Robert's phone, particularly the pop-back-to-entry timing (dialog dismissing, banner appearing,
+  history list updating, and the bottom nav bar all landing in the right order) and confirming a
+  stale query never leaks between search-screen sessions.
+
 ## 2026-07-31 — Issue #38: "Last visit" property on POIs
 
 - No GitHub issue existed beforehand — worked out via a full /grill-me session (data source:
@@ -517,42 +586,4 @@
   filter chip, and the `PlaceDetailSheet`'s Edit/Bookmark/Favorite row are all new Compose
   wiring with no existing on-device confirmation to lean on — needs a real run on Robert's
   phone.
-
-## 2026-07-26 — Issue #32: POI search: Focus jumps back to first position while typing
-
-- Design worked out via a full /grill-me pass before writing any code (fix scope, debounce
-  parity with Explore, shared-vs-duplicated constant, test coverage, clear-button debounce
-  tradeoff, rememberSaveable vs remember, device-verification ownership — all resolved with
-  the user first, same approach as #21).
-- Root cause: `CheckInScreen.kt`'s `OutlinedTextField` bound `value` directly to
-  `state.searchQuery`, which round-trips through `CheckInViewModel`'s un-debounced 5-way
-  `combine` (including `poiDao.observeAll()`) on `Dispatchers.Default` before echoing back —
-  Compose can't reconcile the cursor position against a stale/delayed value, so it resets to
-  the start. Identical bug already fixed in `ExploreScreen`'s search (`10ac5d3`) via a local
-  `rememberSaveable` buffer decoupled from ViewModel state; Check-in's search bar (added later
-  in #30) never got the same treatment.
-- Fix mirrors Explore's pattern exactly rather than diverging: `CheckInScreen.kt` gained a
-  local `searchText` (`rememberSaveable`) driving the text field, with `onValueChange`/
-  `onClear` updating both the local buffer and the ViewModel. `CheckInViewModel.kt` gained its
-  own private `SEARCH_DEBOUNCE_MS = 250L` (deliberately duplicated, not shared with
-  `ExploreViewModel`'s constant of the same name/value, so the two screens stay independently
-  tunable) and `.debounce(SEARCH_DEBOUNCE_MS)` on the `searchQuery` flow feeding the `combine`.
-- Deliberately not special-cased: `clearSearch()` still goes through the same debounced flow,
-  so Check-in's clear button carries the same ~250ms lag before reverting to the
-  favorites-nearby list that Explore's clear button already has — an accepted existing
-  tradeoff from the pattern being mirrored, not something to fix differently per screen.
-- No new test: cursor/focus behavior isn't practically unit-testable without a Compose UI test
-  harness (this codebase has none), and Explore's identical fix shipped with no test either —
-  same precedent followed rather than introducing new test infrastructure as a side effect of
-  a one-issue bug fix.
-- Tests: 140 total, 32 failed — identical count and failures to unmodified `main` (confirmed
-  via `git stash` comparison), so zero regressions from this change. The 32 are the 28
-  pre-existing Robolectric `UnsatisfiedLinkError` failures (documented since #10/#13/#15/#23)
-  plus 4 `HomeSwipeDeckMathTest` failures that are also pre-existing as of `df63710` (confirmed
-  failing identically on unmodified `main` — a swipe-deck alpha-math regression from the
-  "closed/rainy favorites" change that landed just before this session, unrelated to #32 and
-  not investigated further here). `compileDebugKotlin`: clean (the new `debounce()` call emits
-  the same pre-existing, unaddressed `FlowPreview` opt-in warning `ExploreViewModel.kt:135`
-  already has).
-- Not verified on device this session — user will verify directly on their phone.
 
