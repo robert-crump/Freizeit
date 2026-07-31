@@ -95,4 +95,20 @@ class VisitDaoTest {
     fun `lastVisitedAt is null for a place with no visits`() = runTest {
         assertEquals(null, db.visitDao().lastVisitedAt("node/never-visited"))
     }
+
+    @Test
+    fun `checkIn stores a caller-supplied visitedAt instead of stamping now`() = runTest {
+        db.visitDao().checkIn(poi, visitedAt = 5_000L)
+
+        assertEquals(5_000L, db.visitDao().getAll().single().visitedAt)
+    }
+
+    @Test
+    fun `checkIn returns the new visit's id, usable to delete it again`() = runTest {
+        val id = db.visitDao().checkIn(poi)
+
+        db.visitDao().deleteByIds(listOf(id))
+
+        assertEquals(0, db.visitDao().getAll().size)
+    }
 }

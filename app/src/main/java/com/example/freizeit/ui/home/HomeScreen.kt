@@ -23,7 +23,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,8 +30,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +65,7 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
+import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -85,6 +86,7 @@ fun HomeScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<Suggestion?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -116,54 +118,44 @@ fun HomeScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        WeatherStrip(state.weather)
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            WeatherStrip(state.weather)
 
-        when {
-            state.isLoading -> CenteredLoading()
-            !state.hasPois -> CenteredHint(stringResource(R.string.home_empty))
-            !state.hasVerdictedPlaces -> CenteredHint(stringResource(R.string.home_no_favorites))
-            !state.hasVerdictedPlacesWithinRadius -> CenteredHint(
-                stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
-            )
-            else -> SwipeableSuggestionCard(
-                deck = state.deck,
-                customNames = state.customNames,
-                location = state.location,
-                onCheckIn = { suggestion -> pendingCheckIn = suggestion },
-                onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-
-    pendingCheckIn?.let { suggestion ->
-        val poi = suggestion.poi
-        AlertDialog(
-            onDismissRequest = { pendingCheckIn = null },
-            title = {
-                Text(stringResource(R.string.checkin_confirm_message, poi.displayName(state.customNames[poi.id])))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.checkIn(poi)
-                    pendingCheckIn = null
-                }) {
-                    Text(stringResource(R.string.checkin_confirm_checkin))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingCheckIn = null }) {
-                    Text(stringResource(R.string.checkin_confirm_cancel))
-                }
+            when {
+                state.isLoading -> CenteredLoading()
+                !state.hasPois -> CenteredHint(stringResource(R.string.home_empty))
+                !state.hasVerdictedPlaces -> CenteredHint(stringResource(R.string.home_no_favorites))
+                !state.hasVerdictedPlacesWithinRadius -> CenteredHint(
+                    stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
+                )
+                else -> SwipeableSuggestionCard(
+                    deck = state.deck,
+                    customNames = state.customNames,
+                    location = state.location,
+                    onCheckIn = { suggestion -> pendingCheckIn = suggestion },
+                    onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
-        )
+        }
+
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
+
+    CheckInDateTimeFlow(
+        pendingPoi = pendingCheckIn?.poi,
+        placeName = pendingCheckIn?.let { it.poi.displayName(state.customNames[it.poi.id]) } ?: "",
+        snackbarHostState = snackbarHostState,
+        onDismiss = { pendingCheckIn = null },
+        onConfirmed = { poi, visitedAt -> viewModel.checkIn(poi, visitedAt) },
+        onUndo = { visitId -> viewModel.undoCheckIn(visitId) }
+    )
 }
 
 /** Drag distance (in dp) past which a horizontal drag counts as a swipe. */

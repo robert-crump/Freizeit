@@ -46,9 +46,13 @@
     <string name="checkin_search_empty">No matches nearby.</string>
     <string name="checkin_favorites_nearby_header">Favorites nearby:</string>
     <string name="checkin_favorites_nearby_empty">No favorite places nearby. Search to check in elsewhere.</string>
-    <string name="checkin_confirm_message">Do you want to check into %1$s?</string>
     <string name="checkin_confirm_checkin">Check-in</string>
     <string name="checkin_confirm_cancel">Cancel</string>
+    <string name="checkin_datetime_title">Check into %1$s</string>
+    <string name="checkin_datetime_next">Next</string>
+    <string name="checkin_datetime_switch_to_keyboard">Switch to text input</string>
+    <string name="checkin_datetime_switch_to_dial">Switch to dial</string>
+    <string name="checkin_snackbar_message">Checked into %1$s — %2$s</string>
     <string name="checkin_history_selected_count">%1$d selected</string>
     <string name="checkin_history_selection_delete">Delete selected</string>
     <string name="checkin_history_selection_clear">Cancel selection</string>

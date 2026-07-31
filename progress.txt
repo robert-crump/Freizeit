@@ -1,5 +1,74 @@
 # Freizeit v2 progress log
 
+## 2026-07-31 — Check-in date/time picker
+
+- No GitHub issue; user asked directly for this, worked out via a full /grill-me session before
+  any code was touched (scope across both entry points, dialog flow shape, picker widget style,
+  final-confirm vs immediate-create, undo affordance, future/past bounds, time-of-day enforcement,
+  notification flow, cancel semantics, `checkIn()` API shape, code reuse — every branch resolved
+  with the user first).
+- Both Check-in entry points (Home's suggestion-card button and the Check-In screen's row tap)
+  used to open an identical `AlertDialog` ("Do you want to check into X?") that, on confirm,
+  stamped `visitedAt = System.currentTimeMillis()` immediately. Replaced with a two-step flow,
+  explicitly *not* keeping that confirm-text step: tapping Check-in goes straight to a Material3
+  `DatePickerDialog` (defaulted to today, `SelectableDates` disables future days), confirming opens
+  a time picker (defaulted to now, dial + keyboard-input toggle), and confirming that creates the
+  check-in immediately — no third "are you sure" step. Cancelling either dialog aborts the whole
+  attempt (explicit decision: cancelling the time step does *not* fall back to the date step).
+  Time-of-day itself is deliberately left unenforced even when the picked date is today (only the
+  day itself is capped at "no future") — Material3's `TimePicker` has no way to disable specific
+  times, and the user chose not to hand-roll validation for it.
+- New shared `ui/checkin/CheckInDateTimeFlow.kt`, used by both `HomeScreen.kt` and
+  `CheckInScreen.kt` (their old dialogs were already byte-for-byte duplicated; explicit decision to
+  consolidate into one composable now rather than duplicate the picker flow too).
+  `CheckInDateTimeFlow` takes `pendingPoi: Poi?` and is called unconditionally every recomposition
+  (not wrapped in a null check) specifically so its `rememberCoroutineScope()` — used to launch the
+  confirm→save→snackbar→undo chain — stays alive across a cancelled/restarted attempt; the
+  per-attempt picker state (`pickedDateMillis`, dial/keyboard toggle) still resets correctly because
+  those `remember` calls sit after an early `return` that's skipped whenever `pendingPoi` is null,
+  so Compose tears down and recreates that part of the slot table each time. Material3 1.2.1 (this
+  project's resolved `compose-bom:2024.02.02` version, confirmed by inspecting the AAR directly)
+  ships `DatePickerDialog` but no dialog wrapper for `TimePicker`/`TimeInput` — added a small
+  hand-rolled `CheckInTimePickerDialog` (plain `Dialog` + `Surface` + title/content/buttons row),
+  the same shape Material3's own samples use for this gap.
+- `VisitDao.checkIn()` gained an optional `visitedAt: Long = System.currentTimeMillis()` param
+  (default preserves existing behavior) and now returns the new row's id (`insert()` changed from
+  `Unit` to `Long`, which Room supports natively) so the UI can offer Undo. The notification-
+  triggered check-in flow (`GeofenceBroadcastReceiver.handleCheckIn`, `source =
+  Visit.SOURCE_NOTIFICATION`) is untouched — explicit decision, no user interaction to insert a
+  picker into — it keeps calling with no `visitedAt` and still auto-stamps "now".
+  `HomeViewModel.checkIn`/`CheckInViewModel.checkIn` changed from fire-and-forget
+  `viewModelScope.launch` functions to `suspend fun checkIn(poi, visitedAt): Long`, called directly
+  from `CheckInDateTimeFlow`'s own coroutine scope (not the ViewModel's) — deliberate, so the
+  confirm→save→snackbar→undo sequence is one linear suspend chain instead of state bounced through
+  a `StateFlow` the screen has to re-observe. Each ViewModel also gained `suspend fun
+  undoCheckIn(visitId)` (`visitDao.deleteByIds(listOf(visitId))`).
+- Snackbar + Undo (explicit decision, matching the existing delete-undo pattern in
+  `CheckInHistoryViewModel`/`CheckInHistoryScreen`): each screen now owns a local
+  `SnackbarHostState` rendered via `SnackbarHost` (`HomeScreen.kt` gained a wrapping `Box` for this;
+  `CheckInScreen.kt` already had one for its FAB). New `util/DateTimeFormat.kt` holds
+  `formatVisitTimestamp()`, pulled out of `CheckInHistoryScreen.kt` (now imports it) since the new
+  Snackbar message needed the same MEDIUM-localized formatting a second place.
+  `CheckInScreen.kt`'s pre-existing `lastCheckedInName` banner ("Checked in to X") is untouched and
+  now shows alongside the new Snackbar — out of scope, not raised in the grill-me session.
+- Three now-dead strings/imports cleaned up: `checkin_confirm_message` (only used by the two
+  removed `AlertDialog`s) deleted from `strings.xml`; `checkin_confirm_checkin`/
+  `checkin_confirm_cancel` kept and reused as the final time-picker dialog's button labels.
+  New strings: `checkin_datetime_title`, `checkin_datetime_next`,
+  `checkin_datetime_switch_to_keyboard`/`_switch_to_dial`, `checkin_snackbar_message`.
+- Tests: 145 total, 0 failures (confirmed via each class's own XML report — all 22 test classes
+  ran and passed; the previously-documented Robolectric `UnsatisfiedLinkError` failures are
+  apparently already gone as of #19's session, not something this change touched). Added 2 new
+  `VisitDaoTest` cases: `checkIn` stores a caller-supplied `visitedAt` instead of stamping now, and
+  `checkIn`'s returned id can be used to delete the row again (the actual Undo mechanism).
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no new warnings
+  (the pre-existing `FlowPreview` opt-in warning on `CheckInViewModel.kt`'s `searchQuery.debounce`
+  is unchanged).
+- Not verified on device: the entire flow is new Compose wiring with no prior on-device
+  confirmation — needs a real run on Robert's phone, particularly the two-dialog sequence on both
+  entry points, the dial/keyboard toggle, the future-date lockout, and the Snackbar+Undo actually
+  deleting the check-in.
+
 ## 2026-07-30 — Issue #19: swipe-deck flicker fix
 
 - Not picked from the tracker cold — diagnosed live with the user via `/grill-me` against a
@@ -469,60 +538,3 @@
 - Tests: 138 total, 28 failed (unchanged) — same pre-existing Robolectric `UnsatisfiedLinkError`
   set (MapLibre native init) documented since #10/#13/#15/#23 and reconfirmed as of #29.
 
-## 2026-07-25 — Issue #29: Closest-100 geofence selection for large favorite counts
-
-- Picked up on explicit user override: #29 is the only `ready-for-agent` issue, but its
-  "Blocked by #28" note is a formal-tracker relationship, not a technical one — #28's code
-  (`GeofenceSyncManager` registering every favorite, no cap) is already implemented and on
-  `main` (confirmed by reading the file directly); #28's `ready-for-human` label is about its
-  Play Store background-location policy surface, not about #29's prerequisite being unbuilt.
-  Three prior sessions (#25/#26/#27's log entries) deferred #29 for this reason; the user
-  explicitly asked to implement it regardless this time, confirmed live: "I already received a
-  notification for a favorite nearby when the app was open" — i.e. #28's registration path is
-  demonstrably working already.
-- Split `GeofenceSyncManager`'s single `sync()` into two: `sync(enabled, favorites)` (unchanged
-  trigger — favorites/toggle change, app-open) and a new `rerank(enabled, favorites, location)`.
-  Under 100 favorites, `sync()` still registers everyone immediately, unchanged from #28. Over
-  100, `sync()` doesn't rank anything itself — it replays whichever closest-100 selection the
-  last `rerank()` persisted to a new `GeofenceStateRepository.selectedFavoriteIds` (same
-  DataStore-backed `Set<String>` pattern as the existing `insidePlaceIds`). `rerank()` is the
-  only thing that ever recomputes that set, and it's wired to fire from exactly one place: a new
-  `GeofenceLocationMonitor` (`FusedLocationProviderClient.requestLocationUpdates` with
-  `setMinUpdateDistanceMeters(500f)`, no periodic interval logic beyond Play Services' own
-  batching) — armed/disarmed in `FreizeitApplication.onCreate` alongside the same
-  `autoCheckInEnabled` collector that already drives `sync()`, so it's never triggered by app-open
-  or a timer, per the issue's explicit ask.
-- Ranking itself is a new pure function, `selectClosestFavorites(favorites, lat, lon, limit)` in
-  `util/GeofenceFavoriteRanking.kt` (Haversine via the existing `GeoDistance.metersBetween`,
-  matching `rankNearbyForCheckIn`'s existing pure-function-for-testability convention) — under
-  `limit` returns the list unchanged, over it sorts by distance and takes `limit`.
-- Lazy un-favorite deregistration (explicit AC: "not required to be immediate") falls out of how
-  `sync()`'s replay path resolves ids: it looks each persisted selected id up via
-  `PoiDao.getById()` directly, not by filtering the current `favorites` param against it — so an
-  id that's no longer a favorite still resolves (the `Poi` row survives un-favoriting, only the
-  `Verdict` row changes) and keeps its geofence registered until the next `rerank()` overwrites
-  the whole selected-ids set from scratch and drops it.
-- First-time-crossing-100 bootstrap (no `rerank()` has ever run, no persisted selection to
-  replay): `sync()` falls back to `favorites.take(100)` in arbitrary DB order rather than doing
-  any location-based ranking itself — deliberately dumb, to keep `sync()` truly rank-free per the
-  issue's "not on app-open" requirement; a real closest-100 selection supersedes it as soon as
-  the location monitor's first significant-change fix arrives.
-- Tests: new `GeofenceFavoriteRankingTest` (5 cases — under limit unchanged, exactly-at-limit
-  unchanged, over limit keeps exactly the closest N out of a shuffled 150-favorite fake set
-  matching the issue's own "testable with >100 entries" acceptance criterion, over-limit results
-  sorted closest-first, empty input). No test added for `GeofenceSyncManager`/
-  `GeofenceLocationMonitor` themselves — both need a real Android `Context`/Play Services client,
-  same reason the pre-#29 `GeofenceSyncManager` had no test file either.
-  `compileDebugKotlin`: clean. `testDebugUnitTest`: 138 total (was 133), 28 failed (unchanged) —
-  the +5 are the new `GeofenceFavoriteRankingTest` cases, all green (confirmed via its own XML
-  report: 5/5 pass); the 28 failures are the same 6 pre-existing Robolectric
-  `UnsatisfiedLinkError` classes documented since #10/#13/#15/#23
-  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/BackupRepositoryTest/
-  PoiImportTest), confirmed by summing each class's failure count and by class name — no new
-  failing class introduced.
-- Not verified on device: everything in this issue is new code with no existing on-device
-  confirmation to lean on (unlike #28's sync path, which the user already saw fire once) —
-  the significant-location-change trigger actually firing Play Services' `LocationCallback`,
-  the >100 favorites cap taking effect, and the lazy-deregistration behavior all need a real run,
-  ideally with a synthetic >100-favorite dataset since reaching that count organically is
-  unlikely during normal testing.
