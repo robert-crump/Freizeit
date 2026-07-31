@@ -133,11 +133,15 @@ class CheckInViewModel(
         searchQuery.value = ""
     }
 
-    fun checkIn(poi: Poi) {
-        viewModelScope.launch(Dispatchers.IO) {
-            visitDao.checkIn(poi)
-            lastCheckedInName.value = poi.name
-        }
+    /** Returns the new visit's id, so the caller can offer Undo. */
+    suspend fun checkIn(poi: Poi, visitedAt: Long): Long {
+        val id = withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
+        lastCheckedInName.value = poi.name
+        return id
+    }
+
+    suspend fun undoCheckIn(visitId: Long) {
+        withContext(Dispatchers.IO) { visitDao.deleteByIds(listOf(visitId)) }
     }
 
     companion object {

@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 interface VisitDao {
 
     @Insert
-    suspend fun insert(visit: Visit)
+    suspend fun insert(visit: Visit): Long
 
     @Insert
     suspend fun insertAll(visits: List<Visit>)
@@ -30,12 +30,16 @@ interface VisitDao {
     suspend fun lastVisitedAt(placeId: String): Long?
 }
 
-/** Logs a check-in, snapshotting the poi as it is right now. */
-suspend fun VisitDao.checkIn(poi: Poi, source: String = Visit.SOURCE_MANUAL) {
+/** Logs a check-in, snapshotting the poi as it is right now. Returns the new row's id. */
+suspend fun VisitDao.checkIn(
+    poi: Poi,
+    source: String = Visit.SOURCE_MANUAL,
+    visitedAt: Long = System.currentTimeMillis()
+): Long =
     insert(
         Visit(
             placeId = poi.id,
-            visitedAt = System.currentTimeMillis(),
+            visitedAt = visitedAt,
             source = source,
             snapshotName = poi.name,
             snapshotLat = poi.lat,
@@ -43,4 +47,3 @@ suspend fun VisitDao.checkIn(poi: Poi, source: String = Visit.SOURCE_MANUAL) {
             snapshotCategory = poi.category
         )
     )
-}

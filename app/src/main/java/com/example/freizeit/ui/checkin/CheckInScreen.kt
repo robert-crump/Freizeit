@@ -18,15 +18,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +59,7 @@ fun CheckInScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
     // The text field's own source of truth: typing must feel instant, so it can't be
     // driven by state.searchQuery, which only updates after the debounced filter pass
     // (see CheckInViewModel) completes. Mirrors MapScreen's identical fix (#32).
@@ -154,29 +155,18 @@ fun CheckInScreen(
         ) {
             Icon(Icons.Filled.History, contentDescription = stringResource(R.string.checkin_history_button))
         }
+
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
-    pendingCheckIn?.let { candidate ->
-        AlertDialog(
-            onDismissRequest = { pendingCheckIn = null },
-            title = {
-                Text(stringResource(R.string.checkin_confirm_message, candidate.poi.displayName()))
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.checkIn(candidate.poi)
-                    pendingCheckIn = null
-                }) {
-                    Text(stringResource(R.string.checkin_confirm_checkin))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingCheckIn = null }) {
-                    Text(stringResource(R.string.checkin_confirm_cancel))
-                }
-            }
-        )
-    }
+    CheckInDateTimeFlow(
+        pendingPoi = pendingCheckIn?.poi,
+        placeName = pendingCheckIn?.poi?.displayName() ?: "",
+        snackbarHostState = snackbarHostState,
+        onDismiss = { pendingCheckIn = null },
+        onConfirmed = { poi, visitedAt -> viewModel.checkIn(poi, visitedAt) },
+        onUndo = { visitId -> viewModel.undoCheckIn(visitId) }
+    )
 }
 
 @Composable

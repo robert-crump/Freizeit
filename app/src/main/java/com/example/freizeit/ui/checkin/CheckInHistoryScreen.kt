@@ -45,10 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Visit
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
+import com.example.freizeit.util.formatVisitTimestamp
 
 @Composable
 fun CheckInHistoryScreen(
@@ -239,8 +236,3 @@ private fun VisitRow(
         )
     }
 }
-
-private fun formatVisitTimestamp(epochMillis: Long): String =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
-        .withZone(ZoneId.systemDefault())
-        .format(Instant.ofEpochMilli(epochMillis))

@@ -157,9 +157,13 @@ class HomeViewModel(
         viewModelScope.launch(Dispatchers.IO) { verdictDao.setVerdict(poi, value) }
     }
 
-    /** Tapping "Check-in" on a card records a visit immediately, same as the Check-in tab. */
-    fun checkIn(poi: Poi) {
-        viewModelScope.launch(Dispatchers.IO) { visitDao.checkIn(poi) }
+    /** Tapping "Check-in" on a card records a visit at the picked date/time, same as the
+     *  Check-in tab. Returns the new visit's id, so the caller can offer Undo. */
+    suspend fun checkIn(poi: Poi, visitedAt: Long): Long =
+        withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
+
+    suspend fun undoCheckIn(visitId: Long) {
+        withContext(Dispatchers.IO) { visitDao.deleteByIds(listOf(visitId)) }
     }
 
     companion object {
