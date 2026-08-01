@@ -45,7 +45,6 @@ import kotlin.math.pow
 // not Cologne; the app has no POI data outside this box, so the fallback must stay inside it.
 private const val FALLBACK_LAT = 50.7753
 private const val FALLBACK_LON = 6.0839
-private const val DEFAULT_ZOOM = 12.0
 private const val LOCATE_ME_ZOOM = 16.0
 private const val SEARCH_FOCUS_ZOOM = 16.0
 
@@ -106,7 +105,9 @@ fun PoiMap(
                         if (location != null) LatLng(location.lat, location.lon)
                         else LatLng(FALLBACK_LAT, FALLBACK_LON)
                     )
-                    .zoom(DEFAULT_ZOOM)
+                    // Matches LOCATE_ME_ZOOM: the old, lower initial zoom opened too far out to
+                    // be immediately useful for exploring nearby surroundings.
+                    .zoom(LOCATE_ME_ZOOM)
                     .build()
 
                 map.setStyle(
@@ -337,7 +338,7 @@ private fun applyLocation(state: PoiMapState, location: LatLon?) {
         return
     }
     val accuracyMeters = location.accuracyMeters
-    val zoom = state.map?.cameraPosition?.zoom ?: DEFAULT_ZOOM
+    val zoom = state.map?.cameraPosition?.zoom ?: LOCATE_ME_ZOOM
     val props = JsonObject()
     if (accuracyMeters != null) {
         props.addProperty("accuracyRadius", metersToRadiusPx(accuracyMeters, location.lat, zoom))

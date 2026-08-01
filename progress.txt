@@ -1,5 +1,88 @@
 # Freizeit v2 progress log
 
+## 2026-08-01 — Suggestion card polish, map zoom/search styling, check-in fixes
+
+- No GitHub issue; user described four areas of UI polish directly, worked out via a full
+  /grill-me session before any code was touched (car-chip visibility, favorite-icon alignment
+  target, which "closed" text to drop, resting-peek removal vs. drag-follow vs. fade-in slide for
+  the swipe redesign, what "start zoom" meant, border scope across themes, which keyboard-dismiss
+  paths should clear focus, and — the one that changed scope mid-session — whether to bump
+  compose-bom for a stable pull-to-refresh API or patch around the old one — every branch resolved
+  with the user first). Implemented directly from that spec; no issue to comment/close.
+- Suggestion card (`DurationBadge.kt`, `HomeScreen.kt`): bike chip now always carries a
+  `DirectionsBike` icon (AutoMirrored variant — the plain one is deprecated as of this session's
+  Material3 bump); car duration stays conditional (only once bike time is gray-banded, ≥25min)
+  but is now an icon+number chip (`DirectionsCar`, reusing the gray band's colors) instead of the
+  old plain "~N min by car" text — `duration_car_alternative` string deleted, both chips share
+  `duration_minutes` ("%1$d min"). Favorite/bookmark `IconButton` gets a new
+  `HEART_ICON_END_NUDGE_DP = 12` horizontal offset (matching its existing vertical nudge) so the
+  glyph reads flush with the card's 20dp content edge instead of sitting inset inside the button's
+  48dp touch target. The "Closed now" badge next to opening hours is gone (`home_closed_now`
+  string deleted) — redundant with the "Warning: Currently closed" line already shown from
+  `suggestion.warnings`, same underlying condition.
+- Suggestion card swipe animation rewritten (`SwipeableSuggestionCard`): the old resting-state
+  peek (neighbor card visible as a scaled-down sliver behind the current one) is gone entirely —
+  only one card is ever visible. Dragging still translates the displayed card with the finger;
+  releasing past the threshold now fades it out in place (`FADE_OUT_MILLIS = 150`) rather than
+  sliding it off-screen, then fades the next/previous card in (`FADE_IN_MILLIS = 200`) with a
+  slight slide from the swipe direction (`ENTER_SLIDE_DP = 24`) — sequential, not a crossfade.
+  Removing a verdict runs the same sequence (always toward "next"). New `displayedId` state tracks
+  which POI is the visible card independently of the persisted `localIndex`/`deck` lookup: a swipe
+  bumps `localIndex` synchronously so the two stay in lockstep, but a verdict removal's DB round
+  trip is async, so the fade-in target is captured up front (keyed by id) instead of re-derived
+  from `localIndex` each frame — avoids waiting on that round trip the way the old peek-based
+  design's "leave localIndex untouched, let the mod arithmetic self-correct once the deck shrinks"
+  trick implicitly did. `topCardAlpha`/`revealProgress`/`isRevealTarget`/`revealZIndex`/
+  `dragProgress`/`thresholdProgress`/`PEEK_REST_SCALE`/`PEEK_REST_OFFSET_DP`/
+  `REVEAL_DISTANCE_MULTIPLIER` all deleted along with the peek mechanic; `isPastSwipeThreshold` is
+  the only pure function left (still gates commit-vs-spring-back).
+- Map (`PoiMap.kt`): initial camera zoom on first load now reuses `LOCATE_ME_ZOOM` (16.0) instead
+  of the old `DEFAULT_ZOOM` (12.0, deleted) — opened too far out to be immediately useful for
+  exploring nearby surroundings; the fallback zoom in `applyLocation`'s accuracy-radius calc
+  (`state.map?.cameraPosition?.zoom ?: DEFAULT_ZOOM`) needed the same swap, easy to miss since a
+  files_with_matches grep for the old constant only surfaces the file, not each usage within it.
+- Map search oval (`MapScreen.kt`): new `.border(1.dp, markerForegroundColor(darkTheme), ovalShape)`
+  on `SearchOval`'s `Surface`, matching `PoiCategoryChipRow`'s chip border (same color source, same
+  default 1dp width) in both light and dark themes — the oval previously relied on elevation alone,
+  sometimes hard to make out against the dark map style.
+- Check-in (`CheckInSearchScreen.kt`): search field now clears focus whenever the IME is dismissed
+  by any means (back gesture/button, swipe-down, etc.), tracked via `WindowInsets.isImeVisible`
+  rather than a single explicit back handler — `imeWasVisible` guards against the initial
+  false-before-first-show reading as a dismiss. Pull-to-refresh migrated from the experimental
+  `PullToRefreshContainer`/`rememberPullToRefreshState` to the stable `PullToRefreshBox`, fixing a
+  leftover gray-circle indicator artifact; the manual `isRefreshing` + 300ms-minimum-spin logic is
+  unchanged, just re-wired to the new API shape. Confirmed (before writing any code) that favorites
+  list + duration recompute already cascade automatically from `refreshLocation()` via
+  `CheckInViewModel`'s existing `combine()` pipeline — no separate data-refresh fix was needed.
+- Dependency bump required for the PTR fix (`PullToRefreshBox` doesn't exist before Material3
+  1.3.0/compose-bom 2024.09.00 — this project was pinned to 2024.02.02 specifically because a prior
+  session, #40, had already confirmed `PullToRefreshBox` didn't exist at that version): Kotlin
+  1.9.22→1.9.24, KSP 1.9.22-1.0.17→1.9.24-1.0.20, `kotlinCompilerExtensionVersion`
+  1.5.10→1.5.14, compose-bom 2024.02.02→2024.09.00 (both `implementation` and
+  `androidTestImplementation`). Deliberately stayed on the Kotlin 1.9.x line rather than jumping to
+  Kotlin 2.0 (1.5.14/Kotlin 1.9.24 is the last Compose Compiler pairing before Kotlin 2.0's
+  integrated K2 compiler plugin) — verified via web search before touching any version number,
+  since a wrong guess here breaks the whole build; user explicitly chose the wider-blast-radius bump
+  over patching the old experimental API in place, after being warned it wasn't same-scope. Confirmed
+  via a bare `compileDebugKotlin` that the old `PullToRefreshContainer` API actually broke (not just
+  theoretically deprecated) before starting the migration. This surfaced a new
+  `LocalLifecycleOwner` deprecation warning (moved to `lifecycle-runtime-compose`) in
+  `CheckInSearchScreen.kt`/`HomeScreen.kt`/`MapScreen.kt`/`PoiMap.kt` — not present on the old BOM,
+  left unaddressed as out of scope for this session.
+- Tests: 161 total, 0 failures (`HomeSwipeDeckMathTest` trimmed to just `isPastSwipeThreshold`'s
+  two cases, the only pure function left after the peek mechanic's removal; no other test file
+  needed changes). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
+  `assembleDebug`: all clean.
+- Not verified on device: every visual/interaction change here is new Compose wiring with no prior
+  on-device confirmation — needs a real run on Robert's phone, particularly the swipe deck's new
+  fade-out/fade-in feel (timing, the slight enter-slide direction), the verdict-removal fade
+  correctly landing on the right POI despite the async DB round trip, the check-in keyboard/focus
+  fix across all its dismissal paths, the pull-to-refresh indicator no longer leaving an artifact,
+  and the map's higher initial zoom/search-oval border in both light and dark theme. The Kotlin/
+  compose-bom bump itself is also unverified beyond compiling and testing cleanly — worth a general
+  smoke pass across screens the compiler wouldn't catch a regression in (theming, animations,
+  Compose Preview if used).
+
 ## 2026-08-01 — Issue #42: active-notification bugs
 
 - Issue was a live bug report (unfavorited place still notified; two DWELL notifications arriving
@@ -526,54 +609,4 @@
   new Compose wiring, but not yet eyeballed on Robert's phone.
 - Issue #35 left open (not closed): most of its scope (the actual visual/interaction redesign)
   is deferred to #37.
-
-## 2026-07-29 — Explore layers: replace "All POIs" row with a Velometrics-style chip row
-
-- No GitHub issue; user asked directly, worked out via a full /grill-me session before any code
-  was touched (chip selection model, Favorites/Want to go placement, filter exclusivity, chip
-  ordering, chip visuals/color scope, selected-state indication, chip row layout, chip-vs-search
-  interaction — every branch resolved with the user first, several answers landing differently
-  than the Velometrics source material they were modeled on).
-- Biggest decision, arrived at only after checking Velometrics' actual chip code: single-select,
-  not the multi-select #33 gave categories. Tapping a chip shows only that category; tapping the
-  active chip again clears it. This collapses `ExploreViewModel`'s `activeCategories: Set<String>`
-  + `showAllPois: Boolean` into one nullable `activeCategory: String?` (mirrors Velometrics'
-  `activePoiChip` pattern), still mutually exclusive with `favoritesOnly`/`wantToGoOnly`/search.
-  `selectCategory(category)` replaces `toggleCategory`/`selectAllPois` entirely.
-- `filterAndSort`'s `activeCategories: Set<String>` + `showAll: Boolean` params collapsed to a
-  single `activeCategory: String?`; the `showAll` branch (`it.category in activeCategories`)
-  became `activeCategory != null -> it.category == activeCategory`. `FilterAndSortTest.kt`
-  rewritten for the single-select shape (16 → 13 cases; dropped the multi-select-specific cases,
-  kept priority-order coverage for search/favorites/category).
-- Favorites and Want to go stay in the Layers FAB panel (now just those two `LayerRow`s) per
-  explicit choice — categories move out entirely rather than folding Favorites/Want to go into
-  the chip row too. `LayersPanel`'s `categories`/`activeCategories`/`showAllPois` params and the
-  "All POIs" `LayerRow` are gone; `CategoryLayerRow` (the old dimmed/bold multi-select row from
-  #33) is deleted outright, not deprecated.
-- New `PoiCategoryChipRow` in `ExploreScreen.kt`: categories sorted alphabetically by
-  `categoryDisplayName` (not `CATEGORY_ORDER`'s curated hue-spacing order, which stays untouched
-  for `MapStyle.kt`'s order-agnostic `categoryIconExpression()`). Explicit decision: chips carry
-  no per-category color at all — reusing the map markers' own move away from category color
-  (`ab93390`/`2d31b3e`), every chip shares the single theme-driven `markerForegroundColor`/
-  `markerBackgroundColor` pair instead. Unselected: transparent container, outline + icon + label
-  in the foreground color. Selected: container fills with the foreground color, icon + label flip
-  to the background color — deliberately mirroring the marker circle/icon contrast relationship,
-  not a new color scheme. New `categoryIcon(category)` exported from `MarkerIcons.kt` (previously
-  private `CATEGORY_ICONS`) so the chip row's leading icon is the exact same icon as that
-  category's marker. Icon/label sizing left at `FilterChip`'s own defaults, matching how
-  Velometrics' own chip code has no explicit size overrides either.
-- Chip row floats over the map's top edge (inside the map `Box`, top-aligned) rather than sitting
-  in the non-overlapping search-bar `Row` above it — explicit choice to match Velometrics' visual
-  style over Freizeit's own layout convention. Hidden entirely whenever the search-suggestions
-  dropdown is showing (`searchSuggestions.isEmpty()` gate) rather than stacking the two, since
-  both float over the same map-top area.
-- `explore_all_pois_filter` string resource deleted (no longer referenced anywhere).
-- Tests: 144 total (was 147), 0 failures — the -3 nets out `FilterAndSortTest`'s 16 → 13 cases;
-  confirmed via each test's own XML report, no other test file touched or regressed.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean (the pre-existing
-  `FlowPreview` opt-in warning on `ExploreViewModel.kt`'s `searchQuery.debounce(...)` is unchanged
-  from before this session).
-- Not verified on device: the chip row's floated-over-map placement, the fill/outline selected-
-  state contrast in both light and dark theme, and the hide-while-search-suggestions-show
-  behavior are all new Compose wiring — needs a real run on Robert's phone.
 

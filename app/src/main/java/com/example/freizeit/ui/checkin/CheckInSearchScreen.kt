@@ -11,10 +11,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -33,8 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,8 +50,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
@@ -84,7 +86,7 @@ private val ROW_DIVIDER_INSET = ROW_HORIZONTAL_PADDING + ROW_LEADING_WIDTH + ROW
  * debounced ranking/search (not an undebounced in-memory filter) since it already existed here.
  * Below 2 characters shows [CheckInUiState.favoritesNearby] as quick picks instead of a blank list.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CheckInSearchScreen(
     viewModel: CheckInViewModel,
@@ -97,6 +99,7 @@ fun CheckInSearchScreen(
     var searchText by rememberSaveable { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -130,6 +133,22 @@ fun CheckInSearchScreen(
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         keyboardController?.show()
+    }
+
+    // The field stays focused (cursor blinking) even after the keyboard closes, since dismissing
+    // it (back gesture/button, swipe-down, any other system dismissal) doesn't touch Compose focus
+    // on its own. Tracks the ime's own visibility rather than a single explicit back handler, so
+    // every dismissal path is covered; `imeWasVisible` guards against the initial false-before-
+    // first-show reading as a "dismiss" and clearing focus before the field ever opens.
+    var imeWasVisible by remember { mutableStateOf(false) }
+    val imeVisible = WindowInsets.isImeVisible
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            imeWasVisible = true
+        } else if (imeWasVisible) {
+            imeWasVisible = false
+            focusManager.clearFocus()
+        }
     }
 
     // No "committed" search concept here (unlike Map's oval) — leaving the screen always clears
@@ -185,20 +204,21 @@ fun CheckInSearchScreen(
 
             // Manual fallback (#40) alongside the automatic ON_RESUME refresh above — e.g. no GPS
             // fix yet indoors, user steps outside without leaving this screen.
-            val pullToRefreshState = rememberPullToRefreshState()
-            if (pullToRefreshState.isRefreshing) {
-                LaunchedEffect(true) {
+            var isRefreshing by remember { mutableStateOf(false) }
+            LaunchedEffect(isRefreshing) {
+                if (isRefreshing) {
                     viewModel.refreshLocation()
                     delay(PULL_TO_REFRESH_MIN_SPIN_MS)
-                    pullToRefreshState.endRefresh()
+                    isRefreshing = false
                 }
             }
 
-            Box(
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { isRefreshing = true },
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .nestedScroll(pullToRefreshState.nestedScrollConnection)
             ) {
                 when {
                     !state.hasLocation -> CenteredHint(
@@ -256,11 +276,6 @@ fun CheckInSearchScreen(
                         }
                     }
                 }
-
-                PullToRefreshContainer(
-                    state = pullToRefreshState,
-                    modifier = Modifier.align(Alignment.TopCenter)
-                )
             }
         }
     }
