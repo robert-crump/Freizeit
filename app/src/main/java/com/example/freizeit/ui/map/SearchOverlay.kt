@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
+import com.example.freizeit.ui.common.DurationBadge
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 
@@ -195,9 +196,10 @@ fun SearchOverlay(
 
 /**
  * Leading: category icon in the icon-in-circle style shared with the map markers (see
- * [markerBackgroundColor]/[markerForegroundColor]/[categoryIcon]), distance below it — omitted
- * (not a placeholder) when [PoiWithDistance.distanceMeters] is null. Trailing: bold POI name,
- * city below it. Fixed [ROW_HEIGHT].
+ * [markerBackgroundColor]/[markerForegroundColor]/[categoryIcon]), distance below it. Trailing:
+ * bold POI name, city below it. Both the distance and the colored [DurationBadge] at the row's
+ * end are omitted (not a placeholder) when [PoiWithDistance.distanceMeters] is null. Fixed
+ * [ROW_HEIGHT].
  */
 @Composable
 private fun SearchResultRow(
@@ -263,6 +265,9 @@ private fun SearchResultRow(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+        item.distanceMeters?.let { distance ->
+            DurationBadge(distance, horizontalAlignment = Alignment.End)
         }
     }
 }

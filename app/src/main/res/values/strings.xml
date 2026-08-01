@@ -72,6 +72,8 @@
     <string name="detail_opening_hours">Opening hours: %1$s</string>
     <string name="detail_distance">%1$s away</string>
     <string name="detail_last_visit">Last visit: %1$s</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_car_alternative">~%1$d min by car</string>
     <string name="detail_verdict_favorite">Favorite</string>
     <string name="detail_verdict_want_to_go">Want to go</string>
     <string name="detail_edit_name">Edit name</string>

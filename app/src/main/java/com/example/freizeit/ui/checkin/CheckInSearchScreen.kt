@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
+import com.example.freizeit.ui.common.DurationBadge
 import com.example.freizeit.ui.map.categoryIcon
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.map.markerBackgroundColor
@@ -296,5 +297,6 @@ private fun CheckInResultRow(
                 )
             }
         }
+        DurationBadge(candidate.distanceMeters, horizontalAlignment = Alignment.End)
     }
 }
