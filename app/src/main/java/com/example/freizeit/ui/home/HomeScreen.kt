@@ -256,7 +256,9 @@ private fun SwipeableSuggestionCard(
             dragOffsetPx.snapTo(0f)
             displayedId = target.poi.id
             cardAlpha.snapTo(0f)
-            enterOffsetPx.snapTo(direction * enterSlidePx)
+            // Starts on the far side from `direction` and animates toward 0, so the slide
+            // continues moving in the swipe's direction rather than doubling back toward it.
+            enterOffsetPx.snapTo(-direction * enterSlidePx)
             launch { enterOffsetPx.animateTo(0f, tween(FADE_IN_MILLIS)) }
             cardAlpha.animateTo(1f, tween(FADE_IN_MILLIS))
             isCommitting = false
@@ -431,18 +433,21 @@ private fun SuggestionCard(
                     modifier = Modifier.weight(1f)
                 )
                 val isFavorite = suggestion.verdictValue == Verdict.VALUE_FAVORITE
-                IconButton(onClick = onRemoveVerdict) {
+                IconButton(
+                    onClick = onRemoveVerdict,
+                    // Nudging the glyph itself (rather than the whole button) pushed it past the
+                    // edge of IconButton's own clipped state-layer, silently cropping it. Offsetting
+                    // the button instead carries that clip bounds along with it, so the glyph
+                    // reads as flush with the name's top edge / the card's content edge while
+                    // staying fully inside its own hit/clip region.
+                    modifier = Modifier.offset(x = HEART_ICON_END_NUDGE_DP.dp, y = -HEART_ICON_TOP_NUDGE_DP.dp)
+                ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.Bookmark,
                         contentDescription = stringResource(
                             if (isFavorite) R.string.home_unfavorite else R.string.home_remove_want_to_go
                         ),
-                        tint = if (isFavorite) FavoriteRed else WantToGoBlue,
-                        // IconButton centers the glyph in its 48dp touch target; nudge it up so
-                        // it reads as flush with the name's top edge instead of vertically centered,
-                        // and right so it reads as flush with the card's content edge instead of
-                        // sitting visibly inset from it.
-                        modifier = Modifier.offset(x = HEART_ICON_END_NUDGE_DP.dp, y = -HEART_ICON_TOP_NUDGE_DP.dp)
+                        tint = if (isFavorite) FavoriteRed else WantToGoBlue
                     )
                 }
             }
