@@ -130,4 +130,33 @@ class FilterAndSortTest {
         )
         assertEquals(listOf("node/1"), result.map { it.poi.id })
     }
+
+    @Test
+    fun `visible categories are trimmed to the primary set, dropping shop`() {
+        // pois has cafe, park, playground and shop; shop isn't in PRIMARY_MAP_CATEGORIES.
+        assertEquals(listOf("cafe", "park", "playground"), visibleCategories(pois))
+    }
+
+    @Test
+    fun `visible categories follow the fixed curated order, not alphabetical or POI order`() {
+        val reordered = listOf(
+            poi("node/1", "playground", 50.90, 6.90),
+            poi("node/2", "park", 50.91, 6.91),
+            poi("node/3", "ice_cream", 50.92, 6.92),
+            poi("node/4", "cafe", 50.93, 6.93)
+        )
+        assertEquals(listOf("cafe", "ice_cream", "park", "playground"), visibleCategories(reordered))
+    }
+
+    @Test
+    fun `a primary category with no nearby POIs is omitted rather than shown empty`() {
+        val onlyCafe = listOf(poi("node/1", "cafe", 50.90, 6.90))
+        assertEquals(listOf("cafe"), visibleCategories(onlyCafe))
+    }
+
+    @Test
+    fun `no primary-category POIs yields an empty chip row`() {
+        val onlyShop = listOf(poi("node/1", "shop", 50.90, 6.90))
+        assertEquals(emptyList<String>(), visibleCategories(onlyShop))
+    }
 }

@@ -118,7 +118,7 @@ fun MapScreen(
     BackHandler(enabled = showLayersPanel) { showLayersPanel = false }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (state.pois.isEmpty() && state.categories.isEmpty()) {
+        if (state.pois.isEmpty() && state.allPois.isEmpty()) {
             Text(
                 text = stringResource(R.string.map_empty),
                 modifier = Modifier
