@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -195,6 +196,9 @@ fun MapScreen(
     }
 }
 
+/** Matches FilterChipDefaults' own default outlined-chip border width. */
+private val SEARCH_OVAL_BORDER_WIDTH = 1.dp
+
 /**
  * Floats inside the map's own [Box] (top-aligned), same convention as [PoiCategoryChipRow] below
  * it. Placeholder "Search here" when no search is committed; once one is (via the overlay's
@@ -208,12 +212,17 @@ private fun SearchOval(
     onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val darkTheme = isSystemInDarkTheme()
+    val ovalShape = RoundedCornerShape(percent = 50)
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
+            // Same border treatment as PoiCategoryChipRow's chips — without it, a dark oval on
+            // the dark map style can be hard to make out against the tiles behind it.
+            .border(SEARCH_OVAL_BORDER_WIDTH, markerForegroundColor(darkTheme), ovalShape)
             .clickable(onClick = onOvalClick),
-        shape = RoundedCornerShape(percent = 50),
+        shape = ovalShape,
         shadowElevation = 4.dp
     ) {
         Row(

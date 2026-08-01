@@ -1,15 +1,23 @@
 package com.example.freizeit.ui.common
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,11 +38,12 @@ private val DurationGrayFont = Color(0xFF9AA0A6)
 private val DurationGrayBackground = Color(0xFF2C2C2E)
 
 /**
- * Colored bike-duration chip. Once biking there is unrealistic ([GRAY_MIN_MINUTES]+), a second,
- * plain/uncolored line with the car-equivalent duration appears underneath — the #41 answer for
- * "I always drive there" places: no per-POI travel-mode setting, just an alternative estimate
- * once bike time stops being motivating. Fixed colors regardless of light/dark theme, same
- * pattern as [com.example.freizeit.ui.theme.FavoriteRed]/[com.example.freizeit.ui.theme.WantToGoBlue].
+ * Colored bike-duration chip, bike icon always shown alongside it. Once biking there is
+ * unrealistic ([GRAY_MIN_MINUTES]+), a second chip with the car-equivalent duration appears
+ * underneath, car icon in place of the old "~N min by car" text — the #41 answer for "I always
+ * drive there" places: no per-POI travel-mode setting, just an alternative estimate once bike
+ * time stops being motivating. Fixed colors regardless of light/dark theme, same pattern as
+ * [com.example.freizeit.ui.theme.FavoriteRed]/[com.example.freizeit.ui.theme.WantToGoBlue].
  */
 @Composable
 fun DurationBadge(
@@ -43,32 +52,36 @@ fun DurationBadge(
     horizontalAlignment: Alignment.Horizontal = Alignment.Start
 ) {
     val bikeMinutes = TravelDuration.bikeMinutes(distanceMeters)
+    val (bikeFont, bikeBackground) = when {
+        bikeMinutes < GREEN_MAX_MINUTES -> DurationGreenFont to DurationGreenBackground
+        bikeMinutes < GRAY_MIN_MINUTES -> DurationYellowFont to DurationYellowBackground
+        else -> DurationGrayFont to DurationGrayBackground
+    }
     Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
-        DurationChip(bikeMinutes)
+        DurationChip(Icons.AutoMirrored.Filled.DirectionsBike, bikeMinutes, bikeFont, bikeBackground)
         if (bikeMinutes >= GRAY_MIN_MINUTES) {
-            Text(
-                text = stringResource(R.string.duration_car_alternative, TravelDuration.carMinutes(distanceMeters)),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // Same gray band as the bike chip above it — car is the fallback for an
+            // already-unrealistic bike ride, not a competing option of its own.
+            DurationChip(Icons.Filled.DirectionsCar, TravelDuration.carMinutes(distanceMeters), DurationGrayFont, DurationGrayBackground)
         }
     }
 }
 
 @Composable
-private fun DurationChip(bikeMinutes: Int) {
-    val (font, background) = when {
-        bikeMinutes < GREEN_MAX_MINUTES -> DurationGreenFont to DurationGreenBackground
-        bikeMinutes < GRAY_MIN_MINUTES -> DurationYellowFont to DurationYellowBackground
-        else -> DurationGrayFont to DurationGrayBackground
-    }
-    Text(
-        text = stringResource(R.string.duration_minutes, bikeMinutes),
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        color = font,
+private fun DurationChip(icon: ImageVector, minutes: Int, font: Color, background: Color) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
             .background(background, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp)
-    )
+    ) {
+        Icon(icon, contentDescription = null, tint = font, modifier = Modifier.size(14.dp))
+        Text(
+            text = stringResource(R.string.duration_minutes, minutes),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = font
+        )
+    }
 }
