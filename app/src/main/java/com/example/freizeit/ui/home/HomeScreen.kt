@@ -239,6 +239,13 @@ private fun SwipeableSuggestionCard(
     // continuity this keying was for. A 2-card deck's "previous" and "next" are the same POI;
     // distinctBy dedupes that to a single neighbor entry.
     val window = (listOfNotNull(previousCard, nextCard) + card).distinctBy { it.poi.id }
+    // displayedId is only ever written inside commitTo, but the deck can also change out from
+    // under it for reasons that never go through commitTo — a location refresh re-ranking the
+    // deck (HomeScreen's ON_RESUME hook fires right at cold start) leaves localIndex pointing at
+    // a different POI without touching displayedId. If the tracked id no longer matches anything
+    // in the current window, fall back to the freshly-recomputed card's id so a card is always
+    // shown instead of every entry rendering at alpha 0.
+    val effectiveDisplayedId = if (window.any { it.poi.id == displayedId }) displayedId else card.poi.id
 
     fun commitTo(target: Suggestion, direction: Int, onCommitted: () -> Unit) {
         if (isCommitting) return
@@ -288,7 +295,7 @@ private fun SwipeableSuggestionCard(
     ) {
         for (entry in window) {
             key(entry.poi.id) {
-                val isDisplayed = entry.poi.id == displayedId
+                val isDisplayed = entry.poi.id == effectiveDisplayedId
                 // A single SuggestionCard call site regardless of role: role-dependent behavior
                 // is expressed as plain values (modifier, callbacks) fed into that one call,
                 // never as which composable call executes — an if/else choosing between two
