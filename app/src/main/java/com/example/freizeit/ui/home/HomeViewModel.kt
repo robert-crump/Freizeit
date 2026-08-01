@@ -1,6 +1,5 @@
 package com.example.freizeit.ui.home
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -16,6 +15,7 @@ import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.weather.WeatherRepository
 import com.example.freizeit.domain.suggestion.Suggestion
@@ -23,7 +23,6 @@ import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.util.LatLon
-import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,7 +60,7 @@ data class HomeUiState(
 )
 
 class HomeViewModel(
-    private val appContext: Context,
+    private val locationRepository: LocationRepository,
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val weatherRepository: WeatherRepository,
@@ -70,10 +69,13 @@ class HomeViewModel(
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    /** Refreshed at construction and on every resume (see [refreshLocation] and HomeScreen's
-     *  ON_RESUME observer) so reopening the app at a new spot re-filters/re-ranks the deck and
-     *  re-centers the mini-map — but nothing polls location continuously while foregrounded, so
-     *  the deck stays put mid-swipe (#34). */
+    /** A one-time snapshot of [LocationRepository.location], taken only inside [refreshLocation]
+     *  (construction + every resume, see HomeScreen's ON_RESUME observer) — deliberately NOT a
+     *  continuous collection of the shared flow, so re-filtering/re-ranking the deck and
+     *  re-centering the mini-map only ever happens at a resume boundary. Since Map's continuous
+     *  stream (#40) writes into that same shared flow while Map is open, collecting it live here
+     *  would let a Map-only location update reshuffle Home's deck mid-swipe — exactly what #34
+     *  ruled out. */
     private val location = MutableStateFlow<LatLon?>(null)
 
     /** Favorited + want-to-go pois + whether the (city-wide) poi table has anything at all,
@@ -142,9 +144,8 @@ class HomeViewModel(
 
     fun refreshLocation() {
         viewModelScope.launch {
-            val loc = withContext(Dispatchers.IO) {
-                LocationHelper.lastKnownLocation(appContext)
-            }
+            locationRepository.refreshOnce()
+            val loc = locationRepository.location.value
             location.value = loc
             weatherRepository.refresh(
                 lat = loc?.lat ?: FALLBACK_LAT,
@@ -177,7 +178,7 @@ class HomeViewModel(
             initializer {
                 val app = this[APPLICATION_KEY] as FreizeitApplication
                 HomeViewModel(
-                    app,
+                    app.container.locationRepository,
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.weatherRepository,

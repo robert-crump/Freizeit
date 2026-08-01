@@ -1,6 +1,5 @@
 package com.example.freizeit.ui.map
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -17,10 +16,10 @@ import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
-import com.example.freizeit.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,7 +28,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
 
@@ -116,7 +114,7 @@ fun filterAndSort(
 }
 
 class MapViewModel(
-    private val appContext: Context,
+    private val locationRepository: LocationRepository,
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val poiCustomNameDao: PoiCustomNameDao,
@@ -126,7 +124,6 @@ class MapViewModel(
     // Single-select category chip (replaces #33's multi-select "All POIs" mode) — mutually
     // exclusive with favoritesOnly/wantToGoOnly/searchQuery, see selectCategory.
     private val activeCategory = MutableStateFlow<String?>(null)
-    private val location = MutableStateFlow<LatLon?>(null)
     private val favoritesOnly = MutableStateFlow(false)
     private val wantToGoOnly = MutableStateFlow(false)
     private val committedSearchQuery = MutableStateFlow<String?>(null)
@@ -175,7 +172,7 @@ class MapViewModel(
     val uiState: StateFlow<MapUiState> = combine(
         poisVerdictsAndNames,
         layerSelection,
-        location,
+        locationRepository.location,
         committedSearchQuery
     ) { poisVerdictsNames, layer, loc, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
@@ -265,12 +262,15 @@ class MapViewModel(
     }
 
     fun refreshLocation() {
-        viewModelScope.launch {
-            location.value = withContext(Dispatchers.IO) {
-                LocationHelper.lastKnownLocation(appContext)
-            }
-        }
+        viewModelScope.launch { locationRepository.refreshOnce() }
     }
+
+    /** Arms/disarms the live location stream (#40) — only while the Map screen is actually
+     *  on-screen, gated by [MapScreen]'s own composable lifecycle, since this is the one surface
+     *  where a live position matters enough to justify an active GPS stream. */
+    fun startContinuousLocation() = locationRepository.startContinuous()
+
+    fun stopContinuousLocation() = locationRepository.stopContinuous()
 
     fun selectPoi(poi: PoiWithDistance?) {
         _selectedPoi.value = poi
@@ -298,7 +298,7 @@ class MapViewModel(
             initializer {
                 val app = this[APPLICATION_KEY] as FreizeitApplication
                 MapViewModel(
-                    app,
+                    app.container.locationRepository,
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.database.poiCustomNameDao(),

@@ -9,6 +9,7 @@ import com.example.freizeit.data.geofence.GeofenceLocationMonitor
 import com.example.freizeit.data.geofence.GeofenceSyncManager
 import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.GeofenceStateRepository
+import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.weather.WeatherRepository
@@ -40,6 +41,12 @@ class AppContainer(private val context: Context) {
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(context.settingsDataStore)
+    }
+
+    /** Shared last-known/live location (#40) — see [LocationRepository]'s own doc for why the
+     *  three UI ViewModels no longer each read location independently. */
+    val locationRepository: LocationRepository by lazy {
+        LocationRepository(context)
     }
 
     val geofenceStateRepository: GeofenceStateRepository by lazy {
