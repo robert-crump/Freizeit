@@ -1,5 +1,58 @@
 # Freizeit v2 progress log
 
+## 2026-08-01 — Issue #41: color-coded bike-duration chips
+
+- Issue was a stub (title only, empty body) — full design worked out via a `/grill-me` session
+  before any code was touched (chip presentation, rollout scope, color bands, the "always go by
+  car" case, car-duration model, accessibility, chip colors in light vs. dark theme, reasons-text
+  redundancy — every branch resolved with the user first), posted to #41 as the issue body, then
+  implemented directly from that spec.
+- New `util/TravelDuration.kt` (`bikeMinutes`/`carMinutes`, both straight-line distance × the same
+  1.3 detour factor, just different assumed speeds — 15 km/h bike, 70 km/h car as the user's own
+  "country roads/autobahn average"). `SuggestionEngine.kt`'s previously-private `DETOUR_FACTOR`/
+  `BIKE_METERS_PER_MINUTE` constants and inline calculation are gone, replaced by a call to
+  `TravelDuration.bikeMinutes` — the estimate itself is unchanged, just consolidated so the new
+  car estimate doesn't duplicate the detour-factor logic a second time.
+- New `ui/common/DurationBadge.kt`: a colored, bold chip showing just the bike minutes (no icon —
+  explicit accessibility answer, color+bold text judged sufficient), fixed hex colors (same in
+  light and dark theme, same pattern as the existing `FavoriteRed`/`WantToGoBlue`) — green `<10min`
+  (`#4BFFC5`/`#194234`), yellow `10-25min` (`#FFBD34`/`#5A380A`), gray `>=25min` (`#9AA0A6`/
+  `#2C2C2E`). At `>=25min` a second, plain/uncolored line appears underneath with the car-duration
+  alternative — the answer for "I always drive there" places (e.g. a store the user never bikes
+  to): no per-POI/category travel-mode setting needed, the gray band plus car fallback line covers
+  it without new storage. Takes a `distanceMeters: Double` directly (not a `Suggestion`/
+  `PoiWithDistance`) so it's reusable from all four call sites below.
+- Rolled out everywhere a POI row shows distance (explicit scope decision — duration in minutes
+  previously existed only on `SuggestionEngine`'s home-feed reason text; check-in search and the
+  Map search overlay only ever showed raw meters/km):
+  - `HomeScreen.kt`'s `SuggestionCard`: new `DurationBadge` row between the name/verdict row and
+    the mini map. The old `"$travelMinutes min by bike"` reason-text entry is deleted from
+    `SuggestionEngine.kt` now that the chip is the sole duration display — avoids showing the same
+    number twice on one card (explicit decision).
+  - `PlaceDetailSheet.kt`: `DurationBadge` added right after the existing `"X away"` distance line
+    — both are shown, distance wasn't replaced (explicit decision).
+  - `CheckInSearchScreen.kt`'s `CheckInResultRow` / `SearchOverlay.kt`'s `SearchResultRow`: existing
+    fixed-width leading distance column left untouched; `DurationBadge` added as a new
+    right-aligned (`Alignment.End`) trailing element in the row, alongside the existing name/city
+    column — the fixed fixed-width leading icon/distance column is too narrow (48dp) for a chip
+    with background padding, so it goes at the row's end instead. Omitted (not a placeholder) in
+    both rows whenever `distanceMeters` is null, matching the existing distance-text convention.
+  - Two new strings: `duration_minutes` (`"%1$d min"`, the chip's own text) and
+    `duration_car_alternative` (`"~%1$d min by car"`).
+- `SuggestionScenariosTest.kt`: the one test asserting on the now-deleted `"4 min by bike"` reason
+  string rewritten to assert `travelMinutes == 4` directly via a new `travelMinutesOf()` helper
+  (mirrors #38's precedent of asserting the actual field once display text stops carrying it); the
+  "no location" test's `reasons.none { "by bike" in it }` assertion replaced with
+  `all { it.travelMinutes == null }` for the same reason.
+- Tests: 160 total, 0 failures (unchanged count — no new test file, existing coverage rewritten in
+  place). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no new
+  warnings.
+- Not verified on device: all four chip placements, the gray-band car-alternative line, and the
+  fixed light/dark chip colors are new Compose wiring with no prior on-device confirmation — needs
+  a real run on Robert's phone, particularly checking the trailing chip doesn't crowd the two list
+  rows' existing 72dp height/name-ellipsis behavior and that the car-alternative line reads clearly
+  at the far end of the yellow→gray transition.
+
 ## 2026-07-31 — Issue #39: Rework Check-in screen: history as entry, + FAB opens full-screen search
 
 - Only `ready-for-agent` issue open; every design decision (nav structure, search-screen
@@ -530,60 +583,4 @@
 - Not verified on device: the multi-select category rows (tap-to-toggle, zero-selected showing
   an empty map, the text-contrast active/inactive treatment, All POIs resetting the set on
   re-entry) are all new Compose wiring — needs a real run on Robert's phone.
-
-## 2026-07-26 — Issue #31: "Want to go" places
-
-- Design worked out via a full /grill-me pass before writing any code (verdict
-  mutual-exclusivity, icon choice, `PlaceDetailSheet` interaction model, merged-vs-separate
-  Home deck, ranking parity, Explore filter chip, geofencing scope, naming — all resolved
-  with the user first; the Explore layer-menu redesign that came up mid-session was split
-  out to #33 rather than bundled in here).
-- New `Verdict.VALUE_WANT_TO_GO` constant alongside `VALUE_FAVORITE`. No schema/PK
-  migration needed: `Verdict` was already one row per `placeId`, so the two verdicts are
-  mutually exclusive for free — setting one overwrites the other via the existing
-  `setVerdict()` upsert.
-- Icon is `Icons.Filled.Bookmark` / `Outlined.BookmarkBorder` (new `WantToGoBlue` tint in
-  `ui/theme/Color.kt`), not a star — the user's own reasoning during the grill-me pass: a
-  star reads too much like a second "favorite," where a bookmark reads as its own distinct
-  "saved for later" concept.
-- `PoiDao` gained `observeByVerdictValues(values)` alongside the existing
-  `observeFavorites()` — Home's deck now queries both verdict values together; the
-  favorites-only geofence sync path (`FreizeitApplication`/`AppContainer`) is untouched,
-  still calling `observeFavorites()` directly, per the explicit decision that want-to-go
-  places get no geofencing/DWELL notifications.
-- `SuggestionEngine`: the hard filter now accepts either verdict value; `Suggestion` gained
-  a `verdictValue` field so the UI can tell which bucket a card came from. Deliberately no
-  scoring changes beyond that — both verdict types compete on equal footing, no type-based
-  weighting. The visit-frequency term needed no special-casing: it's already keyed off
-  actual visit history, which is naturally empty for a never-visited want-to-go place.
-- `HomeViewModel`/`HomeScreen.kt`: renamed `hasFavorites`/`hasFavoritesWithinRadius` to
-  `hasVerdictedPlaces`/`hasVerdictedPlacesWithinRadius` (now genuinely about both buckets,
-  not just favorites) and `onUnfavorite` to `onRemoveVerdict` throughout — a merged single
-  deck means these no longer mean "favorite" specifically. The card's action button now
-  shows heart or bookmark depending on `suggestion.verdictValue`, no separate badge needed.
-- `PlaceDetailSheet.kt`: new `BookmarkButton`, inserted between the existing Edit and
-  Favorite buttons (row order: Edit, Bookmark, Favorite, per explicit placement
-  instruction). Two independent icon buttons, not a segmented control — tapping one while
-  the other is set silently clears it, mirroring the existing single-heart interaction
-  model.
-- `ExploreViewModel`/`ExploreScreen.kt`: added a "Want to go" layer row, inserted directly
-  after "Favorites" (so the final top-row order already reads Favorites/Want to go/All
-  POIs without needing #33's reorder work). `filterAndSort`'s `favoriteIds` parameter
-  renamed to `verdictIds` since it's now shared by whichever single verdict-based filter is
-  active — updated `FilterAndSortTest.kt`'s named-argument call sites to match.
-- Explicitly not touched, per the grill-me decisions: no geofencing/DWELL notifications for
-  want-to-go places; the Explore layer-menu multi-select/reorder/decluttering work (tracked
-  separately in #33).
-- Tests: 144 total (was 140), 32 failed (unchanged) — new `SuggestionWantToGoTest` (4
-  cases: a want-to-go place appears in the deck, a stray verdict value that's neither
-  favorite nor want-to-go is still excluded, each suggestion carries its own verdict value,
-  a favorite and a want-to-go place score identically under identical conditions), all
-  green. The 32 pre-existing failures are the same 28 Robolectric `UnsatisfiedLinkError`
-  classes plus the 4 `HomeSwipeDeckMathTest` failures already documented as pre-existing in
-  #32's entry above — confirmed unchanged by class/count.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`: clean.
-- Not verified on device: the merged deck's card icon swap, the new Explore "Want to go"
-  filter chip, and the `PlaceDetailSheet`'s Edit/Bookmark/Favorite row are all new Compose
-  wiring with no existing on-device confirmation to lean on — needs a real run on Robert's
-  phone.
 

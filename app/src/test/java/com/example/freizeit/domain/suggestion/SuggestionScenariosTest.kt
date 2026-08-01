@@ -49,6 +49,8 @@ class SuggestionScenariosTest {
         first { it.poi.id == poi.id }.openStatus
     private fun List<Suggestion>.warningsOf(poi: Poi) =
         first { it.poi.id == poi.id }.warnings
+    private fun List<Suggestion>.travelMinutesOf(poi: Poi) =
+        first { it.poi.id == poi.id }.travelMinutes
 
     @Test
     fun `sunny Saturday morning - an outdoor favorite is in the deck`() {
@@ -193,10 +195,10 @@ class SuggestionScenariosTest {
     }
 
     @Test
-    fun `reason line carries the bike estimate for the actual distance`() {
+    fun `travel minutes carries the bike estimate for the actual distance`() {
         val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
         // ~800 m x 1.3 detour / 250 m per min ≈ 4 min
-        assertTrue("4 min by bike" in ranked.reasonsOf(cafe))
+        assertEquals(4, ranked.travelMinutesOf(cafe))
     }
 
     @Test
@@ -205,7 +207,7 @@ class SuggestionScenariosTest {
             allPois, ctx(saturdayAt(10), sunny(saturdayAt(10)), location = null)
         )
         assertTrue(playgroundFar.id in ranked.ids())
-        assertTrue(ranked.flatMap { it.reasons }.none { "by bike" in it })
+        assertTrue(ranked.all { it.travelMinutes == null })
     }
 
     @Test

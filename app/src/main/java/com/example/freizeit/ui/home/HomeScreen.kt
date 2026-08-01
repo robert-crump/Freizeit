@@ -66,6 +66,7 @@ import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
+import com.example.freizeit.ui.common.DurationBadge
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -482,6 +483,10 @@ private fun SuggestionCard(
                         modifier = Modifier.offset(y = -HEART_ICON_TOP_NUDGE_DP.dp)
                     )
                 }
+            }
+
+            suggestion.distanceMeters?.let { distanceMeters ->
+                DurationBadge(distanceMeters)
             }
 
             SuggestionsMiniMap(

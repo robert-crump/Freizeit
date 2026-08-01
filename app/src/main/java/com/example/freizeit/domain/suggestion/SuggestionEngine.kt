@@ -8,6 +8,7 @@ import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LastVisit
 import com.example.freizeit.util.LatLon
+import com.example.freizeit.util.TravelDuration
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlin.math.exp
@@ -71,10 +72,6 @@ data class Suggestion(
  */
 object SuggestionEngine {
 
-    /** Straight-line → road detour fudge, then ~15 km/h family biking pace. */
-    private const val DETOUR_FACTOR = 1.3
-    private const val BIKE_METERS_PER_MINUTE = 250.0
-
     private val OUTDOOR_CATEGORIES = setOf("playground", "park")
 
     /** Above this precipitation probability (%) for the current hour, an outdoor favorite
@@ -133,8 +130,7 @@ object SuggestionEngine {
             distanceMeters = GeoDistance.metersBetween(
                 context.location.lat, context.location.lon, poi.lat, poi.lon
             )
-            travelMinutes = (distanceMeters * DETOUR_FACTOR / BIKE_METERS_PER_MINUTE)
-                .roundToInt().coerceAtLeast(1)
+            travelMinutes = TravelDuration.bikeMinutes(distanceMeters)
         }
 
         val reasons = mutableListOf<String>()
@@ -147,7 +143,6 @@ object SuggestionEngine {
         if (travelMinutes != null) {
             score += 40.0 * exp(-travelMinutes / 25.0)
             score += PROXIMITY_BONUS * exp(-travelMinutes / PROXIMITY_DECAY_MINUTES)
-            reasons += "$travelMinutes min by bike"
         } else {
             score += 20.0 // location unknown: neutral distance score
         }

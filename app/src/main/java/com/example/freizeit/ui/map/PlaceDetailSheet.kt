@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.ui.common.DurationBadge
 import com.example.freizeit.ui.common.categoryColor
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -115,6 +116,7 @@ fun PlaceDetailSheet(
                     text = stringResource(R.string.detail_distance, GeoDistance.format(it)),
                     style = MaterialTheme.typography.bodyMedium
                 )
+                DurationBadge(it)
             }
 
             lastVisit?.let {
