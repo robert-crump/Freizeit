@@ -8,10 +8,14 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.dao.checkIn
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
+import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.GeofenceCandidate
+import com.example.freizeit.util.LocationHelper
 import com.example.freizeit.util.closestEligibleFavorite
 import com.example.freizeit.util.isCoolingDown
+import com.example.freizeit.util.isNotificationStale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,7 +36,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_GEOFENCE_TRANSITION -> handleGeofenceTransition(appContext, intent)
                     ACTION_CHECK_IN -> handleCheckIn(appContext, intent)
-                    ACTION_DISMISS -> GeofenceNotifications.cancel(appContext)
+                    ACTION_DISMISS -> cancelNotification(appContext)
                 }
             } finally {
                 pendingResult.finish()
@@ -68,7 +72,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val placeId = intent.getStringExtra(EXTRA_PLACE_ID) ?: return
         val poi = app.container.database.poiDao().getById(placeId) ?: return
         app.container.database.visitDao().checkIn(poi, source = Visit.SOURCE_NOTIFICATION)
-        GeofenceNotifications.cancel(app)
+        cancelNotification(app)
     }
 
     private suspend fun refreshNotification(
@@ -78,7 +82,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         triggerLon: Double
     ) {
         if (dwellingPlaceIds.isEmpty()) {
-            GeofenceNotifications.cancel(app)
+            cancelNotification(app)
             return
         }
         val poiDao = app.container.database.poiDao()
@@ -95,11 +99,40 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val closest = closestEligibleFavorite(candidates, coolingDown, triggerLat, triggerLon)
         if (closest == null) {
-            GeofenceNotifications.cancel(app)
-        } else {
-            val poi = poiDao.getById(closest.placeId) ?: return
-            GeofenceNotifications.show(app, poi)
+            cancelNotification(app)
+            return
         }
+        val poi = poiDao.getById(closest.placeId) ?: return
+
+        // Play Services can deliver a DWELL broadcast well after the fact under Doze/standby
+        // batching (issue #42) — by the time it arrives the device may already be elsewhere, so
+        // a current location fix that disagrees with the report wins over trusting the event.
+        val currentLocation = LocationHelper.lastKnownLocation(app)
+        if (currentLocation != null &&
+            isNotificationStale(
+                currentLat = currentLocation.lat,
+                currentLon = currentLocation.lon,
+                accuracyMeters = currentLocation.accuracyMeters,
+                poiLat = poi.lat,
+                poiLon = poi.lon,
+                radiusMeters = CHECKIN_FAVORITE_RADIUS_METERS
+            )
+        ) {
+            cancelNotification(app)
+            return
+        }
+
+        showNotification(app, poi)
+    }
+
+    private suspend fun showNotification(app: FreizeitApplication, poi: Poi) {
+        GeofenceNotifications.show(app, poi)
+        app.container.geofenceStateRepository.setActiveNotificationPlaceId(poi.id)
+    }
+
+    private suspend fun cancelNotification(app: FreizeitApplication) {
+        GeofenceNotifications.cancel(app)
+        app.container.geofenceStateRepository.setActiveNotificationPlaceId(null)
     }
 
     companion object {

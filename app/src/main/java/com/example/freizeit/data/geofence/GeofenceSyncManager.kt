@@ -13,6 +13,7 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.AutoCheckInPermissions
+import com.example.freizeit.util.reconcileDwellingOnUnregister
 import com.example.freizeit.util.selectClosestFavorites
 import kotlinx.coroutines.tasks.await
 
@@ -106,18 +107,26 @@ class GeofenceSyncManager(
      * geofence. That matters because a blind rebuild would reset any in-progress DWELL loitering
      * clock — including for favorites unrelated to whatever change triggered this call (a
      * process restart, or someone else being favorited/un-favorited).
+     *
+     * Whatever actually gets removed also gets purged from [GeofenceStateRepository]'s dwelling
+     * state (issue #42): a place that loses its geofence has no way to ever send an EXIT, so
+     * without this it would stay marked "dwelling" forever and could keep resurfacing a
+     * check-in notification for a place that's no longer even a favorite. If that place is the
+     * one the currently-shown notification is for, the notification is cancelled immediately too
+     * — see [reconcileDwellingOnUnregister].
      */
     private suspend fun register(favorites: List<Poi>) {
         val targetIds = favorites.map { it.id }.toSet()
         val registeredIds = geofenceState.getRegisteredFavoriteIds()
         if (targetIds == registeredIds) return
 
-        val idsToRemove = (registeredIds - targetIds).toList()
+        val idsToRemove = registeredIds - targetIds
         val toAdd = favorites.filter { it.id !in registeredIds }
 
         try {
             if (idsToRemove.isNotEmpty()) {
-                geofencingClient.removeGeofences(idsToRemove).await()
+                geofencingClient.removeGeofences(idsToRemove.toList()).await()
+                reconcileDwellingState(idsToRemove)
             }
             if (toAdd.isNotEmpty()) {
                 val request = GeofencingRequest.Builder()
@@ -132,6 +141,19 @@ class GeofenceSyncManager(
             // Settings mid-flight) — leave Play Services in whatever state it's already in
             // rather than crash; the next favorites/enabled change retries. Don't persist
             // targetIds here since we don't know which of the two calls above actually landed.
+        }
+    }
+
+    private suspend fun reconcileDwellingState(idsToRemove: Set<String>) {
+        val reconciliation = reconcileDwellingOnUnregister(
+            dwellingPlaceIds = geofenceState.getDwellingPlaceIds(),
+            idsToRemove = idsToRemove,
+            activeNotificationPlaceId = geofenceState.getActiveNotificationPlaceId()
+        )
+        geofenceState.setDwellingPlaceIds(reconciliation.dwellingPlaceIds)
+        if (reconciliation.cancelActiveNotification) {
+            GeofenceNotifications.cancel(context)
+            geofenceState.setActiveNotificationPlaceId(null)
         }
     }
 
@@ -157,6 +179,7 @@ class GeofenceSyncManager(
         }
         geofenceState.setDwellingPlaceIds(emptySet())
         geofenceState.setRegisteredFavoriteIds(emptySet())
+        geofenceState.setActiveNotificationPlaceId(null)
         GeofenceNotifications.cancel(context)
     }
 

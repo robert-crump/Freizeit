@@ -3,6 +3,7 @@ package com.example.freizeit.data.repository
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.first
 
@@ -49,9 +50,25 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[REGISTERED_FAVORITE_IDS_KEY] = placeIds }
     }
 
+    /**
+     * Which favorite the single outstanding check-in notification (if any) is for — lets
+     * [GeofenceSyncManager.register] tell whether a favorite losing its geofence (e.g.
+     * un-favorited mid-dwell) is the one currently on screen, so it can cancel that notification
+     * immediately instead of leaving a stale prompt up until the next transition (issue #42).
+     */
+    suspend fun getActiveNotificationPlaceId(): String? =
+        dataStore.data.first()[ACTIVE_NOTIFICATION_PLACE_ID_KEY]
+
+    suspend fun setActiveNotificationPlaceId(placeId: String?) {
+        dataStore.edit {
+            if (placeId == null) it.remove(ACTIVE_NOTIFICATION_PLACE_ID_KEY) else it[ACTIVE_NOTIFICATION_PLACE_ID_KEY] = placeId
+        }
+    }
+
     private companion object {
         val DWELLING_PLACE_IDS_KEY = stringSetPreferencesKey("geofence_dwelling_place_ids")
         val SELECTED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_selected_favorite_ids")
         val REGISTERED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_registered_favorite_ids")
+        val ACTIVE_NOTIFICATION_PLACE_ID_KEY = stringPreferencesKey("geofence_active_notification_place_id")
     }
 }
