@@ -1,5 +1,78 @@
 # Freizeit v2 progress log
 
+## 2026-08-01 — Issue #40: update user location more frequently
+
+- Issue was a stub (title + two-sentence body) — full design worked out via a `/grill-me` session
+  before any code was touched (update model per screen, shared-vs-per-ViewModel location state,
+  continuous-stream interval/priority, start/stop lifecycle scoping, manual refresh affordance,
+  snapshot-vs-collect semantics for Home/Check-in, `GeofenceLocationMonitor` scope boundary —
+  every branch resolved with the user first), posted to #40 as a comment, then implemented
+  directly from that spec.
+- Root cause: location was a plain one-shot `LocationManager.getLastKnownLocation()`
+  (`util/LocationHelper.kt`), independently duplicated in `MapViewModel`/`HomeViewModel`/
+  `CheckInViewModel` — no shared state, so the three screens could each show a different stale fix
+  at the same moment; Map had no resume-based refresh at all.
+- New `data/repository/LocationRepository.kt` (wired into `AppContainer` as a `by lazy` property,
+  same pattern as `weatherRepository`/`geofenceStateRepository`): owns a
+  `FusedLocationProviderClient` (already a dependency via `GeofenceLocationMonitor`), exposes a
+  single `StateFlow<LatLon?>`. `refreshOnce()` is a one-shot `LocationHelper.lastKnownLocation()`
+  read (unchanged semantics, just centralized); `startContinuous()`/`stopContinuous()` arm/disarm
+  an active `LocationRequest` (`PRIORITY_BALANCED_POWER_ACCURACY`, 10s interval / 5s min),
+  mirroring `GeofenceLocationMonitor`'s existing shape but left fully separate (different
+  lifecycle/purpose — background significant-change re-ranking vs. foreground live tracking —
+  explicit scope decision not to share the client instance).
+- `MapViewModel`: its own `location: MutableStateFlow` is gone, `uiState`'s combine now reads
+  `locationRepository.location` directly (continuous — Map is the one surface where a live
+  position matters). New `startContinuousLocation()`/`stopContinuousLocation()` delegate straight
+  to the repository. `MapScreen.kt`: new `DisposableEffect(lifecycleOwner)` calls
+  `startContinuousLocation()`/`stopContinuousLocation()` on `ON_RESUME`/`ON_PAUSE` — since
+  `MapViewModel` is hoisted at the `FreizeitApp` level and outlives tab switches, only the
+  composable's own lifecycle knows when Map is actually the visible tab. Re-entering the Map tab
+  replays `ON_RESUME` (`Lifecycle.addObserver` synchronously syncs a fresh observer up to the
+  current state), which is also what fixes "switching to Map doesn't refresh location" — the same
+  mechanism HomeScreen already used for its own resume refresh (#34). The existing "locate me"
+  FAB's `refreshLocation()` call is untouched (already forced a fresh read; now goes through the
+  repository).
+- `HomeViewModel`/`CheckInViewModel`: `location` stays a local `MutableStateFlow`, but
+  `refreshLocation()` now calls `locationRepository.refreshOnce()` then takes a one-time
+  *snapshot* of `locationRepository.location.value` — deliberately not a continuous collection of
+  the shared flow, so Map's background stream (or Check-in's new pull-to-refresh) can never
+  reshuffle Home's swipe deck mid-session (#34's guarantee, explicitly re-verified during the
+  grill-me session as the one real tension with #40's ask).
+- `CheckInSearchScreen.kt` gains two things it never had before: a `DisposableEffect`/`ON_RESUME`
+  observer identical to Home's (this screen previously only refreshed once via permission grant,
+  so its distances/duration badges could be arbitrarily stale), and a Material3
+  `PullToRefreshContainer`/`rememberPullToRefreshState()` wrapped around the results area (search
+  results, favorites-nearby quick-picks, and the "no location" hint all share one `Box`) as a
+  manual fallback — matches the user's established preference for always-available manual
+  controls alongside automatic triggers. Confirmed the exact API shape against the project's
+  resolved Material3 1.2.1 AAR directly (`PullToRefreshState.isRefreshing`/`startRefresh()`/
+  `endRefresh()`/`nestedScrollConnection`, `PullToRefreshContainer`, `rememberPullToRefreshState()`
+  — `PullToRefreshBox` doesn't exist until 1.3.0) before writing any code, same verify-before-
+  relying-on-it approach as the date/time picker session's `DatePickerDialog`/`TimePicker` check.
+  Since `refreshLocation()` is fire-and-forget (launches its own coroutine, doesn't suspend until
+  done), the refresh indicator holds for a fixed 300ms (`PULL_TO_REFRESH_MIN_SPIN_MS`) rather than
+  truly awaiting completion — pragmatic given a last-known-location read is near-instant anyway,
+  avoids adding a second suspend-returning API just for this.
+- `MapViewModel`/`HomeViewModel`/`CheckInViewModel` constructors: `appContext: Context` param
+  replaced by `locationRepository: LocationRepository` in all three (each `Factory` updated to
+  pass `app.container.locationRepository`); `LocationHelper` import dropped from all three
+  ViewModels (still used as-is by `MapScreen.kt`/`CheckInSearchScreen.kt` for the unrelated
+  permission-check flow, untouched).
+- Tests: 160 total, 0 failures (unchanged — no test file needed changes; this issue's scope is
+  pure ViewModel/Compose wiring around already-tested pure functions, none of which changed
+  signature). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
+  `assembleDebug`: all clean, no new warnings (the two pre-existing ones —
+  `CheckInViewModel.kt`'s `FlowPreview` opt-in and `PoiMap.kt`'s unused `customNames` param — are
+  both unchanged from before this session).
+- Not verified on device: the entire continuous-stream/lifecycle wiring (Map's GPS stream actually
+  starting/stopping on tab switch and app background/foreground, the "locate me" FAB still
+  recentering correctly, Check-in's new resume refresh and pull-to-refresh indicator, and Home's
+  deck genuinely not reshuffling mid-swipe even while Map is streaming in the background) is new
+  platform/Compose wiring with no prior on-device confirmation — needs a real run on Robert's
+  phone, particularly battery behavior over a longer Map session and confirming the pull-to-
+  refresh gesture doesn't fight the search screen's own scrolling.
+
 ## 2026-08-01 — Issue #41: color-coded bike-duration chips
 
 - Issue was a stub (title only, empty body) — full design worked out via a `/grill-me` session
@@ -534,53 +607,4 @@
 - No device verification on any of these three follow-ups beyond `compileDebugKotlin`/
   `testDebugUnitTest`/`assembleDebug` staying clean after each — the user is iterating from
   on-device screenshots between requests, not this agent.
-
-## 2026-07-26 — Issue #33: Explore layer menu: reorder, multi-select categories, declutter
-
-- Only `ready-for-agent` issue open. Split out of #31's grill-me session specifically so it
-  could be reviewed/reverted independently of the "Want to go" verdict feature.
-- Reorder was already done: #31's log entry notes the top rows were inserted in
-  Favorites/Want to go/All POIs order already, "without needing #33's reorder work" — verified
-  by reading `ExploreScreen.kt`'s `LayersPanel` before touching anything, no code change needed
-  for that part.
-- The real work was converting category filtering from single-select to multi-select and
-  gating its visibility on "All POIs": `ExploreViewModel`'s `selectedCategory: String?` (a
-  fourth mutually-exclusive top-level layer, same tier as Favorites/Want to go/All POIs) is
-  gone, replaced by `activeCategories: Set<String>` that's only ever consulted while
-  `showAllPois` is true — categories are now a filter *within* All POIs, not a peer layer.
-  `selectCategory(category)` (single-select toggle) replaced by `toggleCategory(category)`
-  (independent set membership toggle, zero-selected allowed).
-- `selectAllPois()` resets `activeCategories` to every known category each time it's turned on
-  (from off to on) — read literally from the issue's "Entering All POIs activates every category
-  by default," not preserving whatever subset was active from a previous All-POIs session. Reads
-  the category list synchronously off `uiState.value.categories` (the same derived list already
-  shown in the panel) rather than adding a second `poiDao.observeAll()` collector just to get a
-  snapshot.
-- `filterAndSort()`'s `selectedCategory: String?` param replaced by `activeCategories: Set<String>`;
-  the `showAll` branch changed from unconditionally `true` to `it.category in activeCategories`,
-  and the previous `else -> it.category == selectedCategory` fallback branch (the single-category
-  layer) is gone entirely — `else -> false`, since category filtering has no path outside
-  `showAll` anymore. `FilterAndSortTest.kt` rewritten accordingly (13 → 16 cases): added explicit
-  coverage for multi-category matching, zero-active-categories showing nothing, and
-  showAll=false ignoring a non-empty active set.
-- `ExploreScreen.kt`: `LayersPanel`'s category rows are now wrapped in `if (showAllPois)` so they
-  disappear only when switching to Favorites/Want to go, matching the issue's "stays visible while
-  switching between categories, hides only on Favorites/Want to go." New `CategoryLayerRow`
-  composable replaces the shared `LayerRow` (which carries a `Switch`) for category rows
-  specifically — active/inactive now reads via `FontWeight.SemiBold` + full-opacity text vs.
-  `FontWeight.Normal` + 0.4-alpha text, per the issue's explicit "closer to background when
-  inactive, still legible" instruction. Vertical padding dropped from `LayerRow`'s 2.dp to 0.dp
-  for the "tighter vertical spacing... denser list" ask.
-- Deliberately left as-is: the top three rows (Favorites/Want to go/All POIs) keep `LayerRow`
-  and its `Switch` unchanged — the issue's decluttering ask was scoped to category rows only.
-- Tests: 147 total (was 144), 32 failed (unchanged) — the +3 are net new `FilterAndSortTest`
-  cases (13 → 16), all green (confirmed via its own XML report: 16/16 pass, 0 failures). The 32
-  pre-existing failures are the same 28 Robolectric `UnsatisfiedLinkError` classes
-  (PendingVisitDaoTest/PoiCustomNameDaoTest/VerdictDaoTest/VisitDaoTest/BackupRepositoryTest/
-  PoiImportTest) plus the 4 `HomeSwipeDeckMathTest` failures, both documented as pre-existing
-  since #31/#32 — confirmed unchanged by class/count, no new failing class introduced.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`: clean.
-- Not verified on device: the multi-select category rows (tap-to-toggle, zero-selected showing
-  an empty map, the text-contrast active/inactive treatment, All POIs resetting the set on
-  re-entry) are all new Compose wiring — needs a real run on Robert's phone.
 

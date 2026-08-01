@@ -37,6 +37,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,8 +49,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.categoryDisplayName
@@ -72,7 +76,10 @@ fun MapScreen(
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { viewModel.refreshLocation() }
+    ) {
+        viewModel.refreshLocation()
+        viewModel.startContinuousLocation()
+    }
 
     LaunchedEffect(Unit) {
         if (!LocationHelper.hasPermission(context)) {
@@ -82,6 +89,26 @@ fun MapScreen(
                     Manifest.permission.ACCESS_FINE_LOCATION
                 )
             )
+        }
+    }
+
+    // Live location stream (#40) armed only while Map is actually the visible tab: re-entering
+    // this tab replays ON_RESUME (Lifecycle.addObserver syncs a fresh observer up to the current
+    // state), which is also what fixes "switching to Map doesn't refresh location" — the same
+    // mechanism HomeScreen already uses for its own resume refresh (#34).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.startContinuousLocation()
+                Lifecycle.Event.ON_PAUSE -> viewModel.stopContinuousLocation()
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            viewModel.stopContinuousLocation()
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 

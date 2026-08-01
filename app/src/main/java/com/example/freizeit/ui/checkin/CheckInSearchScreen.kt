@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,7 +33,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +58,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.DurationBadge
@@ -61,6 +69,7 @@ import com.example.freizeit.ui.map.markerBackgroundColor
 import com.example.freizeit.ui.map.markerForegroundColor
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LocationHelper
+import kotlinx.coroutines.delay
 
 private val ROW_HEIGHT = 72.dp
 private val ROW_ICON_SIZE = 40.dp
@@ -75,6 +84,7 @@ private val ROW_DIVIDER_INSET = ROW_HORIZONTAL_PADDING + ROW_LEADING_WIDTH + ROW
  * debounced ranking/search (not an undebounced in-memory filter) since it already existed here.
  * Below 2 characters shows [CheckInUiState.favoritesNearby] as quick picks instead of a blank list.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CheckInSearchScreen(
     viewModel: CheckInViewModel,
@@ -101,6 +111,20 @@ fun CheckInSearchScreen(
                 )
             )
         }
+    }
+
+    // Refreshes location whenever this screen (re)gains the foreground (#40) — new: unlike Map/
+    // Home, this screen previously only refreshed once via permission grant, so distances shown
+    // here could be arbitrarily stale. Mirrors HomeScreen's identical ON_RESUME observer.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshLocation()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) {
@@ -159,65 +183,92 @@ fun CheckInSearchScreen(
                 )
             }
 
-            when {
-                !state.hasLocation -> CenteredHint(
-                    if (state.isSearching) {
-                        stringResource(R.string.checkin_search_waiting_location)
-                    } else {
-                        stringResource(R.string.checkin_empty_no_location)
-                    }
-                )
-                state.isSearching -> {
-                    if (state.searchResults.isEmpty()) {
-                        CenteredHint(stringResource(R.string.checkin_search_empty))
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            itemsIndexed(state.searchResults, key = { _, candidate -> candidate.poi.id }) { index, candidate ->
-                                CheckInResultRow(candidate = candidate, onClick = { onCandidateSelected(candidate) })
-                                if (index != state.searchResults.lastIndex || state.hasMoreSearchResults) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = ROW_DIVIDER_INSET))
-                                }
-                            }
-                            if (state.hasMoreSearchResults) {
-                                item {
-                                    Text(
-                                        text = stringResource(R.string.checkin_search_more_results),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable(onClick = viewModel::showMoreSearchResults)
-                                            .padding(horizontal = 16.dp, vertical = 16.dp),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                        }
-                    }
+            // Manual fallback (#40) alongside the automatic ON_RESUME refresh above — e.g. no GPS
+            // fix yet indoors, user steps outside without leaving this screen.
+            val pullToRefreshState = rememberPullToRefreshState()
+            if (pullToRefreshState.isRefreshing) {
+                LaunchedEffect(true) {
+                    viewModel.refreshLocation()
+                    delay(PULL_TO_REFRESH_MIN_SPIN_MS)
+                    pullToRefreshState.endRefresh()
                 }
-                else -> Column(modifier = Modifier.fillMaxSize()) {
-                    Text(
-                        text = stringResource(R.string.checkin_favorites_nearby_header),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .nestedScroll(pullToRefreshState.nestedScrollConnection)
+            ) {
+                when {
+                    !state.hasLocation -> CenteredHint(
+                        if (state.isSearching) {
+                            stringResource(R.string.checkin_search_waiting_location)
+                        } else {
+                            stringResource(R.string.checkin_empty_no_location)
+                        }
                     )
-                    if (state.favoritesNearby.isEmpty()) {
-                        CenteredHint(stringResource(R.string.checkin_favorites_nearby_empty))
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            itemsIndexed(state.favoritesNearby, key = { _, candidate -> candidate.poi.id }) { index, candidate ->
-                                CheckInResultRow(candidate = candidate, onClick = { onCandidateSelected(candidate) })
-                                if (index != state.favoritesNearby.lastIndex) {
-                                    HorizontalDivider(modifier = Modifier.padding(start = ROW_DIVIDER_INSET))
+                    state.isSearching -> {
+                        if (state.searchResults.isEmpty()) {
+                            CenteredHint(stringResource(R.string.checkin_search_empty))
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                itemsIndexed(state.searchResults, key = { _, candidate -> candidate.poi.id }) { index, candidate ->
+                                    CheckInResultRow(candidate = candidate, onClick = { onCandidateSelected(candidate) })
+                                    if (index != state.searchResults.lastIndex || state.hasMoreSearchResults) {
+                                        HorizontalDivider(modifier = Modifier.padding(start = ROW_DIVIDER_INSET))
+                                    }
+                                }
+                                if (state.hasMoreSearchResults) {
+                                    item {
+                                        Text(
+                                            text = stringResource(R.string.checkin_search_more_results),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(onClick = viewModel::showMoreSearchResults)
+                                                .padding(horizontal = 16.dp, vertical = 16.dp),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else -> Column(modifier = Modifier.fillMaxSize()) {
+                        Text(
+                            text = stringResource(R.string.checkin_favorites_nearby_header),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (state.favoritesNearby.isEmpty()) {
+                            CenteredHint(stringResource(R.string.checkin_favorites_nearby_empty))
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                itemsIndexed(state.favoritesNearby, key = { _, candidate -> candidate.poi.id }) { index, candidate ->
+                                    CheckInResultRow(candidate = candidate, onClick = { onCandidateSelected(candidate) })
+                                    if (index != state.favoritesNearby.lastIndex) {
+                                        HorizontalDivider(modifier = Modifier.padding(start = ROW_DIVIDER_INSET))
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                PullToRefreshContainer(
+                    state = pullToRefreshState,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
             }
         }
     }
 }
+
+/** Location fetches are near-instant (last-known-location read); this just keeps the pull
+ *  indicator visible long enough to read as an intentional refresh rather than a flicker. */
+private const val PULL_TO_REFRESH_MIN_SPIN_MS = 300L
 
 @Composable
 private fun CenteredHint(text: String, modifier: Modifier = Modifier) {

@@ -1,6 +1,5 @@
 package com.example.freizeit.ui.checkin
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -14,9 +13,9 @@ import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
-import com.example.freizeit.util.LocationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -86,12 +85,15 @@ data class CheckInUiState(
 private data class SearchState(val query: String, val showAll: Boolean)
 
 class CheckInViewModel(
-    private val appContext: Context,
+    private val locationRepository: LocationRepository,
     poiDao: PoiDao,
     verdictDao: VerdictDao,
     private val visitDao: VisitDao
 ) : ViewModel() {
 
+    /** A one-time snapshot of [LocationRepository.location], taken only inside [refreshLocation]
+     *  (construction + resume, mirrors HomeViewModel's identical snapshot-not-collect reasoning
+     *  for #40/#34). */
     private val location = MutableStateFlow<LatLon?>(null)
     private val lastCheckedInName = MutableStateFlow<String?>(null)
     private val searchQuery = MutableStateFlow("")
@@ -136,9 +138,8 @@ class CheckInViewModel(
 
     fun refreshLocation() {
         viewModelScope.launch {
-            location.value = withContext(Dispatchers.IO) {
-                LocationHelper.lastKnownLocation(appContext)
-            }
+            locationRepository.refreshOnce()
+            location.value = locationRepository.location.value
         }
     }
 
@@ -172,7 +173,7 @@ class CheckInViewModel(
             initializer {
                 val app = this[APPLICATION_KEY] as FreizeitApplication
                 CheckInViewModel(
-                    app,
+                    app.container.locationRepository,
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.database.visitDao()
