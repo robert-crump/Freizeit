@@ -1,5 +1,52 @@
 # Freizeit v2 progress log
 
+## 2026-08-01 — Issue #42: active-notification bugs
+
+- Issue was a live bug report (unfavorited place still notified; two DWELL notifications arriving
+  20min/1.5h after the fact) — root-caused via a `/grill-me` session before any code was touched
+  (scope: both bugs in one pass; where the stale-favorite fix lives; whether to reconcile the live
+  notification immediately and how, given no location fix is available on that path; which
+  location API to use for the staleness check within `goAsync()`'s time budget; threshold/fail-
+  open behavior; testing approach), posted to #42 as a comment, then implemented directly from
+  that spec.
+- Root cause 1 (stale favorite): `GeofenceSyncManager.register()` diffed registered geofences
+  against current favorites and removed stale ones, but never touched
+  `GeofenceStateRepository.dwellingPlaceIds`. An unfavorited-while-dwelling place has no geofence
+  left to ever send an EXIT, so its id stayed "dwelling" forever — able to win
+  `closestEligibleFavorite()` (and thus show a notification, or block a legitimate one) on any
+  later, unrelated transition.
+- Root cause 2 (late delivery): Play Services can delay a DWELL broadcast well past the requested
+  `NOTIFICATION_RESPONSIVENESS_MILLIS` under Doze/standby batching — the event's own
+  `triggeringLocation` reflects the real transition moment, not delivery time, so it can't detect
+  this.
+- New pure functions in `util/GeofenceNotificationSelection.kt` (tested in
+  `GeofenceNotificationSelectionTest.kt`, 172 tests total / 0 failures):
+  `reconcileDwellingOnUnregister(dwellingPlaceIds, idsToRemove, activeNotificationPlaceId)` — purges
+  removed ids from dwelling state, flags whether the currently-shown notification (if any) needs
+  cancelling; `isNotificationStale(currentLat/Lon, accuracyMeters, poiLat/Lon, radiusMeters)` —
+  radius + accuracy-buffer distance check.
+- `GeofenceStateRepository` gains `activeNotificationPlaceId` (nullable `stringPreferencesKey`):
+  which favorite the single outstanding notification is for, so a favorites-change can tell
+  whether it needs to cancel that specific notification.
+- `GeofenceSyncManager.register()`: on each successful `removeGeofences()`, calls
+  `reconcileDwellingState()` (new private helper) to purge + cancel-if-affected. No re-ranking is
+  attempted here — no location fix available outside a geofence transition, so a still-dwelling
+  favorite's notification is left alone for the next real transition to correct. `removeAll()` also
+  clears `activeNotificationPlaceId` now, alongside the state it already cleared.
+- `GeofenceBroadcastReceiver.refreshNotification()`: before showing a DWELL notification, checks
+  `LocationHelper.lastKnownLocation()` (synchronous, cached — already used elsewhere in this
+  codebase, no risk to `goAsync()`'s ~10s budget the way a fresh GPS fix would be) against the
+  target favorite via `isNotificationStale`; suppresses (cancels) instead of showing if stale. No
+  cached location → fails open (shows it) rather than silently dropping a legitimate notification.
+  `showNotification`/`cancelNotification` helpers now wrap `GeofenceNotifications.show`/`cancel`
+  to keep `activeNotificationPlaceId` in sync at every call site (`refreshNotification`,
+  `handleCheckIn`, `ACTION_DISMISS`).
+- `assembleDebug`/`testDebugUnitTest`: both clean, no new warnings.
+- Not verified on device: the actual DWELL/EXIT timing and delivery-latency behavior this targets
+  is inherently a real-device/real-Play-Services thing — needs confirmation on Robert's phone that
+  (a) un-favoriting mid-dwell no longer resurfaces a notification for that place, and (b) a
+  deliberately-delayed DWELL (e.g. airplane-mode trick) gets suppressed rather than shown.
+
 ## 2026-08-01 — Issue #40: update user location more frequently
 
 - Issue was a stub (title + two-sentence body) — full design worked out via a `/grill-me` session
@@ -529,82 +576,4 @@
 - Not verified on device: the chip row's floated-over-map placement, the fill/outline selected-
   state contrast in both light and dark theme, and the hide-while-search-suggestions-show
   behavior are all new Compose wiring — needs a real run on Robert's phone.
-
-## 2026-07-29 — POI marker redesign: category icons on themed circles
-
-- No GitHub issue; user asked directly for this after a full /grill-me session covering every
-  branch of the design (color-vs-icon, layer badging, basemap theming, icon set, marker size,
-  bitmap generation strategy, cluster styling, stroke contrast, UI scope, fallback icon, position
-  dot) before any code was touched.
-- Biggest decision: category color is dropped from the map entirely — `categoryColor()` (11
-  hand-tuned hues) stays in `ui/common/CategoryUi.kt` for other UI (untouched, out of scope per
-  explicit decision) but no longer drives the Explore map's POI markers. A Material icon is now
-  the sole category signal; the circle itself is purely theme-driven (dark circle in dark theme,
-  light circle in light theme).
-- New `ui/explore/MarkerIcons.kt`: `CATEGORY_ICONS` maps all 11 categories + `UNKNOWN_CATEGORY`
-  fallback (`Icons.Filled.Place`) to a `material-icons-extended` `ImageVector` (already a
-  dependency, no new library). `rememberMarkerBitmaps(darkTheme)` rasterizes each into a real
-  `android.graphics.Bitmap` at runtime via `rememberVectorPainter` + `CanvasDrawScope` (circle
-  fill, opposite-color stroke, centered tinted icon) — chosen over checking in ~22 static PNG/
-  vector assets so colors/sizing stay driven by code constants, not hand-maintained files.
-  Marker diameter deliberately kept at the old CircleLayer's 24px (12px radius) rather than
-  growing it for icon legibility — explicit tradeoff accepted during the interview; some icons
-  (Museum, Interests, Handyman) may read as a blob at that size and could need swapping once seen
-  on a real device.
-- `ui/explore/MapStyle.kt`: added `POSITRON_STYLE_URL` (CARTO's light counterpart to the existing
-  `dark-matter-gl-style`) and `mapStyleUrl(darkTheme)`; `markerBackgroundColor`/
-  `markerForegroundColor` (fixed hexes, independent of the app's dynamic Material theme, same
-  pattern as the existing `POSITION_DOT_COLOR`); `categoryIconExpression()` (new `icon-image`
-  match expression, mirrors the existing `categoryColorExpression()` still used by
-  `PlaceMiniMap.kt`'s Home-carousel mini map — deliberately not touched, out of scope, it's a
-  different map with no "layers" toggle).
-- `PoiMap.kt`: `poiCircleLayer()` replaced by `poiSymbolLayer()` (`iconImage` instead of
-  `circleColor`). `isSystemInDarkTheme()` read once per composable body and captured by the
-  `DisposableEffect(mapView)` closure that builds the style — since `ExploreMapHolder` already
-  retains the `MapView`/style across Home<->Explore tab switches for the life of the Activity,
-  this reads the theme even less often than the interview's "only re-theme on next screen entry"
-  answer, not more; a live system-theme flip mid-session is a no-op until the Activity recreates,
-  matching the decision not to rebuild sources/layers on the fly. Favorites/Want to go/All POIs
-  layers deliberately get no marker distinction beyond filtering, matching today's behavior
-  exactly (explicit decision, not an oversight). Cluster circles (`clusterCircleLayer`,
-  `clusterCountLayer`) switched from `MaterialTheme.colorScheme.secondary` to the same themed
-  background/foreground pair as individual markers, and their stroke/text color now also flips
-  opposite the fill — extending the individual-marker contrast fix to clusters for consistency,
-  not separately asked about in the interview but a direct consequence of the same problem
-  (white-on-white text on a light basemap) already solved there. "You are here" position dot
-  (`POSITION_DOT_COLOR`) explicitly left untouched per the interview, even though it's no longer
-  guaranteed to contrast against the now-optional light basemap.
-- Tests: 147 total, 0 failures (`testDebugUnitTest`) — notably the ~28 Robolectric
-  `UnsatisfiedLinkError` failures documented as pre-existing since #10/#13/#15/#23 and reconfirmed
-  through #33 are gone in this environment; not investigated further since nothing in this change
-  touches DAO/Robolectric setup, and it reads as an environment fix rather than a regression risk.
-  `compileDebugKotlin` and `assembleDebug` both clean.
-- Not verified on device: this is the first real exercise of a light MapLibre style in the app
-  (previously always dark-matter) and of runtime `style.addImage()`/`SymbolLayer` icons (previously
-  only `CircleLayer`s existed) — needs a real run in both system light and dark mode to confirm
-  icon legibility at the kept-small marker size, the Positron basemap's look, and that cluster
-  circles read correctly against it.
-- Follow-up, same day: bumped `MARKER_DIAMETER` 24dp → 30dp (25% larger, icon scales with it via
-  the existing `ICON_SCALE` fraction) per direct user feedback that icons were too small. Swapped
-  `playground`'s icon from `Icons.Filled.Toys` to `Icons.Filled.ChildCare` — checked the actual
-  `material-icons-extended` AAR's `classes.jar` first (no literal "Playground" icon exists in that
-  library; only `ChildCare`/`ChildFriendly`/`Toys` matched "child"-ish names), confirming
-  `ChildCare` compiles before committing rather than guessing at a class name.
-- Follow-up: extended the same icon-in-circle treatment to `PlaceMiniMap.kt`'s `SuggestionsMiniMap`
-  (the embedded map inside Home's swipe-deck `SuggestionCard`), which still had the old
-  `CircleLayer` + `categoryColorExpression()`. Now shares `mapStyleUrl`/`categoryIconExpression`/
-  `rememberMarkerBitmaps` with the Explore map. `categoryColorExpression()` had no remaining
-  callers afterward, so it and its now-unused imports were deleted from `MapStyle.kt`. Explicit
-  scope decision (asked, not assumed): the small `CategoryDot` swatch next to the category label
-  stays a plain color dot — it's shared with `PlaceDetailSheet.kt`, which this redesign still
-  doesn't touch.
-- Bug fix, same follow-up: the Suggestion Card's markers rendered 1.5x larger than Explore's.
-  `poiSymbolLayer()`'s `iconSize` carried over the old dot-radius logic's selected/unselected
-  scale (14/9 ratio), but `SuggestionsMiniMap`'s only caller always passes a single POI with
-  `selectedPoiId == that POI's own id` — every marker there was therefore always "selected" and
-  always scaled up. Removed the size-by-selection expression entirely so both maps render icons
-  at the same 1x size; `POI_ICON_SELECTED_SCALE` deleted as now-unused.
-- No device verification on any of these three follow-ups beyond `compileDebugKotlin`/
-  `testDebugUnitTest`/`assembleDebug` staying clean after each — the user is iterating from
-  on-device screenshots between requests, not this agent.
 
