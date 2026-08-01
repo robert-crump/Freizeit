@@ -14,6 +14,10 @@ fun categoryOrderIndex(category: String): Int {
     return if (index >= 0) index else CATEGORY_ORDER.size
 }
 
+/** The map's chip row shows only this curated subset (issue: decluttering) — search still
+ * covers every category regardless, this only trims what's offered as a one-tap filter. */
+val PRIMARY_MAP_CATEGORIES = listOf("cafe", "ice_cream", "park", "playground")
+
 fun categoryDisplayName(category: String): String =
     category.replace('_', ' ')
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }

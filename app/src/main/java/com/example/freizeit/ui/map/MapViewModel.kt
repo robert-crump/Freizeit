@@ -17,7 +17,7 @@ import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.repository.LocationRepository
-import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.common.PRIMARY_MAP_CATEGORIES
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +58,15 @@ private fun wordStartIndices(text: String): List<Int> =
  * "Our Hidden Gem" (anchored at "Hidden"), but "len" does NOT match "Bottleneck" even though it
  * contains the substring "len" mid-word. A plain `.contains()` would wrongly match the latter.
  */
+/** Categories offered in the map's chip row: [PRIMARY_MAP_CATEGORIES] restricted to whichever
+ * of those actually have a POI nearby, in that fixed curated order — not every category present
+ * in [pois], and not alphabetical. Search (see [matchesSearch]) still covers every category;
+ * this only trims what's offered as a one-tap filter. */
+fun visibleCategories(pois: List<Poi>): List<String> {
+    val present = pois.mapTo(HashSet()) { it.category }
+    return PRIMARY_MAP_CATEGORIES.filter { it in present }
+}
+
 private fun matchesSearch(name: String, query: String): Boolean {
     val trimmedQuery = query.trim()
     if (trimmedQuery.isEmpty()) return false
@@ -177,7 +186,7 @@ class MapViewModel(
     ) { poisVerdictsNames, layer, loc, query ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
         val (active, favOnly, wantToGo) = layer
-        val categories = pois.map { it.category }.distinct().sortedBy { categoryDisplayName(it) }
+        val categories = visibleCategories(pois)
         val verdictIds = when {
             favOnly -> verdictMap.values.filter { it.value == Verdict.VALUE_FAVORITE }.map { it.placeId }.toSet()
             wantToGo -> verdictMap.values.filter { it.value == Verdict.VALUE_WANT_TO_GO }.map { it.placeId }.toSet()
