@@ -12,6 +12,7 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
 import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.GeofenceCandidate
+import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.LocationHelper
 import com.example.freizeit.util.closestEligibleFavorite
 import com.example.freizeit.util.isCoolingDown
@@ -63,6 +64,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             else -> return
         }
         geofenceState.setDwellingPlaceIds(dwellingIds)
+        GeofenceEventLog.append(
+            app,
+            "transition=${if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_DWELL) "DWELL" else "EXIT"} " +
+                "triggered=$triggeringPlaceIds dwelling=$dwellingIds"
+        )
 
         val triggerLocation = event.triggeringLocation ?: return
         refreshNotification(app, dwellingIds, triggerLocation.latitude, triggerLocation.longitude)
@@ -98,6 +104,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .toSet()
 
         val closest = closestEligibleFavorite(candidates, coolingDown, triggerLat, triggerLon)
+        GeofenceEventLog.append(
+            app,
+            "closestEligibleFavorite candidates=${candidates.map { it.placeId }} coolingDown=$coolingDown " +
+                "-> ${closest?.placeId ?: "none"}"
+        )
         if (closest == null) {
             cancelNotification(app)
             return
@@ -107,8 +118,11 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         // Play Services can deliver a DWELL broadcast well after the fact under Doze/standby
         // batching (issue #42) — by the time it arrives the device may already be elsewhere, so
         // a current location fix that disagrees with the report wins over trusting the event.
-        val currentLocation = LocationHelper.lastKnownLocation(app)
-        if (currentLocation != null &&
+        // Prefer an actively-requested fresh fix over the passive last-known cache (issue #43):
+        // right after an indoor visit the cache can be stale/inaccurate enough to wrongly reject
+        // a valid check-in. Fall back to the cache if no fresh fix arrives in time.
+        val currentLocation = LocationHelper.freshLocation(app) ?: LocationHelper.lastKnownLocation(app)
+        val stale = currentLocation != null &&
             isNotificationStale(
                 currentLat = currentLocation.lat,
                 currentLon = currentLocation.lon,
@@ -117,7 +131,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 poiLon = poi.lon,
                 radiusMeters = CHECKIN_FAVORITE_RADIUS_METERS
             )
-        ) {
+        GeofenceEventLog.append(app, "staleness poi=${poi.id} currentLocation=$currentLocation stale=$stale")
+        if (stale) {
             cancelNotification(app)
             return
         }
