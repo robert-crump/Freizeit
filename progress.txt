@@ -1,5 +1,51 @@
 # Freizeit v2 progress log
 
+## 2026-08-02 — Issue #44: Check-in history date-bucketed sections
+
+- Spec was fully resolved via `/grill-me` before this pickup (bucket priority order, calendar-
+  based vs rolling windows, locale week start, sticky inert headers, per-row timestamp format by
+  section, empty-bucket hiding) — posted to #44, implemented directly from it with no further
+  clarification needed.
+- New pure function `bucketVisits` (`util/CheckInHistoryBuckets.kt`): groups a `List<Visit>` into
+  `VisitSection(label, visits)` buckets — Today, This week, Last week, This month, Last month,
+  then one "March 2026"-style bucket per older month — using `WeekFields.of(locale)` for the week
+  start rather than a rolling 7-day window, so results genuinely change with device locale (US
+  Sunday-start vs. UK/DE Monday-start). Relies on `visits` already being sorted newest-first (as
+  `VisitDao.observeAll()` returns it) and on the bucket windows being non-overlapping,
+  chronologically decreasing intervals: grouping in encounter order via a `LinkedHashMap` yields
+  correctly-prioritized, already-deduped section order for free, no separate sort/priority-list
+  step needed. Year rollover (a December visit bucketed while "now" is January) falls out of
+  plain `LocalDate` month arithmetic (`minusMonths`, `YearMonth.from`) rather than needing
+  special-cased logic — verified with a dedicated test rather than assumed.
+- Per-row timestamp reformatted now that headers carry the date (`util/DateTimeFormat.kt`): new
+  `formatVisitTimeOnly` (time only, e.g. "3:45 PM", for the Today section) and
+  `formatVisitWeekdayAndTime` ("Tue, 3:45 PM", every other section) sit alongside the existing
+  `formatVisitTimestamp` (full medium date+time) rather than replacing it — that one's still used
+  by `CheckInDateTimeFlow.kt`'s confirmation screen, out of this issue's scope.
+- `CheckInScreen.kt`: `LazyColumn`'s flat `items(state.visits)` replaced with a `sections.forEach`
+  loop emitting one `stickyHeader` (new `SectionHeader` composable — inert `Surface`+`Text`, no
+  click handling) per bucket followed by that bucket's `items(section.visits)`. `stickyHeader` is
+  a direct `LazyListScope` member (not an extension needing its own import, unlike `items`) —
+  initially imported it as one anyway and hit an "Unresolved reference" compile error before
+  catching the mistake. `VisitRow` now takes the pre-formatted `timestampText` as a param instead
+  of formatting `visit.visitedAt` itself, so the Composable doesn't need to know which section
+  it's in beyond what the caller already decided. Headers are naturally invisible to
+  `CheckInHistoryViewModel`'s existing select/delete/undo logic since that only ever operates on
+  `Visit.id` values coming from `items`, never from the sections list — no ViewModel changes
+  needed, as the issue predicted.
+- Tests: new `CheckInHistoryBucketsTest.kt` (13 cases) covering today-vs-this-week priority, week/
+  month boundaries, the week-start locale-variation case explicitly (same visit date buckets as
+  "Last week" under `Locale.UK` but "This week" under `Locale.US`), locale-formatted month-year
+  labels (`Locale.GERMANY` → "Mai 2026"), both year-rollover shapes (a December visit reads "Last
+  month" in early January; a November visit two months back keeps "November 2026", not
+  "November 2027"), empty-bucket omission, and section-order-follows-priority given already-
+  sorted-desc input. 321 total tests, 0 failures. `compileDebugKotlin`/
+  `compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
+- Not verified on device: sticky-header pinning behavior and the header's opaque background
+  actually occluding rows scrolling underneath it are Compose layout behavior no unit test
+  exercises — worth a real scroll-through on Robert's phone, along with a visual check that the
+  section header's `labelLarge`/`onSurfaceVariant` styling reads clearly against the list.
+
 ## 2026-08-01 — Suggestion card polish, map zoom/search styling, check-in fixes
 
 - No GitHub issue; user described four areas of UI polish directly, worked out via a full
@@ -557,56 +603,4 @@
   committed search or duplicate location-refresh calls).
 - Issue #35 still left open per its own note (rest of its scope was always destined for #37);
   closing #37 itself since this session completes its full checklist.
-
-## 2026-07-30 — Issue #35 (partial): rename Explore -> Map; fix search substring false-positive
-
-- Full /grill-me session held first (every branch of the redesign resolved with the user,
-  decisions posted to #35 as a comment before any code was touched). Mid-implementation the
-  user asked to stop after finishing only what was already started and file the rest as
-  follow-up issues, so this session lands just the rename + a standalone search bug fix; the
-  actual full-screen search overlay/oval redesign is split out to #37, which carries the full
-  grill-me decision spec forward.
-- Renamed `Explore` -> `Map` across code, not just the nav label (explicit grill-me decision):
-  `ui/explore` package -> `ui/map` (`git mv`, all 7 main files + `FilterAndSortTest.kt`),
-  `ExploreScreen`/`ExploreViewModel`/`ExploreUiState`/`ExploreMapHolder` -> `MapScreen`/
-  `MapViewModel`/`MapUiState`/`MapViewHolder`, `FreizeitDestination.EXPLORE` -> `.MAP` (route
-  `"explore"` -> `"map"`), every `explore_*` string resource -> `map_*` (wording unchanged),
-  `tab_explore` ("Explore") -> `tab_map` ("Map"), plus comments in `PoiMap.kt`/`PlaceMiniMap.kt`/
-  `MarkerIcons.kt`/`HomeViewModel.kt`/`CheckInScreen.kt`/`CheckInViewModel.kt`/`VerdictDao.kt`
-  that referenced the old names.
-- Bug fix found during the grill-me session itself: `filterAndSort`'s search matched via a plain
-  `name.contains(query, ignoreCase = true)`, so a query like "Len" would wrongly match a POI
-  named "Bottleneck" (the substring "len" sits mid-word, bott-LEN-eck). New `matchesSearch()` in
-  `MapViewModel.kt` anchors the match at word boundaries instead — `wordStartIndices()` finds
-  every letter/digit run's start, then checks whether the query is a case-insensitive prefix of
-  the name starting from any of those points. This still matches "Len" or "Caf" against "Leni's
-  Café" (first/second word) and "hidden gem" against "Our Hidden Gem" (anchored at "Hidden"),
-  but no longer matches "len" against "Bottleneck". `filterAndSort`'s public signature is
-  unchanged (still takes `searchQuery: String?`), so no caller needed updating.
-- Deliberately did NOT change `ExploreViewModel`'s (now `MapViewModel`'s) live per-keystroke
-  `setSearchQuery`/debounced-search/suggestion-dropdown behavior in this session — that whole
-  interaction model is being replaced by the full-screen search overlay from #35's grill-me
-  decisions (committed-vs-live search state, `focusTarget` hoisting to share with the overlay,
-  removing the old dropdown), which is explicitly out of scope for this session per the user's
-  "finish what you started, file the rest as follow-ups" instruction. An earlier draft of
-  `MapViewModel.kt` in this session had already added that committed-search/`focusTarget`
-  plumbing ahead of the overlay that would consume it; reverted back to the original
-  live-search/debounce shape (renamed only) so this commit stays a clean, self-contained rename
-  + bug fix with no half-built API surface. #37 has the full remaining implementation checklist.
-- `FilterAndSortTest.kt`: renamed the old substring test to describe word-boundary-prefix
-  matching (query "HAR"->"CHAR" against "Charlie"), and added two new cases: a "Bottleneck"
-  POI confirming "len" no longer matches it, and a "Leni's Café" POI confirming both "Len" and
-  "Caf" match it (first and second word). `FreizeitDestinationTest.kt`'s route list updated
-  `"explore"` -> `"map"`.
-- Tests: 146 total (was 144), 0 failures — the +2 nets out `FilterAndSortTest`'s 13 -> 15 cases
-  (rename + 2 new); confirmed via its own XML report (15/15 pass) and `FreizeitDestinationTest`'s
-  (3/3 pass). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no
-  new warnings (the pre-existing `FlowPreview` opt-in warning on the `searchQuery.debounce(...)`
-  call is unchanged, now at `MapViewModel.kt`'s new location).
-- Not verified on device: the rename touches every string resource and file path involved in the
-  Map tab, so it's worth a quick sanity check that the tab still renders "Map" and the map/
-  search/layers panel all still work identically to before — purely mechanical rename risk, not
-  new Compose wiring, but not yet eyeballed on Robert's phone.
-- Issue #35 left open (not closed): most of its scope (the actual visual/interaction redesign)
-  is deferred to #37.
 
