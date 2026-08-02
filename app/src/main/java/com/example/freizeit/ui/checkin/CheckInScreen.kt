@@ -47,7 +47,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Visit
-import com.example.freizeit.util.formatVisitTimestamp
+import com.example.freizeit.util.bucketVisits
+import com.example.freizeit.util.formatVisitTimeOnly
+import com.example.freizeit.util.formatVisitWeekdayAndTime
 
 /**
  * Check-in tab root: the check-in history list, with a "+" FAB that opens [CheckInSearchScreen]
@@ -57,6 +59,7 @@ import com.example.freizeit.util.formatVisitTimestamp
  * search on confirm — [CheckInHistoryViewModel]'s own selection/delete/undo stays local to this
  * route, unrelated to check-in creation.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CheckInScreen(
     onOpenSearch: () -> Unit,
@@ -66,6 +69,7 @@ fun CheckInScreen(
     viewModel: CheckInHistoryViewModel = viewModel(factory = CheckInHistoryViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val sections = remember(state.visits) { bucketVisits(state.visits) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     val deleteSnackbarHostState = remember { SnackbarHostState() }
     val undoMessage = if (state.undoableDeleteCount > 0) {
@@ -140,14 +144,24 @@ fun CheckInScreen(
                     )
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(state.visits, key = { it.id }) { visit ->
-                            VisitRow(
-                                visit = visit,
-                                isSelecting = state.isSelecting,
-                                isSelected = visit.id in state.selectedIds,
-                                onLongPress = { viewModel.startSelecting(visit.id) },
-                                onClick = { if (state.isSelecting) viewModel.toggleSelected(visit.id) }
-                            )
+                        sections.forEach { section ->
+                            stickyHeader(key = section.label) {
+                                SectionHeader(section.label)
+                            }
+                            items(section.visits, key = { it.id }) { visit ->
+                                VisitRow(
+                                    visit = visit,
+                                    timestampText = if (section.label == "Today") {
+                                        formatVisitTimeOnly(visit.visitedAt)
+                                    } else {
+                                        formatVisitWeekdayAndTime(visit.visitedAt)
+                                    },
+                                    isSelecting = state.isSelecting,
+                                    isSelected = visit.id in state.selectedIds,
+                                    onLongPress = { viewModel.startSelecting(visit.id) },
+                                    onClick = { if (state.isSelecting) viewModel.toggleSelected(visit.id) }
+                                )
+                            }
                         }
                     }
                 }
@@ -227,10 +241,25 @@ private fun SelectionTopBar(
     }
 }
 
+/** Inert, sticky section label ("Today", "This week", ...) — not part of multi-select, since
+ *  the [LazyColumn]'s `items` blocks only ever see [Visit]s, never headers. */
+@Composable
+private fun SectionHeader(label: String, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VisitRow(
     visit: Visit,
+    timestampText: String,
     isSelecting: Boolean,
     isSelected: Boolean,
     onLongPress: () -> Unit,
@@ -258,7 +287,7 @@ private fun VisitRow(
             )
         }
         Text(
-            text = formatVisitTimestamp(visit.visitedAt),
+            text = timestampText,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
