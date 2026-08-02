@@ -57,7 +57,11 @@ fun DurationBadge(
         bikeMinutes < GRAY_MIN_MINUTES -> DurationYellowFont to DurationYellowBackground
         else -> DurationGrayFont to DurationGrayBackground
     }
-    Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = horizontalAlignment
+    ) {
         DurationChip(Icons.AutoMirrored.Filled.DirectionsBike, bikeMinutes, bikeFont, bikeBackground)
         if (bikeMinutes >= GRAY_MIN_MINUTES) {
             // Same gray band as the bike chip above it — car is the fallback for an

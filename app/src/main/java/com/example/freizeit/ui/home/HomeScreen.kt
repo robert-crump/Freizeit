@@ -41,6 +41,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -159,7 +160,11 @@ fun HomeScreen(
 }
 
 /** Drag distance (in dp) past which a horizontal drag counts as a swipe. */
-private const val SWIPE_THRESHOLD_DP = 96
+private const val SWIPE_THRESHOLD_DP = 160
+
+/** Fraction of the horizontal drag distance mirrored as a downward drift, so a dragged card
+ *  visibly arcs rather than sliding on a straight horizontal rail. */
+private const val DRAG_VERTICAL_DRIFT_FACTOR = 0.15f
 
 /** Duration of the departing card's fade-out, run to completion before the next/previous card
  *  starts fading in — sequential, not a crossfade, so only one card is ever visible at a time. */
@@ -230,6 +235,14 @@ private fun SwipeableSuggestionCard(
     val card = deck[localIndex.mod(deck.size)]
     val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
     val previousCard = if (deck.size <= 1) null else deck[(localIndex - 1).mod(deck.size)]
+    // detectHorizontalDragGestures below runs as one long-lived coroutine (keyed on Unit, so it's
+    // never relaunched) rather than being re-invoked each recomposition, so a plain `val` read
+    // inside it would freeze at whatever nextCard/previousCard were on the composition that
+    // happened to be running when the coroutine last started listening for gestures — stale
+    // enough that a fast second swipe could resolve against pre-first-swipe neighbors and land on
+    // the card just departed. rememberUpdatedState keeps the read live.
+    val currentNextCard by rememberUpdatedState(nextCard)
+    val currentPreviousCard by rememberUpdatedState(previousCard)
     var displayedId by remember { mutableStateOf(card.poi.id) }
     // All three roles must come from this one loop (one call site) rather than the current card
     // being rendered from a separate key() elsewhere: Compose only preserves a composable's
@@ -277,7 +290,7 @@ private fun SwipeableSuggestionCard(
                 detectHorizontalDragGestures(
                     onDragEnd = {
                         val direction = sign(dragOffsetPx.value).toInt()
-                        val target = if (direction < 0) previousCard else nextCard
+                        val target = if (direction < 0) currentPreviousCard else currentNextCard
                         if (target != null && isPastSwipeThreshold(dragOffsetPx.value, thresholdPx)) {
                             commitTo(target, direction) { localIndex += direction }
                         } else {
@@ -326,6 +339,7 @@ private fun SwipeableSuggestionCard(
                             .zIndex(1f)
                             .graphicsLayer {
                                 translationX = dragOffsetPx.value + enterOffsetPx.value
+                                translationY = abs(dragOffsetPx.value) * DRAG_VERTICAL_DRIFT_FACTOR
                                 alpha = cardAlpha.value
                             }
                     } else {
@@ -389,6 +403,10 @@ private fun WeatherStrip(weather: WeatherSnapshot?, modifier: Modifier = Modifie
     }
 }
 
+/** Gap between the POI name and the duration badge below it — tighter than the 12dp rhythm used
+ *  between the card's other, less related sections. */
+private const val NAME_TO_DURATION_GAP_DP = 4
+
 /** How far to nudge the heart glyph up inside its 48dp touch target to align with the name's top. */
 private const val HEART_ICON_TOP_NUDGE_DP = 10
 
@@ -422,38 +440,42 @@ private fun SuggestionCard(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = poi.displayName(customName),
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.weight(1f)
-                )
-                val isFavorite = suggestion.verdictValue == Verdict.VALUE_FAVORITE
-                IconButton(
-                    onClick = onRemoveVerdict,
-                    // Nudging the glyph itself (rather than the whole button) pushed it past the
-                    // edge of IconButton's own clipped state-layer, silently cropping it. Offsetting
-                    // the button instead carries that clip bounds along with it, so the glyph
-                    // reads as flush with the name's top edge / the card's content edge while
-                    // staying fully inside its own hit/clip region.
-                    modifier = Modifier.offset(x = HEART_ICON_END_NUDGE_DP.dp, y = -HEART_ICON_TOP_NUDGE_DP.dp)
+            // Grouped in their own Column so the name-to-duration gap can be set tighter than
+            // the 12dp rhythm the outer Column uses between its other, less related, children.
+            Column(verticalArrangement = Arrangement.spacedBy(NAME_TO_DURATION_GAP_DP.dp)) {
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.Bookmark,
-                        contentDescription = stringResource(
-                            if (isFavorite) R.string.home_unfavorite else R.string.home_remove_want_to_go
-                        ),
-                        tint = if (isFavorite) FavoriteRed else WantToGoBlue
+                    Text(
+                        text = poi.displayName(customName),
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.weight(1f)
                     )
+                    val isFavorite = suggestion.verdictValue == Verdict.VALUE_FAVORITE
+                    IconButton(
+                        onClick = onRemoveVerdict,
+                        // Nudging the glyph itself (rather than the whole button) pushed it past the
+                        // edge of IconButton's own clipped state-layer, silently cropping it. Offsetting
+                        // the button instead carries that clip bounds along with it, so the glyph
+                        // reads as flush with the name's top edge / the card's content edge while
+                        // staying fully inside its own hit/clip region.
+                        modifier = Modifier.offset(x = HEART_ICON_END_NUDGE_DP.dp, y = -HEART_ICON_TOP_NUDGE_DP.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Filled.Bookmark,
+                            contentDescription = stringResource(
+                                if (isFavorite) R.string.home_unfavorite else R.string.home_remove_want_to_go
+                            ),
+                            tint = if (isFavorite) FavoriteRed else WantToGoBlue
+                        )
+                    }
                 }
-            }
 
-            suggestion.distanceMeters?.let { distanceMeters ->
-                DurationBadge(distanceMeters)
+                suggestion.distanceMeters?.let { distanceMeters ->
+                    DurationBadge(distanceMeters)
+                }
             }
 
             SuggestionsMiniMap(
