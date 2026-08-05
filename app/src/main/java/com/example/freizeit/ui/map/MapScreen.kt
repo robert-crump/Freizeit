@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Layers
@@ -73,6 +74,8 @@ fun MapScreen(
     val selectedPoiLastVisit by viewModel.selectedPoiLastVisit.collectAsStateWithLifecycle()
     val focusTarget by viewModel.focusTarget.collectAsStateWithLifecycle()
     val focusRequest by viewModel.focusRequest.collectAsStateWithLifecycle()
+    val addPoiStep by viewModel.addPoiStep.collectAsStateWithLifecycle()
+    val addPoiCenter by viewModel.addPoiCenter.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -119,26 +122,39 @@ fun MapScreen(
     BackHandler(enabled = showLayersPanel) { showLayersPanel = false }
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (state.pois.isEmpty() && state.allPois.isEmpty()) {
-            Text(
-                text = stringResource(R.string.map_empty),
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(24.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        // Always mounted (issue #45): the "Add place" FAB needs a live map to pin-drop against
+        // even before any POI data exists, so the map can no longer be swapped out entirely for
+        // the "no places" text the way it used to be — that text now floats on top instead.
+        PoiMap(
+            pois = state.pois,
+            location = state.location,
+            onPoiClick = viewModel::selectPoi,
+            customNames = state.customNames,
+            recenterRequest = recenterRequest,
+            focusTarget = focusTarget,
+            focusRequest = focusRequest,
+            addPoiActive = addPoiStep == AddPoiStep.PLACING_PIN,
+            onCameraIdle = viewModel::updateAddPoiCenter,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (addPoiStep == AddPoiStep.PLACING_PIN) {
+            AddPoiPinOverlay(
+                onCancel = viewModel::cancelAddPoi,
+                onUseLocation = viewModel::confirmAddPoiLocation,
+                useLocationEnabled = addPoiCenter != null
             )
         } else {
-            PoiMap(
-                pois = state.pois,
-                location = state.location,
-                onPoiClick = viewModel::selectPoi,
-                customNames = state.customNames,
-                recenterRequest = recenterRequest,
-                focusTarget = focusTarget,
-                focusRequest = focusRequest,
-                modifier = Modifier.fillMaxSize()
-            )
+            if (state.pois.isEmpty() && state.allPois.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.map_empty),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Column(modifier = Modifier.align(Alignment.TopCenter)) {
                 SearchOval(
                     committedQuery = state.committedSearchQuery,
@@ -169,16 +185,31 @@ fun MapScreen(
                 ) {
                     Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
                 }
+                FloatingActionButton(onClick = { viewModel.startAddPoi() }) {
+                    Icon(Icons.Filled.AddLocationAlt, contentDescription = stringResource(R.string.map_add_poi_button))
+                }
+            }
+
+            if (showLayersPanel) {
+                LayersPanel(
+                    favoritesOnly = state.favoritesOnly,
+                    wantToGoOnly = state.wantToGoOnly,
+                    onSelectFavorites = { viewModel.toggleFavoritesOnly() },
+                    onSelectWantToGo = { viewModel.toggleWantToGoOnly() },
+                    onDismiss = { showLayersPanel = false }
+                )
             }
         }
+    }
 
-        if (showLayersPanel) {
-            LayersPanel(
-                favoritesOnly = state.favoritesOnly,
-                wantToGoOnly = state.wantToGoOnly,
-                onSelectFavorites = { viewModel.toggleFavoritesOnly() },
-                onSelectWantToGo = { viewModel.toggleWantToGoOnly() },
-                onDismiss = { showLayersPanel = false }
+    if (addPoiStep == AddPoiStep.FORM) {
+        val center = addPoiCenter
+        if (center != null) {
+            AddPoiForm(
+                centerLatLon = center,
+                findNearbyDuplicate = viewModel::findNearbyDuplicate,
+                onDismiss = viewModel::cancelAddPoi,
+                onSave = viewModel::saveCustomPoi
             )
         }
     }

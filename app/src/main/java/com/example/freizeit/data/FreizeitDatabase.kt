@@ -6,11 +6,13 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.ImportInfoDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
+import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.PoiCustomName
@@ -20,9 +22,9 @@ import com.example.freizeit.data.entity.Visit
 @Database(
     entities = [
         Poi::class, Verdict::class, ImportInfo::class, PoiCustomName::class,
-        Visit::class
+        Visit::class, CustomPoi::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class FreizeitDatabase : RoomDatabase() {
@@ -32,6 +34,7 @@ abstract class FreizeitDatabase : RoomDatabase() {
     abstract fun importInfoDao(): ImportInfoDao
     abstract fun poiCustomNameDao(): PoiCustomNameDao
     abstract fun visitDao(): VisitDao
+    abstract fun customPoiDao(): CustomPoiDao
 
     companion object {
         /** Adds pending_visit (issue #6); poi/verdict/import_info data on real devices is untouched. */
@@ -120,6 +123,31 @@ abstract class FreizeitDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds custom_poi (issue #45), user-added places from the Map screen's pin-drop flow;
+         *  existing tables — including poi, which a `.pbf` reimport still owns exclusively — are
+         *  untouched. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `custom_poi` (
+                        `id` TEXT NOT NULL,
+                        `category` TEXT NOT NULL,
+                        `lat` REAL NOT NULL,
+                        `lon` REAL NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `openingHours` TEXT,
+                        `street` TEXT,
+                        `housenumber` TEXT,
+                        `postcode` TEXT,
+                        `city` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun build(context: Context): FreizeitDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
@@ -127,7 +155,8 @@ abstract class FreizeitDatabase : RoomDatabase() {
                 "freizeit.db"
             )
                 .addMigrations(
-                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
+                    MIGRATION_6_7
                 )
                 .build()
     }
