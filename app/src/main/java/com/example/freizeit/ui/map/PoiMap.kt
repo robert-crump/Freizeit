@@ -81,6 +81,11 @@ fun PoiMap(
     recenterRequest: Int = 0,
     focusTarget: LatLon? = null,
     focusRequest: Int = 0,
+    // Add-custom-POI pin-drop (#45): while true, every camera settle reports the new center via
+    // onCameraIdle, so a fixed crosshair drawn over this map (by the caller) tracks where a save
+    // would land without the map itself knowing anything about the add-POI flow.
+    addPoiActive: Boolean = false,
+    onCameraIdle: (LatLon) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -94,6 +99,7 @@ fun PoiMap(
 
     val (mapView, state) = remember(context) { MapViewHolder.obtain(context) }
     state.onPoiClick = onPoiClick
+    state.onCameraIdle = onCameraIdle
 
     DisposableEffect(mapView) {
         if (!MapViewHolder.configured) {
@@ -137,10 +143,26 @@ fun PoiMap(
                 map.addOnMapClickListener { latLng ->
                     handleMapClick(state, map, latLng)
                 }
-                map.addOnCameraIdleListener { applyLocation(state, state.renderedLocation) }
+                map.addOnCameraIdleListener {
+                    applyLocation(state, state.renderedLocation)
+                    map.cameraPosition.target?.let { target ->
+                        state.onCameraIdle(LatLon(target.latitude, target.longitude))
+                    }
+                }
             }
         }
         onDispose { }
+    }
+
+    // Reports the map's current center as soon as pin-placement starts, not just on the next
+    // pan — otherwise tapping "Use this location" without panning at all would have no center
+    // to confirm.
+    LaunchedEffect(addPoiActive) {
+        if (addPoiActive) {
+            state.map?.cameraPosition?.target?.let {
+                onCameraIdle(LatLon(it.latitude, it.longitude))
+            }
+        }
     }
 
     // Bumped by the "locate me" FAB; only recenter when it actually changes and a fix is available.
@@ -213,6 +235,7 @@ private class PoiMapState {
     var renderedLocation: LatLon? = null
     var poiById: Map<String, PoiWithDistance> = emptyMap()
     var onPoiClick: (PoiWithDistance) -> Unit = {}
+    var onCameraIdle: (LatLon) -> Unit = {}
 }
 
 /**

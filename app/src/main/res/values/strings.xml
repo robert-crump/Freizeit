@@ -29,6 +29,24 @@
     <string name="map_search_oval_placeholder">Search here</string>
     <string name="map_search_back">Back</string>
     <string name="map_search_no_results">No results found</string>
+    <string name="map_add_poi_button">Add place</string>
+    <!-- Add custom POI (issue #45) -->
+    <string name="add_poi_title">Add place</string>
+    <string name="add_poi_close">Close</string>
+    <string name="add_poi_pin_description">Selected location</string>
+    <string name="add_poi_placing_hint">Pan the map to position the pin</string>
+    <string name="add_poi_use_location">Use this location</string>
+    <string name="add_poi_name_label">Name</string>
+    <string name="add_poi_category_label">Category</string>
+    <string name="add_poi_street_label">Street</string>
+    <string name="add_poi_housenumber_label">House number</string>
+    <string name="add_poi_postcode_label">Postcode</string>
+    <string name="add_poi_city_label">City</string>
+    <string name="add_poi_opening_hours_label">Opening hours</string>
+    <string name="add_poi_save">Save</string>
+    <string name="add_poi_cancel">Cancel</string>
+    <string name="add_poi_proximity_warning">There\'s already a %1$s ~%2$s away — add anyway?</string>
+    <string name="add_poi_proximity_add_anyway">Add anyway</string>
     <!-- Check-in -->
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
     <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>

@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.freizeit.data.BackupParseException
 import com.example.freizeit.data.FreizeitDatabase
+import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.PoiCustomName
 import com.example.freizeit.data.entity.Verdict
 import java.io.File
@@ -66,6 +67,18 @@ class BackupRepositoryTest {
 
     private fun customName(placeId: String, name: String) = PoiCustomName(placeId = placeId, customName = name)
 
+    private fun customPoi(id: String, name: String = "Our Place", category: String = "cafe") = CustomPoi(
+        id = id,
+        category = category,
+        lat = 50.9,
+        lon = 6.9,
+        name = name,
+        street = "Beispielstraße",
+        housenumber = "1",
+        postcode = "52062",
+        city = "Aachen"
+    )
+
     @Test
     fun `round trip preserves verdicts and custom names, including cooldown-relevant fields`() = runTest {
         db.verdictDao().upsert(verdict("node/1", value = Verdict.VALUE_FAVORITE, verdictedAt = 12_345L))
@@ -97,6 +110,34 @@ class BackupRepositoryTest {
     }
 
     @Test
+    fun `round trip preserves custom POIs, including optional address fields`() = runTest {
+        db.customPoiDao().upsert(customPoi("custom/1", "Our Garden"))
+        db.customPoiDao().upsert(customPoi("custom/2", "Secret Playground", category = "playground").copy(street = null))
+
+        val uri = newFileUri()
+        val exported = repository.exportTo(uri)
+        assertEquals(2, exported)
+
+        db.close()
+        db = Room.inMemoryDatabaseBuilder(context, FreizeitDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        repository = BackupRepository(context, db)
+
+        val imported = repository.importFrom(uri)
+        assertEquals(2, imported)
+
+        val customPois = db.customPoiDao().getAll().associateBy { it.id }
+        assertEquals("Our Garden", customPois["custom/1"]?.name)
+        assertEquals("cafe", customPois["custom/1"]?.category)
+        assertEquals("Beispielstraße", customPois["custom/1"]?.street)
+        assertEquals("Aachen", customPois["custom/1"]?.city)
+        assertEquals("Secret Playground", customPois["custom/2"]?.name)
+        assertEquals("playground", customPois["custom/2"]?.category)
+        assertEquals(null, customPois["custom/2"]?.street)
+    }
+
+    @Test
     fun `import replaces existing verdicts and custom names wholesale`() = runTest {
         db.verdictDao().upsert(verdict("node/stale"))
         db.poiCustomNameDao().upsert(customName("node/stale", "Stale"))
@@ -120,6 +161,45 @@ class BackupRepositoryTest {
 
         assertEquals(listOf("node/1"), db.verdictDao().getAll().map { it.placeId })
         assertEquals(listOf("Home"), db.poiCustomNameDao().getAll().map { it.customName })
+    }
+
+    @Test
+    fun `import replaces existing custom POIs wholesale`() = runTest {
+        db.customPoiDao().upsert(customPoi("custom/stale", "Stale"))
+
+        val uri = fileWith(
+            """
+            {
+              "exportedAt": 1,
+              "customPois": [
+                {"id": "custom/1", "category": "cafe", "lat": 50.9, "lon": 6.9, "name": "Fresh"}
+              ]
+            }
+            """.trimIndent()
+        )
+
+        repository.importFrom(uri)
+
+        assertEquals(listOf("Fresh"), db.customPoiDao().getAll().map { it.name })
+    }
+
+    @Test
+    fun `an old backup file without a customPois section imports cleanly`() = runTest {
+        db.customPoiDao().upsert(customPoi("custom/stale", "Stale"))
+
+        val uri = fileWith(
+            """
+            {
+              "exportedAt": 1,
+              "verdicts": [],
+              "customNames": []
+            }
+            """.trimIndent()
+        )
+
+        repository.importFrom(uri)
+
+        assertEquals(0, db.customPoiDao().getAll().size)
     }
 
     @Test

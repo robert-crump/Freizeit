@@ -1,5 +1,81 @@
 # Freizeit v2 progress log
 
+## 2026-08-05 — Issue #45: Manual POI adding — add custom POI via drop-pin
+
+- Picked from five open `ready-for-agent` "Manual POI adding" issues (#45-#49, all children of
+  epic #43): #45 is the only one with no `Blocked by`, and #46/#47/#48 all list `Blocked by: #45`
+  (#49 additionally blocks on #48) — picked as the foundational vertical slice the other four
+  build on, per the issue body's own spec (no `/grill-me` needed, already fully resolved).
+- New `custom_poi` Room table/entity (`data/entity/CustomPoi.kt`) mirroring `Poi`'s fields, added
+  via `MIGRATION_6_7` (version 6→7) — deliberately untouched by `PoiRepository.importFrom`'s
+  markAllMissing→upsertAll→deleteUnverdictedMissing cycle, same rationale as the existing
+  `PoiCustomName` precedent. Unlike `Poi`, `name`/`category` are non-null (required at creation
+  by the form, not the DB). Ids use a new `custom/<uuid>` scheme (`newCustomPoiId()`/
+  `isCustomPoiId()`) — guaranteed never to collide with OSM's `node/`/`way/`/`relation/` ids, and
+  the `custom/` prefix is there specifically so #47's later edit/delete-only-for-custom-POIs check
+  can tell the two apart without a DB round trip.
+- Merge strategy (the key architectural call): `CustomPoi.toPoi()` (`data/entity/CustomPoi.kt`)
+  projects a custom place into the existing `Poi` shape, and `MapViewModel`'s
+  `poisVerdictsAndNames` combine now folds `customPoiDao.observeAll().map { it.toPoi() }` into the
+  same list as `poiDao.observeAll()` before anything downstream ever sees it. Every existing
+  consumer — `filterAndSort`, `PoiMap`'s marker rendering, `visibleCategories`'s chip row, search —
+  needed zero changes as a result: they already operate on `List<Poi>`/`PoiWithDistance` and don't
+  care which table a row came from. `Poi`/`Triple` destructuring became a new private
+  `PoisVerdictsNames` data class purely because a 4th flow (`customPoiDao.observeAll()`) was added
+  to that combine, not for any merge-specific reason. Favoriting a custom POI from the detail sheet
+  already works today as a side effect of this merge (`setVerdict` operates on whatever `Poi` the
+  sheet was given) — issue #48's actual remaining scope is narrower than its title suggests: just
+  `CheckInViewModel`'s geofence matching and `CheckInSearchScreen`'s search, the two consumers that
+  read `poiDao` directly instead of through this merged list.
+- Add-POI flow, driven by a new FAB on `MapScreen` (state machine lives in `MapViewModel` as
+  `AddPoiStep` — NONE/PLACING_PIN/FORM, plus `addPoiCenter: StateFlow<LatLon?>`):
+  - `PLACING_PIN`: `PoiMap` gained an `addPoiActive`/`onCameraIdle` pair — while active, every
+    camera-idle event (plus one fired immediately on entry, via a `LaunchedEffect(addPoiActive)`,
+    so tapping "Use this location" without panning at all still has a center to confirm) reports
+    the map's current center to `MapViewModel.updateAddPoiCenter`. The crosshair itself
+    (`AddPoiPinOverlay`, new `ui/map/AddPoiFlow.kt`) is a fixed icon drawn over the already-shown
+    map, not a second `MapView` — reusing the same singleton `MapViewHolder`-backed instance the
+    rest of the screen already retains across tab switches, rather than standing up a competing one.
+  - `FORM`: `AddPoiForm` (same file) — name (required) + category (required, single-select chip row
+    over every `CATEGORY_ORDER` entry, not just the map's curated `PRIMARY_MAP_CATEGORIES` subset)
+    + optional street/housenumber/postcode/city/opening-hours. Save is disabled until name+category
+    are set; tapping it runs `MapViewModel.findNearbyDuplicate` (wraps the new pure
+    `util/CustomPoiProximity.findNearbyMatch`, checked against `MapUiState.allPois` — already the
+    merged list, so one check covers both `poi` and `custom_poi` with no separate branch) and shows
+    an `AlertDialog` ("There's already a café ~15m away — add anyway?") only when a same-category
+    match sits within 40m; confirming or skipping the dialog both call `MapViewModel.saveCustomPoi`.
+  - The Map screen's empty-state text ("No places yet...") used to replace the whole `PoiMap`
+    composable when both `pois`/`allPois` were empty — changed to float on top of an always-mounted
+    map instead, since the "Add place" FAB (and the map it pin-drops against) needs to be reachable
+    even on a fresh install with no `.pbf` import yet; this was a real gap, not scope creep; the
+    FAB/pin-drop mechanics literally didn't exist to reach otherwise in that state.
+- Backup (`BackupJsonCodec`/`BackupRepository`/`BackupData`): `custom_poi` is now exported/restored
+  alongside verdicts and custom names — unlike OSM `poi` rows (excluded on purpose, they regenerate
+  from the next `.pbf` reimport), `custom_poi` has no other source of truth. `customPois` defaults
+  to `emptyList()` in `BackupData` and is parsed leniently (missing key ≠ error) so an old backup
+  file predating this session still imports cleanly.
+- Tests: 197 total, 0 failures. New `CustomPoiDaoTest` (upsert/upsertAll/delete/deleteAll/getById/
+  observeAll), `CustomPoiTest` (id prefixing/uniqueness, `toPoi()` field-for-field + always-
+  `missingFromOsm = false`), `CustomPoiProximityTest` (category filter, threshold boundary via a
+  same-call re-measured distance rather than a synthetic offset to avoid Haversine round-trip
+  flakiness, nearest-of-several, empty list, custom threshold override), and
+  `FreizeitDatabaseMigrationTest` (`MIGRATION_6_7`'s raw SQL against a hand-built v6
+  `SupportSQLiteDatabase` — this project doesn't export Room schemas, so there's no schema JSON for
+  `MigrationTestHelper` to work from). `BackupRepositoryTest` gained 3 cases for the new
+  `customPois` round trip, wholesale-replace-on-import, and old-file-without-the-key compatibility.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
+  no new warnings (the pre-existing `LocalLifecycleOwner` deprecation warnings and `PoiMap`'s
+  unused `customNames` param are both unchanged from before this session).
+- Not verified on device: the entire pin-drop flow (crosshair tracking a real pan, the "Use this
+  location" tap landing exactly where the crosshair was, the category chip row's scroll/selection
+  feel, the proximity-warning dialog's wording against a real nearby place, a saved custom POI's
+  marker/icon/color rendering correctly and surviving a `.pbf` reimport) is new Compose/MapLibre
+  wiring with no prior on-device confirmation — needs a real run on Robert's phone, particularly
+  confirming the always-mounted map doesn't regress first-load performance or flash oddly before
+  POI data loads, and that a favorited custom POI actually shows up correctly in the detail sheet's
+  heart/bookmark state (the "already works as a side effect" claim above is untested outside unit
+  tests).
+
 ## 2026-08-02 — Issue #44: Check-in history date-bucketed sections
 
 - Spec was fully resolved via `/grill-me` before this pickup (bucket priority order, calendar-
@@ -522,85 +598,4 @@
 - Tests: 297 total, 0 failures (4 new `HomeSwipeDeckMathTest` cases for the two new pure
   functions). `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
 - Verified on device by the user: the flash is gone.
-
-## 2026-07-30 — Issue #37: full-screen search overlay + Map oval (remainder of #35)
-
-- Picked as the only open `ready-for-agent` issue. Every design decision was already resolved
-  in #35's /grill-me session and carried forward verbatim into #37's issue body, so no new
-  interview was needed — implemented directly from that spec.
-- `MapViewModel.kt`: replaced the live per-keystroke `searchQuery`/`setSearchQuery`/
-  `debounce(SEARCH_DEBOUNCE_MS)` plumbing with `committedSearchQuery: String?` (only changes on
-  `commitSearch()`/`clearSearch()`, so the debounce that existed purely to coalesce keystrokes is
-  gone entirely — nothing else needed it). Added `allPois: List<Poi>` to `MapUiState` (the raw,
-  unfiltered list the overlay searches across regardless of the Map screen's active layer
-  filter) and hoisted `focusTarget`/`focusRequest` (previously local `MapScreen` state) into the
-  ViewModel as `StateFlow`s plus a `focusOn(latLon)` method, so the overlay's row-tap can drive
-  the map's camera jump without a direct reference to `MapScreen`. `commitSearch(query)` mirrors
-  the old `setSearchQuery`'s mutual-exclusivity with category/favorites/want-to-go (only when the
-  trimmed query is non-blank); `filterAndSort` itself needed no signature change, its
-  `searchQuery` param already took priority over the other filters.
-- `FreizeitApp.kt`: `MapViewModel` is now obtained once at the top of `FreizeitApp()` (via
-  `viewModel(factory = MapViewModel.Factory)`, sibling to the `NavHost`/`Scaffold`, both wrapped
-  in a new outer `Box`) instead of inside `MapScreen` — the explicit architecture decision from
-  #35's grill-me so the new `SearchOverlay` can share the exact same instance/state. Overlay
-  visibility (`searchOverlayOpen`) and its preloaded query (`searchOverlayPreload`) are
-  `rememberSaveable` state owned here, passed to `MapScreen` as an `onOpenSearch: (String) -> Unit`
-  callback and to the new `SearchOverlay` composable directly. Note: this changes `MapViewModel`'s
-  effective lifecycle scope from the MAP nav-graph destination entry to the whole Activity — it
-  now survives switching away from the Map tab and back, which is required for the overlay's
-  shared-instance requirement and matches the explicit hoisting instruction, not a side effect.
-- `MapScreen.kt`: deleted the fixed search `Row` (icon + `OutlinedTextField` + clear button),
-  `PoiSuggestionRow`, `SEARCH_SUGGESTION_MIN_LENGTH`/`SEARCH_SUGGESTION_MAX_RESULTS`, and all the
-  local `searchText`/`focusTarget`/`focusRequest`/`searchBarHeightPx` state — superseded by the
-  overlay and the ViewModel's now-hoisted focus state. New `SearchOval` composable floats inside
-  the map's own `Box` (top-aligned, stacked in a `Column` above `PoiCategoryChipRow` — same
-  floating convention, replacing the old fixed-height search bar that used to push the map down).
-  Stateful: "Search here" placeholder normally, query text + trailing X once
-  `state.committedSearchQuery` is non-null; tapping the X calls `viewModel.clearSearch()`, tapping
-  the oval body calls `onOpenSearch(state.committedSearchQuery ?: "")` to reopen the overlay with
-  that query preloaded for editing. `PoiCategoryChipRow` is now unconditionally shown — the old
-  `searchSuggestions.isEmpty()` hide-while-typing gate is gone since typing no longer happens on
-  this screen; tapping a chip (or a Layers-panel row) already cleared search via the ViewModel's
-  existing mutual-exclusivity, unchanged by this session.
-- New `SearchOverlay.kt`: back arrow + autofocused `OutlinedTextField` (trailing X clears typed
-  text) + `ImeAction.Search` (`KeyboardActions.onSearch` calls a local `commit()` that hides the
-  keyboard, calls `viewModel.commitSearch(query)`, then `onDismiss()`). Blank list until 2+
-  characters (kept as `SEARCH_MIN_LENGTH`, now private to this file); no debounce — a `remember`
-  block recomputes `filterAndSort(state.allPois, ...)` synchronously per keystroke since it's a
-  cheap in-memory operation with no map redraw riding on it. No result cap, nearest-first (same
-  distance sort `filterAndSort` already does). Zero-match state (2+ chars, nothing matches) shows
-  "No results found"; below 2 chars the list area is simply blank. Row tap calls
-  `viewModel.focusOn(...)`, `viewModel.selectPoi(item)`, and the same `commit(query)` as the
-  keyboard action (jumps the camera, opens `PlaceDetailSheet`, and leaves the oval in the
-  query+X state) — all three then close the overlay via `onDismiss()`. Back arrow / system
-  `BackHandler` only calls `onDismiss()`, touching neither `commitSearch` nor `clearSearch`, so an
-  already-committed search survives untouched and a not-yet-committed edit is discarded, per the
-  issue's explicit requirement.
-- New `SearchResultRow`: leading icon-in-circle (`markerBackgroundColor`/`markerForegroundColor`/
-  `categoryIcon` — the same themed circle+icon pair as the map markers, built directly in Compose
-  with `Box`+`CircleShape` rather than reusing `rememberMarkerBitmaps`'s bitmap-rasterization path,
-  since that one targets MapLibre's `style.addImage()` and this row renders straight to Compose)
-  with distance below it, omitted (not a placeholder) when `distanceMeters` is null. Trailing:
-  bold POI name + city below, replacing the old `|`-joined subtitle. Fixed 72dp row height;
-  dividers (`HorizontalDivider`) inset via a `padding(start = ROW_DIVIDER_INSET)` computed from
-  the leading column's fixed width, so they start at the text column rather than running under
-  the icon, and still extend to the trailing screen edge (a divider's default behavior).
-- Three new string resources: `map_search_oval_placeholder` ("Search here"),
-  `map_search_back` ("Back", matching `checkin_history_back`'s convention), `map_search_no_results`
-  ("No results found"). Reused `map_search_icon`/`map_search_clear` for the oval/overlay's icon
-  and X buttons per the issue's explicit note that new ones weren't needed there.
-- Tests: 146 total, 0 failures — unchanged from before this session (no test file touched; this
-  issue's scope was pure UI/ViewModel wiring around the already-tested `filterAndSort`, which kept
-  its public signature). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all
-  clean, no new warnings.
-- Not verified on device: the entire overlay (autofocus + keyboard Search action, back-discards-
-  edit vs. dismissing-keeps-committed, row tap's focus+select+commit sequence, zero-match state)
-  and the oval's floating placement/placeholder-vs-committed states are all new Compose wiring
-  with no prior on-device confirmation to lean on — needs a real run on Robert's phone,
-  particularly the IME Search action (the issue's own accepted edge case: dismissing the keyboard
-  requires refocusing the field to bring the Search action back) and the `MapViewModel`'s new
-  Activity-scoped lifecycle (confirm switching Home -> Map -> Home -> Map doesn't lose a
-  committed search or duplicate location-refresh calls).
-- Issue #35 still left open per its own note (rest of its scope was always destined for #37);
-  closing #37 itself since this session completes its full checklist.
 

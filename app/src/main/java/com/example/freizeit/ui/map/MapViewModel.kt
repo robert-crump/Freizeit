@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
+import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
@@ -14,10 +15,13 @@ import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.lastVisitLabel
 import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
+import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.ui.common.PRIMARY_MAP_CATEGORIES
+import com.example.freizeit.util.CustomPoiProximity
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +34,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
+
+/** Steps of the add-custom-POI flow (issue #45), driven by the Map screen's "+" FAB.
+ *  [PLACING_PIN]: the map itself is shown with a fixed center crosshair; panning updates
+ *  [MapViewModel.addPoiCenter]. [FORM]: the name/category/address form, seeded from wherever the
+ *  pin landed. */
+enum class AddPoiStep { NONE, PLACING_PIN, FORM }
 
 data class MapUiState(
     val pois: List<PoiWithDistance> = emptyList(),
@@ -127,7 +137,8 @@ class MapViewModel(
     poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val poiCustomNameDao: PoiCustomNameDao,
-    private val visitDao: VisitDao
+    private val visitDao: VisitDao,
+    private val customPoiDao: CustomPoiDao
 ) : ViewModel() {
 
     // Single-select category chip (replaces #33's multi-select "All POIs" mode) — mutually
@@ -153,15 +164,32 @@ class MapViewModel(
     private val _focusRequest = MutableStateFlow(0)
     val focusRequest: StateFlow<Int> = _focusRequest
 
+    // Add-custom-POI flow (#45): NONE until the "+" FAB is tapped, PLACING_PIN while the map's
+    // center crosshair tracks the pan, FORM once the location is confirmed.
+    private val _addPoiStep = MutableStateFlow(AddPoiStep.NONE)
+    val addPoiStep: StateFlow<AddPoiStep> = _addPoiStep
+    private val _addPoiCenter = MutableStateFlow<LatLon?>(null)
+    val addPoiCenter: StateFlow<LatLon?> = _addPoiCenter
+
+    private data class PoisVerdictsNames(
+        val pois: List<Poi>,
+        val verdicts: Map<String, Verdict>,
+        val customNames: Map<String, String>
+    )
+
+    // custom_poi rows are merged in here (projected to Poi via toPoi()) so every downstream
+    // consumer — filterAndSort, PoiMap, the category chip row, search — sees one POI list and
+    // needs no separate custom-vs-OSM branch (#45).
     private val poisVerdictsAndNames = combine(
         poiDao.observeAll(),
+        customPoiDao.observeAll(),
         verdictDao.observeAll(),
         poiCustomNameDao.observeAll()
-    ) { pois, verdicts, customNames ->
-        Triple(
-            pois,
-            verdicts.associateBy { it.placeId },
-            customNames.associate { it.placeId to it.customName }
+    ) { pois, customPois, verdicts, customNames ->
+        PoisVerdictsNames(
+            pois = pois + customPois.map { it.toPoi() },
+            verdicts = verdicts.associateBy { it.placeId },
+            customNames = customNames.associate { it.placeId to it.customName }
         )
     }
 
@@ -302,6 +330,45 @@ class MapViewModel(
         viewModelScope.launch(Dispatchers.IO) { poiCustomNameDao.setCustomName(poiId, customName) }
     }
 
+    /** Opens the add-POI flow's pin-drop step (the "+" FAB). */
+    fun startAddPoi() {
+        _addPoiStep.value = AddPoiStep.PLACING_PIN
+        _addPoiCenter.value = uiState.value.location
+    }
+
+    /** [PoiMap]'s camera-idle callback while [addPoiStep] is [AddPoiStep.PLACING_PIN] — ignored
+     *  once the flow has moved past pin-placement, so a camera settle firing after the form is
+     *  already showing can't retroactively move the pin. */
+    fun updateAddPoiCenter(latLon: LatLon) {
+        if (_addPoiStep.value == AddPoiStep.PLACING_PIN) {
+            _addPoiCenter.value = latLon
+        }
+    }
+
+    /** "Use this location" — advances from pin-placement to the form. No-op if the camera never
+     *  reported a center (shouldn't happen once the map has loaded, but guards a race on entry). */
+    fun confirmAddPoiLocation() {
+        if (_addPoiCenter.value != null) {
+            _addPoiStep.value = AddPoiStep.FORM
+        }
+    }
+
+    fun cancelAddPoi() {
+        _addPoiStep.value = AddPoiStep.NONE
+        _addPoiCenter.value = null
+    }
+
+    /** The nearest existing same-category place within [CustomPoiProximity]'s threshold, if any —
+     *  the form calls this on Save to decide whether to show the "add anyway?" warning. */
+    fun findNearbyDuplicate(lat: Double, lon: Double, category: String): Poi? =
+        CustomPoiProximity.findNearbyMatch(lat, lon, category, uiState.value.allPois)
+
+    fun saveCustomPoi(customPoi: CustomPoi) {
+        viewModelScope.launch(Dispatchers.IO) { customPoiDao.upsert(customPoi) }
+        _addPoiStep.value = AddPoiStep.NONE
+        _addPoiCenter.value = null
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -311,7 +378,8 @@ class MapViewModel(
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.database.poiCustomNameDao(),
-                    app.container.database.visitDao()
+                    app.container.database.visitDao(),
+                    app.container.database.customPoiDao()
                 )
             }
         }
