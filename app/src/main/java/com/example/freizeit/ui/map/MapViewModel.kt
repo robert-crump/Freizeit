@@ -20,7 +20,9 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.toCustomPoi
 import com.example.freizeit.data.entity.toPoi
+import com.example.freizeit.data.geocoding.NominatimClient
 import com.example.freizeit.data.repository.LocationRepository
+import com.example.freizeit.domain.geocoding.GeocodeResult
 import com.example.freizeit.ui.common.PRIMARY_MAP_CATEGORIES
 import com.example.freizeit.util.CustomPoiProximity
 import com.example.freizeit.util.GeoDistance
@@ -41,6 +43,19 @@ data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
  *  [MapViewModel.addPoiCenter]. [FORM]: the name/category/address form, seeded from wherever the
  *  pin landed. */
 enum class AddPoiStep { NONE, PLACING_PIN, FORM }
+
+/** State for issue #46's address search field, shown alongside pin-drop during
+ *  [AddPoiStep.PLACING_PIN]. [searched] distinguishes "never submitted yet" from "submitted and
+ *  got zero results" so the empty-state message only shows after an actual search. [error] is
+ *  network/parse failure (see [NominatimClient.search]'s null-on-failure contract) — a separate
+ *  flag from an empty [results] list, which is a genuine no-match search. */
+data class AddressSearchState(
+    val query: String = "",
+    val results: List<GeocodeResult> = emptyList(),
+    val isSearching: Boolean = false,
+    val error: Boolean = false,
+    val searched: Boolean = false
+)
 
 data class MapUiState(
     val pois: List<PoiWithDistance> = emptyList(),
@@ -181,6 +196,15 @@ class MapViewModel(
     val addPoiStep: StateFlow<AddPoiStep> = _addPoiStep
     private val _addPoiCenter = MutableStateFlow<LatLon?>(null)
     val addPoiCenter: StateFlow<LatLon?> = _addPoiCenter
+
+    // Address search (#46), live only during PLACING_PIN. Selecting a result both re-centers the
+    // pin (via the existing focusOn/updateAddPoiCenter camera-idle path — no separate "move the
+    // crosshair" mechanism needed) and stashes its structured address in pendingAddressPrefill for
+    // AddPoiForm to seed street/housenumber/postcode/city from once the flow reaches FORM.
+    private val _addressSearchState = MutableStateFlow(AddressSearchState())
+    val addressSearchState: StateFlow<AddressSearchState> = _addressSearchState
+    private val _pendingAddressPrefill = MutableStateFlow<GeocodeResult?>(null)
+    val pendingAddressPrefill: StateFlow<GeocodeResult?> = _pendingAddressPrefill
 
     // Edit-in-place (#47): non-null routes the FORM step's save through an update (same id,
     // preserved via buildCandidate's initial?.id fallback) rather than newCustomPoiId(). Set by
@@ -383,6 +407,43 @@ class MapViewModel(
         _addPoiStep.value = AddPoiStep.NONE
         _addPoiCenter.value = null
         _editingCustomPoi.value = null
+        _addressSearchState.value = AddressSearchState()
+        _pendingAddressPrefill.value = null
+    }
+
+    /** Text field state only — no network call, so typing never trips Nominatim's 1 req/sec
+     *  policy. Also clears any previous results/error, since they belong to the old query. */
+    fun updateAddressSearchQuery(query: String) {
+        _addressSearchState.value = AddressSearchState(query = query)
+    }
+
+    /** Explicit-submit search (the "Search" button/keyboard action) — the only way this ever hits
+     *  the network, per issue #46's spec. Guards against a stale response landing after the user
+     *  has already changed the query (mirrors [selectPoi]'s own late-response guard). */
+    fun searchAddress() {
+        val query = _addressSearchState.value.query.trim()
+        if (query.isBlank()) return
+        _addressSearchState.value = _addressSearchState.value.copy(isSearching = true, error = false)
+        viewModelScope.launch(Dispatchers.IO) {
+            val results = NominatimClient.search(query)
+            if (_addressSearchState.value.query.trim() != query) return@launch
+            _addressSearchState.value = AddressSearchState(
+                query = query,
+                results = results.orEmpty(),
+                error = results == null,
+                searched = true
+            )
+        }
+    }
+
+    /** A search result was tapped: re-centers the pin there (reusing the generic camera-jump path
+     *  — [updateAddPoiCenter] picks up the resulting camera-idle callback same as a manual pan)
+     *  and stashes the structured address for the FORM step to prefill from. Clears the search
+     *  UI itself, same as closing a completed search. */
+    fun selectAddressResult(result: GeocodeResult) {
+        _pendingAddressPrefill.value = result
+        _addressSearchState.value = AddressSearchState()
+        focusOn(LatLon(result.lat, result.lon))
     }
 
     /** The nearest existing same-category place within [CustomPoiProximity]'s threshold, if any —
@@ -397,6 +458,7 @@ class MapViewModel(
         _addPoiStep.value = AddPoiStep.NONE
         _addPoiCenter.value = null
         _editingCustomPoi.value = null
+        _pendingAddressPrefill.value = null
     }
 
     /** Opens the add-POI form pre-filled with [poi]'s current values (issue #47's Edit action,

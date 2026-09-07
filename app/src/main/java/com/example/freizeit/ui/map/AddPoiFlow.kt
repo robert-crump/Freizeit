@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.map
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,6 +22,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddLocationAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -38,12 +42,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.newCustomPoiId
+import com.example.freizeit.domain.geocoding.GeocodeResult
 import com.example.freizeit.ui.common.CATEGORY_ORDER
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.GeoDistance
@@ -83,11 +89,19 @@ fun buildCustomPoiCandidate(
  * Fixed center crosshair drawn over [PoiMap] while [AddPoiStep.PLACING_PIN] is active — the map
  * itself pans underneath it (issue #45's "drop a pin" step); [MapViewModel.addPoiCenter] tracks
  * wherever it's currently pointing via [PoiMap]'s onCameraIdle callback.
+ *
+ * The address search bar (issue #46) lives here rather than on [AddPoiForm]: selecting a result
+ * re-centers this same crosshair (via [onSelectResult], which drives [MapViewModel.focusOn] under
+ * the hood) rather than needing a second, separate "place the pin" mechanism.
  */
 @Composable
 fun AddPoiPinOverlay(
     onCancel: () -> Unit,
     onUseLocation: () -> Unit,
+    searchState: AddressSearchState,
+    onSearchQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onSelectResult: (GeocodeResult) -> Unit,
     useLocationEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -111,6 +125,13 @@ fun AddPoiPinOverlay(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+        AddressSearchBar(
+            state = searchState,
+            onQueryChange = onSearchQueryChange,
+            onSearch = onSearch,
+            onSelectResult = onSelectResult,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+        )
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center
@@ -137,6 +158,77 @@ fun AddPoiPinOverlay(
 }
 
 /**
+ * Explicit-submit address search (issue #46) — no live-typeahead, respecting Nominatim's 1 req/sec
+ * usage policy without needing debounce logic. The "© OpenStreetMap contributors" attribution is
+ * always shown beneath the field per that same policy, since this is the app's only Nominatim
+ * usage and there's no existing OSM attribution elsewhere to piggyback on.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddressSearchBar(
+    state: AddressSearchState,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onSelectResult: (GeocodeResult) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = state.query,
+                onValueChange = onQueryChange,
+                label = { Text(stringResource(R.string.add_poi_address_search_label)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+                modifier = Modifier.weight(1f)
+            )
+            Button(onClick = onSearch, enabled = state.query.isNotBlank() && !state.isSearching) {
+                Text(stringResource(R.string.add_poi_address_search_button))
+            }
+        }
+        Text(
+            text = stringResource(R.string.add_poi_osm_attribution),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        when {
+            state.isSearching -> CircularProgressIndicator(
+                modifier = Modifier.padding(8.dp).size(20.dp),
+                strokeWidth = 2.dp
+            )
+            state.error -> Text(
+                text = stringResource(R.string.add_poi_address_search_error),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
+            )
+            state.searched && state.results.isEmpty() -> Text(
+                text = stringResource(R.string.add_poi_address_search_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            state.results.isNotEmpty() -> Card {
+                Column {
+                    state.results.forEach { result ->
+                        Text(
+                            text = result.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelectResult(result) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Name/category/address form for a [CustomPoi], seeded at [centerLatLon] (wherever the pin
  * landed). [findNearbyDuplicate] backs the pre-save proximity warning (issue #45's "there's
  * already a X ~Ym away" check) — confirming it saves anyway, dismissing it returns to the form
@@ -147,6 +239,11 @@ fun AddPoiPinOverlay(
  * instead of starting blank, and Save reuses its `id` so the result upserts in place rather than
  * creating a second place; [centerLatLon] stays fixed at the original location either way, since
  * editing doesn't re-enter pin-placement.
+ *
+ * [prefillAddress] is issue #46's address-search result, if the pin-placement step's search bar
+ * was used to get here — seeds street/housenumber/postcode/city (still editable afterward) but is
+ * ignored whenever [initial] is non-null, since #47's edit flow never re-enters pin-placement/
+ * search and its own values should always win.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -156,14 +253,17 @@ fun AddPoiForm(
     onDismiss: () -> Unit,
     onSave: (CustomPoi) -> Unit,
     initial: CustomPoi? = null,
+    prefillAddress: GeocodeResult? = null,
     modifier: Modifier = Modifier
 ) {
     var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
     var category by rememberSaveable { mutableStateOf(initial?.category) }
-    var street by rememberSaveable { mutableStateOf(initial?.street.orEmpty()) }
-    var housenumber by rememberSaveable { mutableStateOf(initial?.housenumber.orEmpty()) }
-    var postcode by rememberSaveable { mutableStateOf(initial?.postcode.orEmpty()) }
-    var city by rememberSaveable { mutableStateOf(initial?.city.orEmpty()) }
+    var street by rememberSaveable { mutableStateOf(initial?.street ?: prefillAddress?.street.orEmpty()) }
+    var housenumber by rememberSaveable {
+        mutableStateOf(initial?.housenumber ?: prefillAddress?.housenumber.orEmpty())
+    }
+    var postcode by rememberSaveable { mutableStateOf(initial?.postcode ?: prefillAddress?.postcode.orEmpty()) }
+    var city by rememberSaveable { mutableStateOf(initial?.city ?: prefillAddress?.city.orEmpty()) }
     var openingHours by rememberSaveable { mutableStateOf(initial?.openingHours.orEmpty()) }
     var pendingDuplicate by remember { mutableStateOf<Poi?>(null) }
 
