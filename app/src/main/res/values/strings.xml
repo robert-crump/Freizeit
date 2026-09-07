@@ -140,4 +140,7 @@
     <string name="notification_checkin_body">Do you want to check into %1$s?</string>
     <string name="notification_checkin_action_check_in">Check in</string>
     <string name="notification_checkin_action_dismiss">Dismiss</string>
+
+    <!-- Home-screen widget (issue #51) -->
+    <string name="widget_suggestions_description">Top suggestions from your favorites and want-to-go places</string>
 </resources>
