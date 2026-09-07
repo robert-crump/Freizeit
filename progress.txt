@@ -1,5 +1,56 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #50: Deep-link Home to a specific place's detail sheet
+
+- Picked from the widget epic (design discussion referenced by #51-#56): of the two entirely
+  unblocked issues (#50, #51) plus the two remaining Manual POI adding leftovers (#46, #49, both
+  ready since #45/#48 closed), #50 was the highest-impact pick — it's foundational plumbing that
+  #52 depends on, has no new Gradle dependency to introduce (unlike #51's Glance widget, a much
+  bigger single slice better left as its own pickup), and is fully self-contained/independently
+  testable per the issue's own spec. Already fully resolved in the issue body per the epic's
+  established convention; no `/grill-me` needed.
+- `MainActivity` gained a `mutableStateOf<String?>` `targetPoiId`, read from a new
+  `EXTRA_TARGET_POI_ID` intent extra in `onCreate` and re-read in a new `onNewIntent` override
+  (calls `setIntent` first) — a `mutableStateOf` rather than a plain `var` specifically so a
+  relaunch delivered to an already-running Activity (e.g. a future widget tap using
+  `FLAG_ACTIVITY_SINGLE_TOP`) recomposes `FreizeitApp` with the new value instead of only ever
+  taking effect on a cold start.
+- `FreizeitApp` takes the new `targetPoiId` param and holds it in `pendingTargetPoiId`
+  (`rememberSaveable(targetPoiId)`, so it resets whenever a *new* incoming value arrives but
+  otherwise survives ordinary recompositions), passed to `HomeScreen` alongside an
+  `onTargetPoiIdHandled` callback that clears it back to null — this is what stops the sheet from
+  reopening on a later tab revisit, since `HomeScreen`'s own composable lambda re-executes fresh
+  each time Home re-enters the NavHost.
+- `HomeScreen` resolves the id via a new `LaunchedEffect(targetPoiId)` (fires once per distinct
+  non-null value, satisfying the issue's "once, not on every recomposition/resume") calling
+  `HomeViewModel.openTargetPoi`, then immediately invokes `onTargetPoiIdHandled`. The sheet itself
+  reuses `PlaceDetailSheet` as-is (its own doc comment already claimed "opened from map markers,
+  list rows, and Home cards" — Home didn't actually do this yet before this session; now it does)
+  rather than building a second detail view.
+- `HomeViewModel.openTargetPoi` mirrors `MapViewModel.selectPoi`'s pattern: resolves the id via
+  the existing `findPoiById` (#48's `PoiLookup.kt`, already covers both `poi`/`custom_poi` tables
+  and is already unit-tested), computes distance against the current cached location via
+  `GeoDistance.metersBetween` (already unit-tested), and looks up `lastVisitLabel`. An id that
+  doesn't resolve (deleted place, stale/bad extra) just returns early — `targetPoi` stays null and
+  Home renders normally, no crash, per the issue's explicit acceptance criterion. `HomeViewModel`
+  also gained a `setCustomName` (mirroring `MapViewModel`'s) since `PlaceDetailSheet` requires a
+  non-null `onCustomNameChange` callback — `HomeViewModel`'s existing `poiCustomNameDao` and a new
+  `customPoiDao` constructor dependency (added to `HomeViewModel.Factory`, same
+  `app.container.database.customPoiDao()` source `MapViewModel.Factory` already uses) make this
+  possible with no new DB access needed.
+- Tests: 217 total, 0 failures — no new tests, deliberately: this issue is orchestration/wiring
+  over primitives that are already unit-tested (`findPoiById`/`PoiLookupTest.kt`,
+  `GeoDistance.metersBetween`/`GeoDistanceTest.kt`), the same reasoning `MapViewModel.selectPoi`
+  (which this mirrors) was never itself given a dedicated test either.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
+  no new warnings.
+- Not verified on device: the actual deep-link launch (`adb shell am start -n
+  com.example.freizeit/.ui.MainActivity --es target_poi_id <id>`) is real Activity-intent/Compose
+  lifecycle behavior no unit test exercises — needs a real run on Robert's phone per the issue's
+  own verification method, confirming the sheet actually auto-opens on a cold launch, an
+  already-unresolvable id falls back cleanly, and (once #52 exists) a widget row tap resolves the
+  same way.
+
 ## 2026-09-07 — Issue #47: Manual POI adding: edit/delete custom POI, with undo
 
 - Picked from the "Manual POI adding" epic (#43): of the three remaining open issues (#46/#47/#49,
@@ -207,49 +258,3 @@
   POI data loads, and that a favorited custom POI actually shows up correctly in the detail sheet's
   heart/bookmark state (the "already works as a side effect" claim above is untested outside unit
   tests).
-
-## 2026-08-02 — Issue #44: Check-in history date-bucketed sections
-
-- Spec was fully resolved via `/grill-me` before this pickup (bucket priority order, calendar-
-  based vs rolling windows, locale week start, sticky inert headers, per-row timestamp format by
-  section, empty-bucket hiding) — posted to #44, implemented directly from it with no further
-  clarification needed.
-- New pure function `bucketVisits` (`util/CheckInHistoryBuckets.kt`): groups a `List<Visit>` into
-  `VisitSection(label, visits)` buckets — Today, This week, Last week, This month, Last month,
-  then one "March 2026"-style bucket per older month — using `WeekFields.of(locale)` for the week
-  start rather than a rolling 7-day window, so results genuinely change with device locale (US
-  Sunday-start vs. UK/DE Monday-start). Relies on `visits` already being sorted newest-first (as
-  `VisitDao.observeAll()` returns it) and on the bucket windows being non-overlapping,
-  chronologically decreasing intervals: grouping in encounter order via a `LinkedHashMap` yields
-  correctly-prioritized, already-deduped section order for free, no separate sort/priority-list
-  step needed. Year rollover (a December visit bucketed while "now" is January) falls out of
-  plain `LocalDate` month arithmetic (`minusMonths`, `YearMonth.from`) rather than needing
-  special-cased logic — verified with a dedicated test rather than assumed.
-- Per-row timestamp reformatted now that headers carry the date (`util/DateTimeFormat.kt`): new
-  `formatVisitTimeOnly` (time only, e.g. "3:45 PM", for the Today section) and
-  `formatVisitWeekdayAndTime` ("Tue, 3:45 PM", every other section) sit alongside the existing
-  `formatVisitTimestamp` (full medium date+time) rather than replacing it — that one's still used
-  by `CheckInDateTimeFlow.kt`'s confirmation screen, out of this issue's scope.
-- `CheckInScreen.kt`: `LazyColumn`'s flat `items(state.visits)` replaced with a `sections.forEach`
-  loop emitting one `stickyHeader` (new `SectionHeader` composable — inert `Surface`+`Text`, no
-  click handling) per bucket followed by that bucket's `items(section.visits)`. `stickyHeader` is
-  a direct `LazyListScope` member (not an extension needing its own import, unlike `items`) —
-  initially imported it as one anyway and hit an "Unresolved reference" compile error before
-  catching the mistake. `VisitRow` now takes the pre-formatted `timestampText` as a param instead
-  of formatting `visit.visitedAt` itself, so the Composable doesn't need to know which section
-  it's in beyond what the caller already decided. Headers are naturally invisible to
-  `CheckInHistoryViewModel`'s existing select/delete/undo logic since that only ever operates on
-  `Visit.id` values coming from `items`, never from the sections list — no ViewModel changes
-  needed, as the issue predicted.
-- Tests: new `CheckInHistoryBucketsTest.kt` (13 cases) covering today-vs-this-week priority, week/
-  month boundaries, the week-start locale-variation case explicitly (same visit date buckets as
-  "Last week" under `Locale.UK` but "This week" under `Locale.US`), locale-formatted month-year
-  labels (`Locale.GERMANY` → "Mai 2026"), both year-rollover shapes (a December visit reads "Last
-  month" in early January; a November visit two months back keeps "November 2026", not
-  "November 2027"), empty-bucket omission, and section-order-follows-priority given already-
-  sorted-desc input. 321 total tests, 0 failures. `compileDebugKotlin`/
-  `compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
-- Not verified on device: sticky-header pinning behavior and the header's opaque background
-  actually occluding rows scrolling underneath it are Compose layout behavior no unit test
-  exercises — worth a real scroll-through on Robert's phone, along with a visual check that the
-  section header's `labelLarge`/`onSurfaceVariant` styling reads clearly against the list.

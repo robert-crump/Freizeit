@@ -67,6 +67,7 @@ import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.map.PlaceDetailSheet
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -82,12 +83,26 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
-    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
+    /** A POI id to auto-open in the detail sheet on launch (#50) — set from MainActivity's
+     *  intent extra, e.g. via a future widget row tap. Consumed once via [onTargetPoiIdHandled]
+     *  so it doesn't reopen on a later recomposition/resume or a return trip to this tab. */
+    targetPoiId: String? = null,
+    onTargetPoiIdHandled: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val targetPoi by viewModel.targetPoi.collectAsStateWithLifecycle()
+    val targetPoiLastVisit by viewModel.targetPoiLastVisit.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<Suggestion?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(targetPoiId) {
+        if (targetPoiId != null) {
+            viewModel.openTargetPoi(targetPoiId)
+            onTargetPoiIdHandled()
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -157,6 +172,20 @@ fun HomeScreen(
         onConfirmed = { poi, visitedAt -> viewModel.checkIn(poi, visitedAt) },
         onUndo = { visitId -> viewModel.undoCheckIn(visitId) }
     )
+
+    // Deep-link target (#50): reuses the same sheet Map opens from markers/rows, so a place
+    // opened here already has full verdict/rename support, not a stripped-down preview.
+    targetPoi?.let { item ->
+        PlaceDetailSheet(
+            item = item,
+            verdict = state.verdicts[item.poi.id]?.value,
+            onVerdictChange = { viewModel.setVerdict(item.poi, it) },
+            customName = state.customNames[item.poi.id],
+            onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
+            lastVisit = targetPoiLastVisit,
+            onDismiss = { viewModel.dismissTargetPoi() }
+        )
+    }
 }
 
 /** Drag distance (in dp) past which a horizontal drag counts as a swipe. */
