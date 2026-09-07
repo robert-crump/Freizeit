@@ -66,7 +66,12 @@ private const val CHECKIN_ENTRY_ROUTE = "checkin/entry"
 private const val CHECKIN_SEARCH_ROUTE = "checkin/search"
 
 @Composable
-fun FreizeitApp() {
+fun FreizeitApp(
+    /** A POI id to auto-open in Home's detail sheet on launch — MainActivity's deep-link intent
+     *  extra (#50). Held in [pendingTargetPoiId] below rather than read directly at each Home
+     *  composition, so it fires once per incoming value and not again on a later tab revisit. */
+    targetPoiId: String? = null
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -83,6 +88,11 @@ fun FreizeitApp() {
     val checkInState by checkInViewModel.uiState.collectAsStateWithLifecycle()
     var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
     val checkInSnackbarHostState = remember { SnackbarHostState() }
+
+    // Reset whenever a fresh targetPoiId arrives (MainActivity.onNewIntent), but otherwise
+    // survives FreizeitApp recompositions untouched — cleared to null once HomeScreen has
+    // consumed it, so navigating away from and back to the Home tab doesn't reopen the sheet.
+    var pendingTargetPoiId by rememberSaveable(targetPoiId) { mutableStateOf(targetPoiId) }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
@@ -120,7 +130,12 @@ fun FreizeitApp() {
                 startDestination = FreizeitDestination.HOME.route,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                composable(FreizeitDestination.HOME.route) { HomeScreen() }
+                composable(FreizeitDestination.HOME.route) {
+                    HomeScreen(
+                        targetPoiId = pendingTargetPoiId,
+                        onTargetPoiIdHandled = { pendingTargetPoiId = null }
+                    )
+                }
                 composable(FreizeitDestination.MAP.route) {
                     MapScreen(
                         viewModel = mapViewModel,
