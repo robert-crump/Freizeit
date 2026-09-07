@@ -35,6 +35,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -60,6 +63,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
+import com.example.freizeit.data.entity.isCustomPoiId
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.LocationHelper
@@ -78,7 +82,37 @@ fun MapScreen(
     val focusRequest by viewModel.focusRequest.collectAsStateWithLifecycle()
     val addPoiStep by viewModel.addPoiStep.collectAsStateWithLifecycle()
     val addPoiCenter by viewModel.addPoiCenter.collectAsStateWithLifecycle()
+    val editingCustomPoi by viewModel.editingCustomPoi.collectAsStateWithLifecycle()
+    val pendingDeleteCustomPoiId by viewModel.pendingDeleteCustomPoiId.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // Delete-with-undo (#47): the marker/sheet vanish the instant requestDeleteCustomPoi runs
+    // (see poisVerdictsAndNames' pending-delete filter), but the actual row commit waits on this
+    // Snackbar — timing out or being swiped away commits it, tapping Undo just clears the pending
+    // id back on the ViewModel. pendingDeleteName is captured at request time (the sheet/state
+    // that named it is already gone by the time the Snackbar result comes back).
+    val deleteSnackbarHostState = remember { SnackbarHostState() }
+    var pendingDeleteName by remember { mutableStateOf("") }
+    val deletedTemplate = stringResource(R.string.detail_custom_poi_deleted_snackbar)
+    val undoLabel = stringResource(R.string.detail_custom_poi_undo)
+    LaunchedEffect(pendingDeleteCustomPoiId) {
+        if (pendingDeleteCustomPoiId == null) return@LaunchedEffect
+        val result = deleteSnackbarHostState.showSnackbar(
+            message = String.format(deletedTemplate, pendingDeleteName),
+            actionLabel = undoLabel
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undoDeleteCustomPoi()
+        } else {
+            viewModel.commitPendingDelete()
+        }
+    }
+    // Covers "navigates away" from #47's spec — if the user leaves Map entirely (another bottom
+    // nav tab) before the Snackbar above resolves on its own, commit whatever's still pending
+    // rather than leaving it in limbo indefinitely. No-op if nothing is pending.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.commitPendingDelete() }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -221,6 +255,8 @@ fun MapScreen(
                 )
             }
         }
+
+        SnackbarHost(hostState = deleteSnackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     if (addPoiStep == AddPoiStep.FORM) {
@@ -228,14 +264,21 @@ fun MapScreen(
         if (center != null) {
             AddPoiForm(
                 centerLatLon = center,
-                findNearbyDuplicate = viewModel::findNearbyDuplicate,
+                findNearbyDuplicate = { lat, lon, cat ->
+                    viewModel.findNearbyDuplicate(lat, lon, cat, excludeId = editingCustomPoi?.id)
+                },
                 onDismiss = viewModel::cancelAddPoi,
-                onSave = viewModel::saveCustomPoi
+                onSave = viewModel::saveCustomPoi,
+                initial = editingCustomPoi
             )
         }
     }
 
     selectedPoi?.let { item ->
+        val isCustomPoi = isCustomPoiId(item.poi.id)
+        // Computed here (composable scope) rather than inside onDelete's click lambda: displayName
+        // falls back to a stringResource, which can't be called outside composition.
+        val displayName = item.poi.displayName(state.customNames[item.poi.id])
         PlaceDetailSheet(
             item = item,
             verdict = state.verdicts[item.poi.id]?.value,
@@ -243,6 +286,19 @@ fun MapScreen(
             customName = state.customNames[item.poi.id],
             onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
             lastVisit = selectedPoiLastVisit,
+            onEdit = if (isCustomPoi) {
+                { viewModel.startEditCustomPoi(item.poi) }
+            } else {
+                null
+            },
+            onDelete = if (isCustomPoi) {
+                {
+                    pendingDeleteName = displayName
+                    viewModel.requestDeleteCustomPoi(item.poi.id)
+                }
+            } else {
+                null
+            },
             onDismiss = { viewModel.selectPoi(null) }
         )
     }

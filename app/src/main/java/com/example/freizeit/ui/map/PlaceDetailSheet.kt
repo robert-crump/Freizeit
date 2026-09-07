@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -44,7 +45,10 @@ import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.GeoDistance
 
-/** Shared place detail sheet, opened from map markers, list rows, and Home cards. */
+/** Shared place detail sheet, opened from map markers, list rows, and Home cards. [onEdit]/
+ *  [onDelete] are null for an OSM-sourced place; [MapScreen] passes non-null callbacks only when
+ *  [item] is backed by a `custom_poi` row (issue #47) — the row below them is omitted entirely
+ *  otherwise, rather than shown disabled. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaceDetailSheet(
@@ -54,6 +58,8 @@ fun PlaceDetailSheet(
     customName: String?,
     onCustomNameChange: (String?) -> Unit,
     lastVisit: String? = null,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val poi = item.poi
@@ -136,6 +142,39 @@ fun PlaceDetailSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (onEdit != null || onDelete != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    onEdit?.let { edit ->
+                        TextButton(onClick = edit) {
+                            Icon(
+                                Icons.Filled.Edit,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.detail_custom_poi_edit),
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                    onDelete?.let { delete ->
+                        TextButton(onClick = delete) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.detail_custom_poi_delete),
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }

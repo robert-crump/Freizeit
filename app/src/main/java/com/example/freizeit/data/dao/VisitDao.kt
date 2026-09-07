@@ -27,6 +27,11 @@ interface VisitDao {
     @Query("DELETE FROM visit WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 
+    /** Used when a custom POI's delete is finally committed (#47) — every [Visit] logged against
+     *  it goes with it, since it's re-keyed to nothing once the place itself is gone. */
+    @Query("DELETE FROM visit WHERE placeId = :placeId")
+    suspend fun deleteByPlaceId(placeId: String)
+
     /** Shared across [Visit.SOURCE_MANUAL]/[Visit.SOURCE_NOTIFICATION] — one cooldown clock per place. */
     @Query("SELECT MAX(visitedAt) FROM visit WHERE placeId = :placeId")
     suspend fun lastVisitedAt(placeId: String): Long?

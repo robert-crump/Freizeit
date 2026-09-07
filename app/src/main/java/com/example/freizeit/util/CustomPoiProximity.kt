@@ -17,17 +17,21 @@ object CustomPoiProximity {
      *  the exact same place (the example in issue #45 is "~15m away"). */
     const val WARNING_THRESHOLD_METERS = 40.0
 
-    /** The nearest same-category existing place within [thresholdMeters], if any. */
+    /** The nearest same-category existing place within [thresholdMeters], if any. [excludeId]
+     *  skips a place matching that id — used when editing a custom POI in place (#47), where the
+     *  place being edited is itself the nearest same-category match at its own unmoved location
+     *  and would otherwise trip the warning on every save. */
     fun findNearbyMatch(
         lat: Double,
         lon: Double,
         category: String,
         existing: List<Poi>,
-        thresholdMeters: Double = WARNING_THRESHOLD_METERS
+        thresholdMeters: Double = WARNING_THRESHOLD_METERS,
+        excludeId: String? = null
     ): Poi? =
         existing
             .asSequence()
-            .filter { it.category == category }
+            .filter { it.category == category && it.id != excludeId }
             .map { it to GeoDistance.metersBetween(lat, lon, it.lat, it.lon) }
             .filter { it.second <= thresholdMeters }
             .minByOrNull { it.second }

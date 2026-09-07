@@ -111,4 +111,27 @@ class VisitDaoTest {
 
         assertEquals(0, db.visitDao().getAll().size)
     }
+
+    @Test
+    fun `deleteByPlaceId removes every visit logged against that place`() = runTest {
+        db.visitDao().checkIn(poi)
+        db.visitDao().checkIn(poi)
+        val otherPoi = poi.copy(id = "node/other")
+        db.visitDao().checkIn(otherPoi)
+
+        db.visitDao().deleteByPlaceId("node/1")
+
+        val remaining = db.visitDao().getAll()
+        assertEquals(1, remaining.size)
+        assertEquals("node/other", remaining[0].placeId)
+    }
+
+    @Test
+    fun `deleteByPlaceId is a no-op for a place with no visits`() = runTest {
+        db.visitDao().checkIn(poi)
+
+        db.visitDao().deleteByPlaceId("node/never-visited")
+
+        assertEquals(1, db.visitDao().getAll().size)
+    }
 }
