@@ -32,6 +32,15 @@ interface VerdictDao {
 
     @Query("DELETE FROM verdict")
     suspend fun deleteAll()
+
+    /** Used by #49's reimport-time merge: re-keys a custom POI's verdict onto the OSM `poi.id`
+     *  it was just matched to, instead of deleting it outright the way [delete] does for #47's
+     *  unconditional delete. `OR REPLACE` matters only in the rare case [newId] already carries
+     *  its own verdict (an OSM place independently favorited before the merge) — SQLite drops
+     *  that pre-existing row rather than failing on the now-duplicate placeId primary key, and
+     *  the custom POI's verdict wins. A no-op (0 rows) if [oldId] has no verdict at all. */
+    @Query("UPDATE OR REPLACE verdict SET placeId = :newId WHERE placeId = :oldId")
+    suspend fun rekey(oldId: String, newId: String)
 }
 
 /** One tap sets/changes a verdict; passing null clears it. Shared by Home and Map. */

@@ -57,6 +57,7 @@ fun SettingsScreen(
 ) {
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
+    val mergeCandidates by viewModel.mergeCandidates.collectAsStateWithLifecycle()
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
     val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
     val autoCheckInEnabled by viewModel.autoCheckInEnabled.collectAsStateWithLifecycle()
@@ -221,6 +222,35 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(onClick = { showPoiBreakdown = false }) {
                     Text(stringResource(R.string.settings_close))
+                }
+            }
+        )
+    }
+
+    // #49: right after an import completes, walk through any likely custom-POI duplicates one
+    // at a time — mergeCandidates.first() rather than a stacked/list dialog, since confirming or
+    // dismissing pops the front entry and this recomposes onto whatever's next.
+    mergeCandidates.firstOrNull()?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissMerge(candidate) },
+            title = { Text(stringResource(R.string.settings_merge_candidate_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.settings_merge_candidate_body,
+                        candidate.customPoi.name,
+                        candidate.poi.name.orEmpty()
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmMerge(candidate) }) {
+                    Text(stringResource(R.string.settings_merge_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissMerge(candidate) }) {
+                    Text(stringResource(R.string.settings_merge_dismiss))
                 }
             }
         )
