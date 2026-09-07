@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.freizeit.data.FreizeitDatabase
+import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.toPoi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -60,5 +62,25 @@ class VerdictDaoTest {
 
         assertNull(db.verdictDao().getByPlaceId("node/1"))
         assertEquals(0, db.verdictDao().observeAll().first().size)
+    }
+
+    /** #48: a custom POI (#45) reaches setVerdict as a plain Poi via CustomPoi.toPoi(), so it
+     *  gets a Verdict row exactly like an OSM one — no separate code path needed. */
+    @Test
+    fun `setVerdict works identically for a custom poi projected via toPoi`() = runTest {
+        val customPoi = CustomPoi(
+            id = "custom/1",
+            category = "cafe",
+            lat = 50.91,
+            lon = 6.91,
+            name = "Our Café"
+        )
+
+        db.verdictDao().setVerdict(customPoi.toPoi(), Verdict.VALUE_FAVORITE)
+
+        val stored = db.verdictDao().getByPlaceId("custom/1")
+        assertEquals(Verdict.VALUE_FAVORITE, stored?.value)
+        assertEquals("Our Café", stored?.snapshotName)
+        assertEquals("cafe", stored?.snapshotCategory)
     }
 }

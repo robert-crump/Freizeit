@@ -8,9 +8,11 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import com.example.freizeit.BuildConfig
+import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.repository.GeofenceStateRepository
+import com.example.freizeit.data.repository.findPoiById
 import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.AutoCheckInPermissions
 import com.example.freizeit.util.reconcileDwellingOnUnregister
@@ -39,7 +41,8 @@ import kotlinx.coroutines.tasks.await
 class GeofenceSyncManager(
     private val context: Context,
     private val geofenceState: GeofenceStateRepository,
-    private val poiDao: PoiDao
+    private val poiDao: PoiDao,
+    private val customPoiDao: CustomPoiDao
 ) {
 
     private val geofencingClient = LocationServices.getGeofencingClient(context)
@@ -93,12 +96,13 @@ class GeofenceSyncManager(
      * so an un-favorited place keeps resolving here — and keeps its geofence — until the next
      * [rerank] drops its id from the persisted set. Falls back to the first [MAX_GEOFENCES]
      * favorites, arbitrary order, if no re-rank has ever run yet (e.g. first time crossing 100
-     * favorites before any significant-location-change fix has arrived).
+     * favorites before any significant-location-change fix has arrived). Ids can resolve to
+     * either `poi` or `custom_poi` (#48), so the lookup checks both.
      */
     private suspend fun replaySelection(currentFavorites: List<Poi>): List<Poi> {
         val selectedIds = geofenceState.getSelectedFavoriteIds()
         if (selectedIds.isEmpty()) return currentFavorites.take(MAX_GEOFENCES)
-        return selectedIds.mapNotNull { poiDao.getById(it) }
+        return selectedIds.mapNotNull { findPoiById(poiDao, customPoiDao, it) }
     }
 
     /**

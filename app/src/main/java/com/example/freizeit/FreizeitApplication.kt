@@ -2,6 +2,7 @@ package com.example.freizeit
 
 import android.app.Application
 import com.example.freizeit.data.geofence.GeofenceNotifications
+import com.example.freizeit.data.repository.observeAllFavorites
 import com.example.freizeit.di.AppContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,7 @@ class FreizeitApplication : Application() {
         applicationScope.launch(Dispatchers.IO) {
             combine(
                 container.settingsRepository.autoCheckInEnabled,
-                container.database.poiDao().observeFavorites()
+                observeAllFavorites(container.database.poiDao(), container.database.customPoiDao())
             ) { enabled, favorites -> enabled to favorites }
                 .distinctUntilChanged()
                 .collect { (enabled, favorites) ->

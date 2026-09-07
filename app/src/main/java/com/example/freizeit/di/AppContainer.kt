@@ -12,6 +12,7 @@ import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
+import com.example.freizeit.data.repository.allFavoritesOnce
 import com.example.freizeit.data.weather.WeatherRepository
 import kotlinx.coroutines.flow.first
 
@@ -54,14 +55,14 @@ class AppContainer(private val context: Context) {
     }
 
     val geofenceSyncManager: GeofenceSyncManager by lazy {
-        GeofenceSyncManager(context, geofenceStateRepository, database.poiDao())
+        GeofenceSyncManager(context, geofenceStateRepository, database.poiDao(), database.customPoiDao())
     }
 
     /** Drives [GeofenceSyncManager.rerank] on significant location change (issue #29). */
     val geofenceLocationMonitor: GeofenceLocationMonitor by lazy {
         GeofenceLocationMonitor(context) { location ->
             val enabled = settingsRepository.autoCheckInEnabled.first()
-            val favorites = database.poiDao().observeFavorites().first()
+            val favorites = allFavoritesOnce(database.poiDao(), database.customPoiDao())
             geofenceSyncManager.rerank(enabled, favorites, location)
         }
     }
