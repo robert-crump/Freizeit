@@ -1,5 +1,55 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #48: Manual POI adding: check-in and favorite parity for custom POIs
+
+- Picked from the "Manual POI adding" epic (#43): #45 (the foundational slice) closed since the
+  last session, unblocking #46/#47/#48. Of those three, #48 was the highest-impact pick — it's the
+  only one where a custom POI is currently *invisible* to core app flows (geofence auto check-in,
+  check-in search) rather than just missing a UI nicety, and it unblocks #49 (reimport-time merge
+  detection, which additionally depends on #48). Already fully resolved in the issue body (per the
+  epic's established convention of pre-resolving specs before filing), no `/grill-me` needed.
+- Verdict/favorite parity needed no code change — confirmed, not just assumed: `#45`'s session
+  already made this work as a side effect of `VerdictDao.setVerdict` operating on whatever `Poi` a
+  caller passes in ( `CustomPoi.toPoi()` produces one), so a new
+  `setVerdict works identically for a custom poi projected via toPoi` case was added to
+  `VerdictDaoTest.kt` to lock that claim in as tested rather than leave it "probably fine."
+- The real remaining scope was geofence auto check-in and check-in search, both of which read
+  `poiDao`/`PoiDao.observeFavorites()` directly instead of through the Map screen's existing
+  merged-list pattern (`MapViewModel.poisVerdictsAndNames`). New shared
+  `data/repository/PoiLookup.kt` gives every other consumer the same fold, without duplicating it
+  at each call site: `observeAllFavorites`/`allFavoritesOnce` (merges `PoiDao.observeFavorites()` +
+  a new mirroring `CustomPoiDao.observeFavorites()` — same verdict-join query, over `custom_poi`)
+  and `findPoiById` (routes on `isCustomPoiId` to `poiDao.getById`/`customPoiDao.getById()?.toPoi()`
+  — an id is only ever in one of the two tables by construction, so this is an either/or, not a
+  fallback probe).
+- Geofence registration: `FreizeitApplication.kt`'s favorites-changed collector and
+  `AppContainer.kt`'s `geofenceLocationMonitor` callback both swap their bare
+  `poiDao.observeFavorites()` for `observeAllFavorites`/`allFavoritesOnce` — a favorited custom POI
+  now gets a Play Services geofence registered exactly like an OSM favorite.
+  `GeofenceSyncManager` gained a `CustomPoiDao` constructor dependency so `replaySelection` (the
+  >100-favorites replay path) can resolve a persisted selected id back to a `Poi` via
+  `findPoiById` regardless of which table it's actually in.
+- Geofence transition handling: `GeofenceBroadcastReceiver`'s three direct `poiDao.getById(...)`
+  call sites (`handleCheckIn`'s notification-action check-in, `refreshNotification`'s dwelling-id
+  candidate resolution, and its final closest-favorite lookup before showing the notification) all
+  switched to `findPoiById` — a DWELL/notification-check-in flow now resolves a custom POI the same
+  way it already resolved an OSM one, no separate branch.
+- `CheckInViewModel`: new private `allPois` flow folds `customPoiDao.observeAll().map { it.toPoi() }`
+  into `poiDao.observeAll()` (mirrors `MapViewModel`'s identical merge), feeding both
+  `favoritesNearby` and search — `CheckInSearchScreen.kt` itself needed zero changes since it only
+  ever reads `CheckInViewModel.uiState`, never a DAO directly (confirmed before writing any UI
+  code, not assumed).
+- Tests: 351 total, 0 failures. New `PoiLookupTest.kt` (`findPoiById` resolving each table plus an
+  unknown-id-in-either-table case; `observeAllFavorites`/`allFavoritesOnce` merging and correctly
+  excluding an un-favorited custom POI) and the `VerdictDaoTest.kt` case above.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
+  no new warnings.
+- Not verified on device: the actual Play Services geofence path (favoriting a custom POI, walking
+  into/dwelling in its radius, confirming a Visit gets logged and the notification's Check-in
+  button also resolves it) is real-hardware/real-Play-Services behavior no unit test exercises —
+  needs confirmation on Robert's phone, along with the check-in search screen actually surfacing a
+  custom POI in its results and quick-picks.
+
 ## 2026-08-05 — Issue #45: Manual POI adding — add custom POI via drop-pin
 
 - Picked from five open `ready-for-agent` "Manual POI adding" issues (#45-#49, all children of
@@ -251,351 +301,4 @@
   is inherently a real-device/real-Play-Services thing — needs confirmation on Robert's phone that
   (a) un-favoriting mid-dwell no longer resurfaces a notification for that place, and (b) a
   deliberately-delayed DWELL (e.g. airplane-mode trick) gets suppressed rather than shown.
-
-## 2026-08-01 — Issue #40: update user location more frequently
-
-- Issue was a stub (title + two-sentence body) — full design worked out via a `/grill-me` session
-  before any code was touched (update model per screen, shared-vs-per-ViewModel location state,
-  continuous-stream interval/priority, start/stop lifecycle scoping, manual refresh affordance,
-  snapshot-vs-collect semantics for Home/Check-in, `GeofenceLocationMonitor` scope boundary —
-  every branch resolved with the user first), posted to #40 as a comment, then implemented
-  directly from that spec.
-- Root cause: location was a plain one-shot `LocationManager.getLastKnownLocation()`
-  (`util/LocationHelper.kt`), independently duplicated in `MapViewModel`/`HomeViewModel`/
-  `CheckInViewModel` — no shared state, so the three screens could each show a different stale fix
-  at the same moment; Map had no resume-based refresh at all.
-- New `data/repository/LocationRepository.kt` (wired into `AppContainer` as a `by lazy` property,
-  same pattern as `weatherRepository`/`geofenceStateRepository`): owns a
-  `FusedLocationProviderClient` (already a dependency via `GeofenceLocationMonitor`), exposes a
-  single `StateFlow<LatLon?>`. `refreshOnce()` is a one-shot `LocationHelper.lastKnownLocation()`
-  read (unchanged semantics, just centralized); `startContinuous()`/`stopContinuous()` arm/disarm
-  an active `LocationRequest` (`PRIORITY_BALANCED_POWER_ACCURACY`, 10s interval / 5s min),
-  mirroring `GeofenceLocationMonitor`'s existing shape but left fully separate (different
-  lifecycle/purpose — background significant-change re-ranking vs. foreground live tracking —
-  explicit scope decision not to share the client instance).
-- `MapViewModel`: its own `location: MutableStateFlow` is gone, `uiState`'s combine now reads
-  `locationRepository.location` directly (continuous — Map is the one surface where a live
-  position matters). New `startContinuousLocation()`/`stopContinuousLocation()` delegate straight
-  to the repository. `MapScreen.kt`: new `DisposableEffect(lifecycleOwner)` calls
-  `startContinuousLocation()`/`stopContinuousLocation()` on `ON_RESUME`/`ON_PAUSE` — since
-  `MapViewModel` is hoisted at the `FreizeitApp` level and outlives tab switches, only the
-  composable's own lifecycle knows when Map is actually the visible tab. Re-entering the Map tab
-  replays `ON_RESUME` (`Lifecycle.addObserver` synchronously syncs a fresh observer up to the
-  current state), which is also what fixes "switching to Map doesn't refresh location" — the same
-  mechanism HomeScreen already used for its own resume refresh (#34). The existing "locate me"
-  FAB's `refreshLocation()` call is untouched (already forced a fresh read; now goes through the
-  repository).
-- `HomeViewModel`/`CheckInViewModel`: `location` stays a local `MutableStateFlow`, but
-  `refreshLocation()` now calls `locationRepository.refreshOnce()` then takes a one-time
-  *snapshot* of `locationRepository.location.value` — deliberately not a continuous collection of
-  the shared flow, so Map's background stream (or Check-in's new pull-to-refresh) can never
-  reshuffle Home's swipe deck mid-session (#34's guarantee, explicitly re-verified during the
-  grill-me session as the one real tension with #40's ask).
-- `CheckInSearchScreen.kt` gains two things it never had before: a `DisposableEffect`/`ON_RESUME`
-  observer identical to Home's (this screen previously only refreshed once via permission grant,
-  so its distances/duration badges could be arbitrarily stale), and a Material3
-  `PullToRefreshContainer`/`rememberPullToRefreshState()` wrapped around the results area (search
-  results, favorites-nearby quick-picks, and the "no location" hint all share one `Box`) as a
-  manual fallback — matches the user's established preference for always-available manual
-  controls alongside automatic triggers. Confirmed the exact API shape against the project's
-  resolved Material3 1.2.1 AAR directly (`PullToRefreshState.isRefreshing`/`startRefresh()`/
-  `endRefresh()`/`nestedScrollConnection`, `PullToRefreshContainer`, `rememberPullToRefreshState()`
-  — `PullToRefreshBox` doesn't exist until 1.3.0) before writing any code, same verify-before-
-  relying-on-it approach as the date/time picker session's `DatePickerDialog`/`TimePicker` check.
-  Since `refreshLocation()` is fire-and-forget (launches its own coroutine, doesn't suspend until
-  done), the refresh indicator holds for a fixed 300ms (`PULL_TO_REFRESH_MIN_SPIN_MS`) rather than
-  truly awaiting completion — pragmatic given a last-known-location read is near-instant anyway,
-  avoids adding a second suspend-returning API just for this.
-- `MapViewModel`/`HomeViewModel`/`CheckInViewModel` constructors: `appContext: Context` param
-  replaced by `locationRepository: LocationRepository` in all three (each `Factory` updated to
-  pass `app.container.locationRepository`); `LocationHelper` import dropped from all three
-  ViewModels (still used as-is by `MapScreen.kt`/`CheckInSearchScreen.kt` for the unrelated
-  permission-check flow, untouched).
-- Tests: 160 total, 0 failures (unchanged — no test file needed changes; this issue's scope is
-  pure ViewModel/Compose wiring around already-tested pure functions, none of which changed
-  signature). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
-  `assembleDebug`: all clean, no new warnings (the two pre-existing ones —
-  `CheckInViewModel.kt`'s `FlowPreview` opt-in and `PoiMap.kt`'s unused `customNames` param — are
-  both unchanged from before this session).
-- Not verified on device: the entire continuous-stream/lifecycle wiring (Map's GPS stream actually
-  starting/stopping on tab switch and app background/foreground, the "locate me" FAB still
-  recentering correctly, Check-in's new resume refresh and pull-to-refresh indicator, and Home's
-  deck genuinely not reshuffling mid-swipe even while Map is streaming in the background) is new
-  platform/Compose wiring with no prior on-device confirmation — needs a real run on Robert's
-  phone, particularly battery behavior over a longer Map session and confirming the pull-to-
-  refresh gesture doesn't fight the search screen's own scrolling.
-
-## 2026-08-01 — Issue #41: color-coded bike-duration chips
-
-- Issue was a stub (title only, empty body) — full design worked out via a `/grill-me` session
-  before any code was touched (chip presentation, rollout scope, color bands, the "always go by
-  car" case, car-duration model, accessibility, chip colors in light vs. dark theme, reasons-text
-  redundancy — every branch resolved with the user first), posted to #41 as the issue body, then
-  implemented directly from that spec.
-- New `util/TravelDuration.kt` (`bikeMinutes`/`carMinutes`, both straight-line distance × the same
-  1.3 detour factor, just different assumed speeds — 15 km/h bike, 70 km/h car as the user's own
-  "country roads/autobahn average"). `SuggestionEngine.kt`'s previously-private `DETOUR_FACTOR`/
-  `BIKE_METERS_PER_MINUTE` constants and inline calculation are gone, replaced by a call to
-  `TravelDuration.bikeMinutes` — the estimate itself is unchanged, just consolidated so the new
-  car estimate doesn't duplicate the detour-factor logic a second time.
-- New `ui/common/DurationBadge.kt`: a colored, bold chip showing just the bike minutes (no icon —
-  explicit accessibility answer, color+bold text judged sufficient), fixed hex colors (same in
-  light and dark theme, same pattern as the existing `FavoriteRed`/`WantToGoBlue`) — green `<10min`
-  (`#4BFFC5`/`#194234`), yellow `10-25min` (`#FFBD34`/`#5A380A`), gray `>=25min` (`#9AA0A6`/
-  `#2C2C2E`). At `>=25min` a second, plain/uncolored line appears underneath with the car-duration
-  alternative — the answer for "I always drive there" places (e.g. a store the user never bikes
-  to): no per-POI/category travel-mode setting needed, the gray band plus car fallback line covers
-  it without new storage. Takes a `distanceMeters: Double` directly (not a `Suggestion`/
-  `PoiWithDistance`) so it's reusable from all four call sites below.
-- Rolled out everywhere a POI row shows distance (explicit scope decision — duration in minutes
-  previously existed only on `SuggestionEngine`'s home-feed reason text; check-in search and the
-  Map search overlay only ever showed raw meters/km):
-  - `HomeScreen.kt`'s `SuggestionCard`: new `DurationBadge` row between the name/verdict row and
-    the mini map. The old `"$travelMinutes min by bike"` reason-text entry is deleted from
-    `SuggestionEngine.kt` now that the chip is the sole duration display — avoids showing the same
-    number twice on one card (explicit decision).
-  - `PlaceDetailSheet.kt`: `DurationBadge` added right after the existing `"X away"` distance line
-    — both are shown, distance wasn't replaced (explicit decision).
-  - `CheckInSearchScreen.kt`'s `CheckInResultRow` / `SearchOverlay.kt`'s `SearchResultRow`: existing
-    fixed-width leading distance column left untouched; `DurationBadge` added as a new
-    right-aligned (`Alignment.End`) trailing element in the row, alongside the existing name/city
-    column — the fixed fixed-width leading icon/distance column is too narrow (48dp) for a chip
-    with background padding, so it goes at the row's end instead. Omitted (not a placeholder) in
-    both rows whenever `distanceMeters` is null, matching the existing distance-text convention.
-  - Two new strings: `duration_minutes` (`"%1$d min"`, the chip's own text) and
-    `duration_car_alternative` (`"~%1$d min by car"`).
-- `SuggestionScenariosTest.kt`: the one test asserting on the now-deleted `"4 min by bike"` reason
-  string rewritten to assert `travelMinutes == 4` directly via a new `travelMinutesOf()` helper
-  (mirrors #38's precedent of asserting the actual field once display text stops carrying it); the
-  "no location" test's `reasons.none { "by bike" in it }` assertion replaced with
-  `all { it.travelMinutes == null }` for the same reason.
-- Tests: 160 total, 0 failures (unchanged count — no new test file, existing coverage rewritten in
-  place). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no new
-  warnings.
-- Not verified on device: all four chip placements, the gray-band car-alternative line, and the
-  fixed light/dark chip colors are new Compose wiring with no prior on-device confirmation — needs
-  a real run on Robert's phone, particularly checking the trailing chip doesn't crowd the two list
-  rows' existing 72dp height/name-ellipsis behavior and that the car-alternative line reads clearly
-  at the far end of the yellow→gray transition.
-
-## 2026-07-31 — Issue #39: Rework Check-in screen: history as entry, + FAB opens full-screen search
-
-- Only `ready-for-agent` issue open; every design decision (nav structure, search-screen
-  behavior, confirm-flow pop-back, hoisting) was already resolved in the issue body itself
-  (written from a prior /grill-me session per its own convention), so implemented directly
-  from that spec with no new interview needed.
-- `checkin/entry` is now just the check-in history list (today's `CheckInHistoryScreen` content,
-  folded directly into `CheckInScreen.kt`; `CheckInHistoryScreen.kt` deleted). Topbar back arrow
-  removed (tab roots don't have one); title text "Check-in history" kept as-is. FAB switched
-  from a History icon to "+" (`Icons.Filled.Add`), hidden while `state.isSelecting` (the
-  `SelectionTopBar` owns the screen then). `CheckInHistoryViewModel` (selection/delete/undo)
-  is untouched, still scoped locally to this route. Empty-state string (`checkin_history_empty`)
-  now reads "No check-ins yet — tap + to check in somewhere."
-- New `checkin/search` route (replaces `checkin/history`) → new `CheckInSearchScreen.kt`,
-  modeled on Map's `SearchOverlay.kt` shell (full-screen `Surface`, back arrow + autofocused
-  field, `statusBarsPadding()` since it's outside Scaffold's insets) but — unlike the overlay —
-  pushed as an ordinary NavHost route via `navController.navigate()`, not hoisted above the
-  Scaffold, so the bottom nav bar stays visible underneath (matches the old `checkin/history`
-  route's behavior, explicit issue requirement, not an overlay like Map's). Reuses
-  `CheckInViewModel`'s existing debounced (250ms) name-match + distance-ranking search rather
-  than switching to Map's undebounced in-memory filter (explicit issue instruction). Below 2
-  characters shows `favoritesNearby` as quick-picks instead of a blank list — raised
-  `CheckInViewModel`'s search-trigger gate from non-blank (1 char) to a new private
-  `SEARCH_MIN_LENGTH = 2` (mirrors `SearchOverlay`'s constant of the same name), applied to both
-  `CheckInUiState.isSearching` and the `matches` computation. Leaving the search screen (back
-  arrow or system back) now calls `viewModel.clearSearch()` before `onBack()` — added because
-  unlike Map's oval there's no "committed search" concept here, so a stale query must not survive
-  to the next time search is opened (would otherwise desync from the search field's local
-  `rememberSaveable` buffer, which always restarts blank).
-- Result rows (both search matches and the favorites-nearby quick-picks — one shared row
-  composable, `CheckInResultRow`) switched to Map's `SearchResultRow` visual style: icon-in-circle
-  (`categoryIcon`/`markerBackgroundColor`/`markerForegroundColor`, same themed pair as the map
-  markers) with distance below it, bold POI name + city subtitle. The old `CheckInRow` (category-
-  name subtitle + ❤️ favorite badge) is deleted outright, not kept as an option, per the issue's
-  explicit consistency call. Location-permission request (`ACCESS_COARSE_LOCATION`/
-  `ACCESS_FINE_LOCATION`) moved from `CheckInScreen`'s `LaunchedEffect` to `CheckInSearchScreen`'s
-  — the history entry screen has no use for location anymore.
-- Confirm flow (`CheckInDateTimeFlow`) is unchanged internally but hoisted: `FreizeitApp.kt` now
-  holds `CheckInViewModel` + `pendingCheckIn: CheckInCandidate?` (plain `remember`, not
-  `rememberSaveable` — `CheckInCandidate` isn't `Parcelable`) + `checkInSnackbarHostState` at the
-  top level, mirroring the existing `mapViewModel`/`searchOverlayOpen` hoisting pattern from #37.
-  `CheckInDateTimeFlow` itself is called unconditionally in the outer `Box`, sibling to the
-  `NavHost`/`SearchOverlay`. Its `onConfirmed` callback does the actual check-in
-  (`checkInViewModel.checkIn`) and then `navController.popBackStack(CHECKIN_ENTRY_ROUTE,
-  inclusive = false)` — using the named-destination form rather than a bare `popBackStack()` so it
-  robustly lands on the entry screen regardless of stack depth. `CheckInScreen` (entry) renders
-  `lastCheckedInName` (read from the hoisted `checkInViewModel.uiState`) and hosts
-  `checkInSnackbarHostState` directly, so the "Checked in to X" banner and Undo snackbar surface
-  there post-pop-back, not on the search screen the tap originated from. `CheckInHistoryViewModel`'s
-  own delete-undo snackbar keeps its own separate local `SnackbarHostState` (unrelated concern,
-  not merged with the check-in-confirm one).
-- New string `checkin_search_button` ("Check in", the "+" FAB's content description) replaces the
-  now-unused `checkin_history_button` ("History"). No new back/search-field strings needed —
-  reused `checkin_history_back`/`checkin_search_icon`/`checkin_search_clear`/
-  `checkin_search_placeholder` as-is, matching #37's precedent of not minting near-duplicates.
-- Tests: 160 total, 0 failures — no test file needed changes (`CheckInRankingTest.kt` covers
-  `rankNearbyForCheckIn`, untouched by this session; `FreizeitDestinationTest.kt` covers only the
-  four top-level tab routes, unaffected by the `checkin/*` sub-route rename).
-  `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean, no new warnings (the two
-  pre-existing ones — `CheckInViewModel.kt`'s `FlowPreview` opt-in and `PoiMap.kt`'s unused
-  `customNames` param — are both unchanged from before this session).
-- Not verified on device: the entire re-architecture (entry-screen FAB swap, full-screen search
-  push-route with bottom-nav-bar-visible-underneath, the 2-char favorites-vs-search gate, the
-  auto-pop-back-on-confirm plus banner/snackbar reappearing on the now-updated history list) is
-  new navigation/Compose wiring with no prior on-device confirmation — needs a real run on
-  Robert's phone, particularly the pop-back-to-entry timing (dialog dismissing, banner appearing,
-  history list updating, and the bottom nav bar all landing in the right order) and confirming a
-  stale query never leaks between search-screen sessions.
-
-## 2026-07-31 — Issue #38: "Last visit" property on POIs
-
-- No GitHub issue existed beforehand — worked out via a full /grill-me session (data source:
-  derived-vs-denormalized, which visit sources count, display bucketing scheme, never-visited
-  handling, suggestion-card reason-text interaction, scoring impact, surface scope, drawer data
-  wiring, test coverage, placement in both surfaces, day-boundary semantics — every branch
-  resolved with the user first), then filed as #38 (with the resolved spec as its body) purely so
-  `/next-issue`'s close-on-completion convention had something to close; not picked from the
-  tracker cold.
-- Derived, not denormalized: no new Room column/migration. New pure `util/LastVisit.kt`
-  (`LastVisit.format(lastVisitedAt: Long?, now, zone)`, mirrors `GeoDistance`'s
-  object-with-pure-`format`-function shape) buckets by calendar day (local zone, not elapsed
-  hours) via `ChronoUnit.MONTHS`/`DAYS`/`YEARS.between` on `LocalDate`s: "Today" (0d) → "N days
-  ago" (1-7d, exact count) → ">N weeks ago" (`totalMonths < 1`, else weeks bucket) → "N months
-  ago" (no ">" prefix, `totalMonths < 12`) → ">N years ago". Null input (never visited) returns
-  null; the UI omits the field entirely rather than showing "Never visited". New `VisitDao.
-  lastVisitLabel(placeId, now)` extension (alongside the existing `checkIn()` extension) is the
-  one shared place that combines the existing `lastVisitedAt()` query with formatting, so every
-  UI host does the lookup identically instead of each rolling its own.
-- `SuggestionEngine.Suggestion` gained `lastVisit: String?`, computed in `evaluate()` from
-  `context.visits[poi.id]?.maxOrNull()` (not windowed by the existing 90-day frequency-scoring
-  lookback — last visit shows the true most-recent check-in regardless of how old). The old vague
-  `"visited recently"`/`"visited N× recently"` reason-list entry is deleted now that the explicit
-  label replaces it; the score boost itself (`VISIT_FREQUENCY_WEIGHT * ln(1.0 + recentVisits)`) is
-  untouched — display-only change, scoring/ranking behavior identical to before.
-- `HomeScreen.kt`'s `SuggestionCard`: new standalone `Text` row (not folded into the existing
-  " · "-joined reasons string) shown only when `suggestion.lastVisit != null`, placed after the
-  reasons row and before the Check-in button.
-- `PlaceDetailSheet.kt` gained a `lastVisit: String?` param, rendered right after the distance
-  line (grouped with the other "quick facts" ahead of the static address/hours lines). Its only
-  caller, `MapScreen.kt`, sources the value from a new `MapViewModel.selectedPoiLastVisit:
-  StateFlow<String?>` — `MapViewModel` gained a `VisitDao` constructor dependency (wired through
-  `Factory`) and `selectPoi()` now also kicks off a one-shot `visitDao.lastVisitLabel(...)` lookup
-  on `Dispatchers.IO`, guarded by an id check against the current selection so a fast re-select
-  can't let a stale async result land after the fact. Deliberately a snapshot on select, not a
-  live/reactive value — the sheet doesn't need to update while sitting open.
-- New string `detail_last_visit` ("Last visit: %1$s"), reused by both surfaces.
-- Tests: 160 total, 0 failures. New `LastVisitTest` (15 cases, one per bucket boundary: today
-  incl. just-after-midnight, 1 day singular, 2-6 days plural, the 7/8-day exact-day-to-week
-  transition, the 13/14-day week-bucket transition, 29-days-still-a-week vs. the calendar-accurate
-  month transition via `minusMonths`, 11/12-month-to-year transition, plural years, null input,
-  and a future-timestamp clock-skew case reading as "Today"). `SuggestionVisitFrequencyTest`'s
-  four cases rewritten: the two that used to assert on the now-deleted "visited..." reason string
-  now assert score parity against a same-context no-visits baseline instead (the actual thing
-  being tested — presence/absence of the frequency boost), plus one new assertion that
-  `lastVisit` reflects the most recent of several visit timestamps. `compileDebugKotlin`/
-  `testDebugUnitTest`/`assembleDebug`: all clean, no new warnings.
-- Not verified on device: both display sites (suggestion-card standalone line, bottom-drawer
-  line placement/wording) are new Compose wiring with no prior on-device confirmation — needs a
-  real run on Robert's phone.
-
-## 2026-07-31 — Check-in date/time picker
-
-- No GitHub issue; user asked directly for this, worked out via a full /grill-me session before
-  any code was touched (scope across both entry points, dialog flow shape, picker widget style,
-  final-confirm vs immediate-create, undo affordance, future/past bounds, time-of-day enforcement,
-  notification flow, cancel semantics, `checkIn()` API shape, code reuse — every branch resolved
-  with the user first).
-- Both Check-in entry points (Home's suggestion-card button and the Check-In screen's row tap)
-  used to open an identical `AlertDialog` ("Do you want to check into X?") that, on confirm,
-  stamped `visitedAt = System.currentTimeMillis()` immediately. Replaced with a two-step flow,
-  explicitly *not* keeping that confirm-text step: tapping Check-in goes straight to a Material3
-  `DatePickerDialog` (defaulted to today, `SelectableDates` disables future days), confirming opens
-  a time picker (defaulted to now, dial + keyboard-input toggle), and confirming that creates the
-  check-in immediately — no third "are you sure" step. Cancelling either dialog aborts the whole
-  attempt (explicit decision: cancelling the time step does *not* fall back to the date step).
-  Time-of-day itself is deliberately left unenforced even when the picked date is today (only the
-  day itself is capped at "no future") — Material3's `TimePicker` has no way to disable specific
-  times, and the user chose not to hand-roll validation for it.
-- New shared `ui/checkin/CheckInDateTimeFlow.kt`, used by both `HomeScreen.kt` and
-  `CheckInScreen.kt` (their old dialogs were already byte-for-byte duplicated; explicit decision to
-  consolidate into one composable now rather than duplicate the picker flow too).
-  `CheckInDateTimeFlow` takes `pendingPoi: Poi?` and is called unconditionally every recomposition
-  (not wrapped in a null check) specifically so its `rememberCoroutineScope()` — used to launch the
-  confirm→save→snackbar→undo chain — stays alive across a cancelled/restarted attempt; the
-  per-attempt picker state (`pickedDateMillis`, dial/keyboard toggle) still resets correctly because
-  those `remember` calls sit after an early `return` that's skipped whenever `pendingPoi` is null,
-  so Compose tears down and recreates that part of the slot table each time. Material3 1.2.1 (this
-  project's resolved `compose-bom:2024.02.02` version, confirmed by inspecting the AAR directly)
-  ships `DatePickerDialog` but no dialog wrapper for `TimePicker`/`TimeInput` — added a small
-  hand-rolled `CheckInTimePickerDialog` (plain `Dialog` + `Surface` + title/content/buttons row),
-  the same shape Material3's own samples use for this gap.
-- `VisitDao.checkIn()` gained an optional `visitedAt: Long = System.currentTimeMillis()` param
-  (default preserves existing behavior) and now returns the new row's id (`insert()` changed from
-  `Unit` to `Long`, which Room supports natively) so the UI can offer Undo. The notification-
-  triggered check-in flow (`GeofenceBroadcastReceiver.handleCheckIn`, `source =
-  Visit.SOURCE_NOTIFICATION`) is untouched — explicit decision, no user interaction to insert a
-  picker into — it keeps calling with no `visitedAt` and still auto-stamps "now".
-  `HomeViewModel.checkIn`/`CheckInViewModel.checkIn` changed from fire-and-forget
-  `viewModelScope.launch` functions to `suspend fun checkIn(poi, visitedAt): Long`, called directly
-  from `CheckInDateTimeFlow`'s own coroutine scope (not the ViewModel's) — deliberate, so the
-  confirm→save→snackbar→undo sequence is one linear suspend chain instead of state bounced through
-  a `StateFlow` the screen has to re-observe. Each ViewModel also gained `suspend fun
-  undoCheckIn(visitId)` (`visitDao.deleteByIds(listOf(visitId))`).
-- Snackbar + Undo (explicit decision, matching the existing delete-undo pattern in
-  `CheckInHistoryViewModel`/`CheckInHistoryScreen`): each screen now owns a local
-  `SnackbarHostState` rendered via `SnackbarHost` (`HomeScreen.kt` gained a wrapping `Box` for this;
-  `CheckInScreen.kt` already had one for its FAB). New `util/DateTimeFormat.kt` holds
-  `formatVisitTimestamp()`, pulled out of `CheckInHistoryScreen.kt` (now imports it) since the new
-  Snackbar message needed the same MEDIUM-localized formatting a second place.
-  `CheckInScreen.kt`'s pre-existing `lastCheckedInName` banner ("Checked in to X") is untouched and
-  now shows alongside the new Snackbar — out of scope, not raised in the grill-me session.
-- Three now-dead strings/imports cleaned up: `checkin_confirm_message` (only used by the two
-  removed `AlertDialog`s) deleted from `strings.xml`; `checkin_confirm_checkin`/
-  `checkin_confirm_cancel` kept and reused as the final time-picker dialog's button labels.
-  New strings: `checkin_datetime_title`, `checkin_datetime_next`,
-  `checkin_datetime_switch_to_keyboard`/`_switch_to_dial`, `checkin_snackbar_message`.
-- Tests: 145 total, 0 failures (confirmed via each class's own XML report — all 22 test classes
-  ran and passed; the previously-documented Robolectric `UnsatisfiedLinkError` failures are
-  apparently already gone as of #19's session, not something this change touched). Added 2 new
-  `VisitDaoTest` cases: `checkIn` stores a caller-supplied `visitedAt` instead of stamping now, and
-  `checkIn`'s returned id can be used to delete the row again (the actual Undo mechanism).
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`assembleDebug`: all clean, no new warnings
-  (the pre-existing `FlowPreview` opt-in warning on `CheckInViewModel.kt`'s `searchQuery.debounce`
-  is unchanged).
-- Not verified on device: the entire flow is new Compose wiring with no prior on-device
-  confirmation — needs a real run on Robert's phone, particularly the two-dialog sequence on both
-  entry points, the dial/keyboard toggle, the future-date lockout, and the Snackbar+Undo actually
-  deleting the check-in.
-
-## 2026-07-30 — Issue #19: swipe-deck flicker fix
-
-- Not picked from the tracker cold — diagnosed live with the user via `/grill-me` against a
-  specific repro (swiping Home's suggestion deck one direction briefly flashes a stale, unrelated
-  card before landing on the correct one; the other direction never does), then implemented that
-  fix. Addresses only issue #19's third bullet ("Flicker is still there when swiping through card
-  deck"); its other two bullets (remove fading animation, wrap_content sizing) are untouched and
-  out of scope for this session — closed anyway per the user's explicit instruction after
-  confirming the flicker fix on device; re-file the other two separately if still wanted.
-- Root cause, confirmed with the user before touching code: `SwipeableSuggestionCard`
-  (`HomeScreen.kt`)'s window is always emitted in a fixed `[previousCard, nextCard, card]` order,
-  and later Box children paint on top of earlier ones — deliberately, so `nextCard`'s idle peek
-  sliver (not `previousCard`'s identical one) is what shows as the deck's "stackable" affordance
-  at rest. But that static order held during an active drag too: revealing `previousCard` grows
-  it past `nextCard`'s small idle-peek footprint, and since `nextCard` is emitted after (so always
-  painted above) `previousCard`, `nextCard`'s idle sliver stayed visible on top of the growing
-  card for the whole reveal — reads as a wrong-card flash that self-corrects once the drag commits
-  and the window recomputes. Only affects revealing `previousCard`, matching the reported
-  direction asymmetry: revealing `nextCard` never has this problem since the idle card
-  (`previousCard`) is the one underneath in that case.
-- Fix: added `isRevealTarget`/`revealZIndex` (pure, alongside the existing
-  `topCardAlpha`/`revealProgress`/`isPastSwipeThreshold`) and wired `Modifier.zIndex()` into both
-  branches of the per-entry modifier — current always highest, then whichever neighbor the drag is
-  actively revealing, then the idle one. Deliberately zIndex rather than reordering the `window`
-  list itself: reordering keyed children every drag frame is exactly the kind of churn the
-  existing "one keyed window, stable call site" state-preservation design (see the long comment
-  above `window`) was written to avoid; zIndex changes paint order without touching emission order
-  or the keyed slots, so it's a strictly additive, orthogonal fix.
-- Tests: 297 total, 0 failures (4 new `HomeSwipeDeckMathTest` cases for the two new pure
-  functions). `compileDebugKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean.
-- Verified on device by the user: the flash is gone.
 

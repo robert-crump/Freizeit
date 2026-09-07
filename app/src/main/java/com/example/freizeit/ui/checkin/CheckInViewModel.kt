@@ -7,12 +7,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
+import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
@@ -87,6 +89,7 @@ private data class SearchState(val query: String, val showAll: Boolean)
 class CheckInViewModel(
     private val locationRepository: LocationRepository,
     poiDao: PoiDao,
+    customPoiDao: CustomPoiDao,
     verdictDao: VerdictDao,
     private val visitDao: VisitDao
 ) : ViewModel() {
@@ -99,8 +102,15 @@ class CheckInViewModel(
     private val searchQuery = MutableStateFlow("")
     private val showAllSearchResults = MutableStateFlow(false)
 
+    // custom_poi rows are folded in here (projected via toPoi()) so favoritesNearby and search
+    // give custom POIs the same treatment as OSM ones (#48) — mirrors MapViewModel's identical
+    // merge for the Map screen's own POI list.
+    private val allPois = combine(poiDao.observeAll(), customPoiDao.observeAll()) { pois, customPois ->
+        pois + customPois.map { it.toPoi() }
+    }
+
     val uiState: StateFlow<CheckInUiState> = combine(
-        poiDao.observeAll(),
+        allPois,
         verdictDao.observeAll(),
         location,
         lastCheckedInName,
@@ -175,6 +185,7 @@ class CheckInViewModel(
                 CheckInViewModel(
                     app.container.locationRepository,
                     app.container.database.poiDao(),
+                    app.container.database.customPoiDao(),
                     app.container.database.verdictDao(),
                     app.container.database.visitDao()
                 )
