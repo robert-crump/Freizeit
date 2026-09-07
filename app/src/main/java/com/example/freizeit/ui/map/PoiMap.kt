@@ -86,6 +86,10 @@ fun PoiMap(
     // would land without the map itself knowing anything about the add-POI flow.
     addPoiActive: Boolean = false,
     onCameraIdle: (LatLon) -> Unit = {},
+    // Pushes the native compass down by this many px so it clears whatever Compose overlay
+    // (search bar/category chips) the caller has drawn across the top of the map — see
+    // MapScreen's topOverlayHeightPx. 0 leaves it at the SDK's own top-edge default.
+    compassTopMarginPx: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -106,6 +110,15 @@ fun PoiMap(
             MapViewHolder.configured = true
             mapView.getMapAsync { map ->
                 state.map = map
+                // Google Maps-style compass: hidden while facing north, fades in once rotated,
+                // tap resets to north (both built into MapLibre's own CompassView/UiSettings —
+                // fadeFacingNorth is already the SDK default, set explicitly here so that's not
+                // left implicit). Its margins are kept in sync with compassTopMarginPx below so
+                // it clears the Compose search bar/category row drawn on top of this map instead
+                // of rendering invisibly underneath them.
+                map.uiSettings.isCompassEnabled = true
+                map.uiSettings.setCompassFadeFacingNorth(true)
+                applyCompassMargins(state, compassTopMarginPx)
                 map.cameraPosition = CameraPosition.Builder()
                     .target(
                         if (location != null) LatLng(location.lat, location.lon)
@@ -221,6 +234,9 @@ fun PoiMap(
             if (state.renderedLocation != location) {
                 applyLocation(state, location)
             }
+            if (state.renderedCompassTopMarginPx != compassTopMarginPx) {
+                applyCompassMargins(state, compassTopMarginPx)
+            }
         }
     )
 }
@@ -233,6 +249,7 @@ private class PoiMapState {
     var locationSource: GeoJsonSource? = null
     var renderedPois: List<PoiWithDistance> = emptyList()
     var renderedLocation: LatLon? = null
+    var renderedCompassTopMarginPx: Int = -1
     var poiById: Map<String, PoiWithDistance> = emptyMap()
     var onPoiClick: (PoiWithDistance) -> Unit = {}
     var onCameraIdle: (LatLon) -> Unit = {}
@@ -368,6 +385,19 @@ private fun applyLocation(state: PoiMapState, location: LatLon?) {
     }
     val feature = Feature.fromGeometry(Point.fromLngLat(location.lon, location.lat), props)
     source.setGeoJson(FeatureCollection.fromFeatures(arrayOf(feature)))
+}
+
+/** Only the top margin moves (see [PoiMap]'s compassTopMarginPx doc) — left/right/bottom keep
+ *  whatever the SDK's own defaults already are. */
+private fun applyCompassMargins(state: PoiMapState, topMarginPx: Int) {
+    state.renderedCompassTopMarginPx = topMarginPx
+    val settings = state.map?.uiSettings ?: return
+    settings.setCompassMargins(
+        settings.compassMarginLeft,
+        topMarginPx,
+        settings.compassMarginRight,
+        settings.compassMarginBottom
+    )
 }
 
 private fun metersToRadiusPx(meters: Float, latitude: Double, zoom: Double): Float {

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -64,11 +63,14 @@ fun AddPoiPinOverlay(
 ) {
     BackHandler(onBack = onCancel)
     Column(modifier = modifier.fillMaxSize()) {
+        // No statusBarsPadding here: this overlay sits inside MapScreen's Box, which is already
+        // inset by Scaffold's own top padding (passed down as innerPadding) — adding it again
+        // doubled the top gap, sitting this row visibly lower than SearchOval right below it in
+        // the normal (non-pin-placing) state, which relies on that same single inset.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(4.dp),
+                .padding(horizontal = 4.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onCancel) {
@@ -158,7 +160,10 @@ fun AddPoiForm(
     BackHandler(onBack = onDismiss)
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        // Same double-inset issue as AddPoiPinOverlay above: this form is hosted inside the same
+        // already-Scaffold-inset MapScreen content, so its own statusBarsPadding stacked a second
+        // top gap on top of that.
+        Column(modifier = Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically

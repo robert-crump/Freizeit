@@ -50,7 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -121,6 +123,14 @@ fun MapScreen(
 
     BackHandler(enabled = showLayersPanel) { showLayersPanel = false }
 
+    // Measured height of the SearchOval+PoiCategoryChipRow column below, so the map's native
+    // compass (see PoiMap's compassTopMarginPx) can be pushed down to clear it instead of
+    // rendering hidden underneath it — reading the actual laid-out height (rather than a fixed
+    // dp guess) keeps this correct if that column's content ever changes (e.g. an empty category
+    // row, larger system font scale).
+    var topOverlayHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+
     Box(modifier = modifier.fillMaxSize()) {
         // Always mounted (issue #45): the "Add place" FAB needs a live map to pin-drop against
         // even before any POI data exists, so the map can no longer be swapped out entirely for
@@ -135,6 +145,13 @@ fun MapScreen(
             focusRequest = focusRequest,
             addPoiActive = addPoiStep == AddPoiStep.PLACING_PIN,
             onCameraIdle = viewModel::updateAddPoiCenter,
+            // Zero while placing a pin: the search bar/chip row aren't shown then, so the
+            // compass has nothing to hide behind at the top edge.
+            compassTopMarginPx = if (addPoiStep == AddPoiStep.PLACING_PIN) {
+                0
+            } else {
+                topOverlayHeightPx + with(density) { COMPASS_TOP_GAP.roundToPx() }
+            },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -155,7 +172,11 @@ fun MapScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Column(modifier = Modifier.align(Alignment.TopCenter)) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .onGloballyPositioned { topOverlayHeightPx = it.size.height }
+            ) {
                 SearchOval(
                     committedQuery = state.committedSearchQuery,
                     onOvalClick = { onOpenSearch(state.committedSearchQuery ?: "") },
@@ -229,6 +250,9 @@ fun MapScreen(
 
 /** Matches FilterChipDefaults' own default outlined-chip border width. */
 private val SEARCH_OVAL_BORDER_WIDTH = 1.dp
+
+/** Gap between the search bar/category chip row and the map's native compass below them. */
+private val COMPASS_TOP_GAP = 8.dp
 
 /**
  * Floats inside the map's own [Box] (top-aligned), same convention as [PoiCategoryChipRow] below
