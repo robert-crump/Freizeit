@@ -1,5 +1,51 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #46: Manual POI adding: address search for custom POI creation
+
+- User explicitly picked this one (`/next-issue issue 46`) rather than the usual "pick the
+  highest-impact open issue" — skipped the epic-priority writeup other recent entries include.
+  Confirmed `ready-for-agent` and unblocked (#45 closed); already fully resolved in the issue body
+  per the epic's established convention, no `/grill-me` needed.
+- New `data/geocoding/NominatimClient.kt` (object, mirrors `OpenMeteoClient`'s exact pattern: plain
+  `HttpURLConnection` + Gson, one GET per search, null-on-any-failure) plus a new
+  `domain/geocoding/GeocodeResult.kt` (lat/lon/displayName/street/housenumber/postcode/city — the
+  reduced shape the rest of the app needs, not Nominatim's full response). `search()` biases (not
+  restricts — `bounded=0`) to the same Aachen/South Limburg box as
+  `tools/poi_extraction/extract_pois.py`'s `AACHEN_BBOX`, duplicated as a literal since one side is
+  Python. User-Agent identifies the app + repo URL rather than a personal contact address — real
+  per Nominatim's usage policy (a default HttpURLConnection one is rejected) without sending any
+  user-identifying data to this third-party service.
+- UI lives in `AddPoiPinOverlay` (the pin-drop step), not the form: a new `AddressSearchBar`
+  private composable — `OutlinedTextField` + explicit "Search" button/IME action (no live-
+  typeahead, respects Nominatim's 1 req/sec policy without debounce logic), permanent "©
+  OpenStreetMap contributors" caption beneath it, and a results `Card` below that. Selecting a
+  result re-centers the pin by reusing the existing `MapViewModel.focusOn` camera-jump path (its
+  resulting camera-idle callback already feeds `updateAddPoiCenter` during `PLACING_PIN`) rather
+  than inventing a second "move the crosshair" mechanism, and stashes the structured address in a
+  new `pendingAddressPrefill` StateFlow. `AddPoiForm` gained a `prefillAddress: GeocodeResult?`
+  param seeding street/housenumber/postcode/city (still editable after) whenever `initial` (#47's
+  edit flow) is null — edit's own values always win since it never re-enters pin-placement/search.
+- `MapViewModel` gained `AddressSearchState` (query/results/isSearching/error/searched — `error`
+  vs. an empty `results` list are distinct so the empty-state message only shows after a genuine
+  zero-match search, not a network failure) plus `updateAddressSearchQuery`/`searchAddress`/
+  `selectAddressResult`. `searchAddress`'s IO-dispatched response checks the query hasn't changed
+  since the request fired before applying it (mirrors `selectPoi`'s existing late-response guard)
+  rather than adding a generation counter. Both new StateFlows are cleared in `cancelAddPoi` and
+  `saveCustomPoi` alongside the existing `addPoiCenter`/`editingCustomPoi` resets.
+- Tests: 228 total, 0 failures. New `NominatimClientTest.kt` (mirrors `OpenMeteoClientTest`'s
+  pattern): result-array parsing into `GeocodeResult`s, city→town→village fallback, empty array vs.
+  null-on-garbage/non-array JSON, a hit missing lat/lon dropped rather than crashing the whole
+  parse, and blank-query search short-circuiting before any network call. No Compose-level test for
+  the prefill precedence (`initial` over `prefillAddress`) or the search bar itself — same
+  Robolectric-free constraint noted in prior entries for this file's other Compose pieces;
+  the underlying logic is a one-line `?:` chain, not judged worth a dedicated harness.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
+  no new warnings.
+- Not verified on device: an actual Nominatim round trip (rate-limit behavior, real result
+  ordering/quality for Aachen/South Limburg addresses, a genuine network-failure inline message)
+  and the visual layout of the new search bar/results card sitting above the pin crosshair — needs
+  a real run on Robert's phone.
+
 ## 2026-09-07 — Issue #51: Minimal Glance widget: top-3 suggestions
 
 - Picked from eight open `ready-for-agent` issues: of the three actually unblocked (#46/#49, the
@@ -195,54 +241,4 @@
   run on Robert's phone, particularly the compass's fade timing/position relative to the category
   chip row (including with zero categories, where that row still reserves ~16dp), and rotating the
   map to confirm it fades in and tapping it resets to north.
-
-## 2026-09-07 — Issue #48: Manual POI adding: check-in and favorite parity for custom POIs
-
-- Picked from the "Manual POI adding" epic (#43): #45 (the foundational slice) closed since the
-  last session, unblocking #46/#47/#48. Of those three, #48 was the highest-impact pick — it's the
-  only one where a custom POI is currently *invisible* to core app flows (geofence auto check-in,
-  check-in search) rather than just missing a UI nicety, and it unblocks #49 (reimport-time merge
-  detection, which additionally depends on #48). Already fully resolved in the issue body (per the
-  epic's established convention of pre-resolving specs before filing), no `/grill-me` needed.
-- Verdict/favorite parity needed no code change — confirmed, not just assumed: `#45`'s session
-  already made this work as a side effect of `VerdictDao.setVerdict` operating on whatever `Poi` a
-  caller passes in ( `CustomPoi.toPoi()` produces one), so a new
-  `setVerdict works identically for a custom poi projected via toPoi` case was added to
-  `VerdictDaoTest.kt` to lock that claim in as tested rather than leave it "probably fine."
-- The real remaining scope was geofence auto check-in and check-in search, both of which read
-  `poiDao`/`PoiDao.observeFavorites()` directly instead of through the Map screen's existing
-  merged-list pattern (`MapViewModel.poisVerdictsAndNames`). New shared
-  `data/repository/PoiLookup.kt` gives every other consumer the same fold, without duplicating it
-  at each call site: `observeAllFavorites`/`allFavoritesOnce` (merges `PoiDao.observeFavorites()` +
-  a new mirroring `CustomPoiDao.observeFavorites()` — same verdict-join query, over `custom_poi`)
-  and `findPoiById` (routes on `isCustomPoiId` to `poiDao.getById`/`customPoiDao.getById()?.toPoi()`
-  — an id is only ever in one of the two tables by construction, so this is an either/or, not a
-  fallback probe).
-- Geofence registration: `FreizeitApplication.kt`'s favorites-changed collector and
-  `AppContainer.kt`'s `geofenceLocationMonitor` callback both swap their bare
-  `poiDao.observeFavorites()` for `observeAllFavorites`/`allFavoritesOnce` — a favorited custom POI
-  now gets a Play Services geofence registered exactly like an OSM favorite.
-  `GeofenceSyncManager` gained a `CustomPoiDao` constructor dependency so `replaySelection` (the
-  >100-favorites replay path) can resolve a persisted selected id back to a `Poi` via
-  `findPoiById` regardless of which table it's actually in.
-- Geofence transition handling: `GeofenceBroadcastReceiver`'s three direct `poiDao.getById(...)`
-  call sites (`handleCheckIn`'s notification-action check-in, `refreshNotification`'s dwelling-id
-  candidate resolution, and its final closest-favorite lookup before showing the notification) all
-  switched to `findPoiById` — a DWELL/notification-check-in flow now resolves a custom POI the same
-  way it already resolved an OSM one, no separate branch.
-- `CheckInViewModel`: new private `allPois` flow folds `customPoiDao.observeAll().map { it.toPoi() }`
-  into `poiDao.observeAll()` (mirrors `MapViewModel`'s identical merge), feeding both
-  `favoritesNearby` and search — `CheckInSearchScreen.kt` itself needed zero changes since it only
-  ever reads `CheckInViewModel.uiState`, never a DAO directly (confirmed before writing any UI
-  code, not assumed).
-- Tests: 351 total, 0 failures. New `PoiLookupTest.kt` (`findPoiById` resolving each table plus an
-  unknown-id-in-either-table case; `observeAllFavorites`/`allFavoritesOnce` merging and correctly
-  excluding an un-favorited custom POI) and the `VerdictDaoTest.kt` case above.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
-  no new warnings.
-- Not verified on device: the actual Play Services geofence path (favoriting a custom POI, walking
-  into/dwelling in its radius, confirming a Visit gets logged and the notification's Check-in
-  button also resolves it) is real-hardware/real-Play-Services behavior no unit test exercises —
-  needs confirmation on Robert's phone, along with the check-in search screen actually surfacing a
-  custom POI in its results and quick-picks.
 

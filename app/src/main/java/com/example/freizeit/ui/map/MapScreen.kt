@@ -83,6 +83,8 @@ fun MapScreen(
     val addPoiStep by viewModel.addPoiStep.collectAsStateWithLifecycle()
     val addPoiCenter by viewModel.addPoiCenter.collectAsStateWithLifecycle()
     val editingCustomPoi by viewModel.editingCustomPoi.collectAsStateWithLifecycle()
+    val addressSearchState by viewModel.addressSearchState.collectAsStateWithLifecycle()
+    val pendingAddressPrefill by viewModel.pendingAddressPrefill.collectAsStateWithLifecycle()
     val pendingDeleteCustomPoiId by viewModel.pendingDeleteCustomPoiId.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
@@ -193,6 +195,10 @@ fun MapScreen(
             AddPoiPinOverlay(
                 onCancel = viewModel::cancelAddPoi,
                 onUseLocation = viewModel::confirmAddPoiLocation,
+                searchState = addressSearchState,
+                onSearchQueryChange = viewModel::updateAddressSearchQuery,
+                onSearch = viewModel::searchAddress,
+                onSelectResult = viewModel::selectAddressResult,
                 useLocationEnabled = addPoiCenter != null
             )
         } else {
@@ -269,7 +275,8 @@ fun MapScreen(
                 },
                 onDismiss = viewModel::cancelAddPoi,
                 onSave = viewModel::saveCustomPoi,
-                initial = editingCustomPoi
+                initial = editingCustomPoi,
+                prefillAddress = pendingAddressPrefill
             )
         }
     }

@@ -47,6 +47,12 @@
     <string name="add_poi_cancel">Cancel</string>
     <string name="add_poi_proximity_warning">There\'s already a %1$s ~%2$s away — add anyway?</string>
     <string name="add_poi_proximity_add_anyway">Add anyway</string>
+    <!-- Address search for custom POI creation (issue #46) -->
+    <string name="add_poi_address_search_label">Search address</string>
+    <string name="add_poi_address_search_button">Search</string>
+    <string name="add_poi_address_search_error">Couldn\'t search right now — try again</string>
+    <string name="add_poi_address_search_empty">No addresses found</string>
+    <string name="add_poi_osm_attribution">© OpenStreetMap contributors</string>
     <!-- Edit/delete custom POI (issue #47) -->
     <string name="add_poi_edit_title">Edit place</string>
     <string name="detail_custom_poi_edit">Edit place</string>
