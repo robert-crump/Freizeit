@@ -1,5 +1,36 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Add-POI header alignment + Google Maps-style compass
+
+- No GitHub issue; user asked directly for two Map-screen fixes noticed while using the add-POI
+  flow (#45). Implemented directly, no `/grill-me` needed — both were concrete, unambiguous asks.
+- Add-POI header alignment: `AddPoiPinOverlay`'s back-arrow/hint row and `AddPoiForm`'s back-
+  arrow/title row both called `.statusBarsPadding()` on top of an already-applied top inset —
+  `MapScreen` (and by extension anything it hosts, including these two full-screen steps) already
+  sits inside `FreizeitApp`'s `Scaffold`-provided `innerPadding`, which accounts for the status bar
+  itself. The doubled inset pushed both rows visibly below `SearchOval`, which relies on that same
+  single inset and adds no `statusBarsPadding` of its own. Fix: dropped `.statusBarsPadding()` from
+  both and matched their `Row` padding to `horizontal = 4.dp, vertical = 8.dp` (already what
+  `AddPoiForm`'s row used) — now both align with `SearchOval`'s top position and with each other.
+- Compass: MapLibre's compass was never actually broken (fade-facing-north — hidden at north,
+  fades in on rotation, tap resets to north — is already the SDK default and left otherwise
+  untouched, just made explicit via `setCompassFadeFacingNorth(true)`); it was rendering at its
+  default top-right position *underneath* `MapScreen`'s Compose `SearchOval`+`PoiCategoryChipRow`
+  column, which is drawn on top of the native `MapView` in the same `Box` and spans the full width
+  of that same top strip — permanently invisible regardless of bearing. Fix: `MapScreen` measures
+  that column's actual rendered height via `Modifier.onGloballyPositioned` (not a fixed dp guess —
+  stays correct if the category row is ever empty, or system font scale changes its height) and
+  passes it down as `PoiMap`'s new `compassTopMarginPx`, which nudges only the compass's top
+  margin (via `UiSettings.setCompassMargins`, left/right/bottom untouched) to clear that column
+  plus an 8dp gap. Zeroed out during the add-POI pin-placement step, where that column isn't shown.
+- Tests: 351 total, 0 failures (unchanged — no pure function touched; both fixes are Compose
+  layout/native-widget wiring). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/
+  `testDebugUnitTest`/`assembleDebug`: all clean, no new warnings.
+- Not verified on device: both are visual fixes with no unit-test coverage possible — needs a real
+  run on Robert's phone, particularly the compass's fade timing/position relative to the category
+  chip row (including with zero categories, where that row still reserves ~16dp), and rotating the
+  map to confirm it fades in and tapping it resets to north.
+
 ## 2026-09-07 — Issue #48: Manual POI adding: check-in and favorite parity for custom POIs
 
 - Picked from the "Manual POI adding" epic (#43): #45 (the foundational slice) closed since the
@@ -254,51 +285,3 @@
   compose-bom bump itself is also unverified beyond compiling and testing cleanly — worth a general
   smoke pass across screens the compiler wouldn't catch a regression in (theming, animations,
   Compose Preview if used).
-
-## 2026-08-01 — Issue #42: active-notification bugs
-
-- Issue was a live bug report (unfavorited place still notified; two DWELL notifications arriving
-  20min/1.5h after the fact) — root-caused via a `/grill-me` session before any code was touched
-  (scope: both bugs in one pass; where the stale-favorite fix lives; whether to reconcile the live
-  notification immediately and how, given no location fix is available on that path; which
-  location API to use for the staleness check within `goAsync()`'s time budget; threshold/fail-
-  open behavior; testing approach), posted to #42 as a comment, then implemented directly from
-  that spec.
-- Root cause 1 (stale favorite): `GeofenceSyncManager.register()` diffed registered geofences
-  against current favorites and removed stale ones, but never touched
-  `GeofenceStateRepository.dwellingPlaceIds`. An unfavorited-while-dwelling place has no geofence
-  left to ever send an EXIT, so its id stayed "dwelling" forever — able to win
-  `closestEligibleFavorite()` (and thus show a notification, or block a legitimate one) on any
-  later, unrelated transition.
-- Root cause 2 (late delivery): Play Services can delay a DWELL broadcast well past the requested
-  `NOTIFICATION_RESPONSIVENESS_MILLIS` under Doze/standby batching — the event's own
-  `triggeringLocation` reflects the real transition moment, not delivery time, so it can't detect
-  this.
-- New pure functions in `util/GeofenceNotificationSelection.kt` (tested in
-  `GeofenceNotificationSelectionTest.kt`, 172 tests total / 0 failures):
-  `reconcileDwellingOnUnregister(dwellingPlaceIds, idsToRemove, activeNotificationPlaceId)` — purges
-  removed ids from dwelling state, flags whether the currently-shown notification (if any) needs
-  cancelling; `isNotificationStale(currentLat/Lon, accuracyMeters, poiLat/Lon, radiusMeters)` —
-  radius + accuracy-buffer distance check.
-- `GeofenceStateRepository` gains `activeNotificationPlaceId` (nullable `stringPreferencesKey`):
-  which favorite the single outstanding notification is for, so a favorites-change can tell
-  whether it needs to cancel that specific notification.
-- `GeofenceSyncManager.register()`: on each successful `removeGeofences()`, calls
-  `reconcileDwellingState()` (new private helper) to purge + cancel-if-affected. No re-ranking is
-  attempted here — no location fix available outside a geofence transition, so a still-dwelling
-  favorite's notification is left alone for the next real transition to correct. `removeAll()` also
-  clears `activeNotificationPlaceId` now, alongside the state it already cleared.
-- `GeofenceBroadcastReceiver.refreshNotification()`: before showing a DWELL notification, checks
-  `LocationHelper.lastKnownLocation()` (synchronous, cached — already used elsewhere in this
-  codebase, no risk to `goAsync()`'s ~10s budget the way a fresh GPS fix would be) against the
-  target favorite via `isNotificationStale`; suppresses (cancels) instead of showing if stale. No
-  cached location → fails open (shows it) rather than silently dropping a legitimate notification.
-  `showNotification`/`cancelNotification` helpers now wrap `GeofenceNotifications.show`/`cancel`
-  to keep `activeNotificationPlaceId` in sync at every call site (`refreshNotification`,
-  `handleCheckIn`, `ACTION_DISMISS`).
-- `assembleDebug`/`testDebugUnitTest`: both clean, no new warnings.
-- Not verified on device: the actual DWELL/EXIT timing and delivery-latency behavior this targets
-  is inherently a real-device/real-Play-Services thing — needs confirmation on Robert's phone that
-  (a) un-favoriting mid-dwell no longer resurfaces a notification for that place, and (b) a
-  deliberately-delayed DWELL (e.g. airplane-mode trick) gets suppressed rather than shown.
-
