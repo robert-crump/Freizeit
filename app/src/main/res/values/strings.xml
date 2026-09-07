@@ -121,6 +121,11 @@
     <string name="settings_no_import">No place data imported yet. Import the pois.json produced by the extraction script.</string>
     <string name="settings_last_import">Last import: %1$s</string>
     <string name="settings_missing_flagged">No longer in OSM (kept because of a verdict): %1$d</string>
+    <!-- Settings: reimport-time custom POI merge detection (#49) -->
+    <string name="settings_merge_candidate_title">Same place?</string>
+    <string name="settings_merge_candidate_body">Is \'%1$s\' the same place as the newly-imported \'%2$s\'?</string>
+    <string name="settings_merge_confirm">Yes, merge</string>
+    <string name="settings_merge_dismiss">No, keep both</string>
     <!-- Settings: backup -->
     <string name="settings_backup_section">Backup</string>
     <string name="settings_backup_export">Export backup</string>

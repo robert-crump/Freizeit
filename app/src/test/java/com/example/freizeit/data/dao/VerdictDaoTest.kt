@@ -83,4 +83,36 @@ class VerdictDaoTest {
         assertEquals("Our Café", stored?.snapshotName)
         assertEquals("cafe", stored?.snapshotCategory)
     }
+
+    /** #49: reimport-time merge re-keys a custom POI's verdict onto the matched OSM place. */
+    @Test
+    fun `rekey moves a verdict from the old placeId to the new one`() = runTest {
+        db.verdictDao().setVerdict(poi.copy(id = "custom/1"), Verdict.VALUE_FAVORITE)
+
+        db.verdictDao().rekey("custom/1", "node/2")
+
+        assertNull(db.verdictDao().getByPlaceId("custom/1"))
+        assertEquals(Verdict.VALUE_FAVORITE, db.verdictDao().getByPlaceId("node/2")?.value)
+    }
+
+    @Test
+    fun `rekey onto a placeId that already has a verdict keeps the old id's data`() = runTest {
+        db.verdictDao().setVerdict(poi.copy(id = "custom/1", name = "Ours"), Verdict.VALUE_FAVORITE)
+        db.verdictDao().setVerdict(poi.copy(id = "node/2", name = "Theirs"), "other")
+
+        db.verdictDao().rekey("custom/1", "node/2")
+
+        val merged = db.verdictDao().getByPlaceId("node/2")
+        assertEquals(Verdict.VALUE_FAVORITE, merged?.value)
+        assertEquals("Ours", merged?.snapshotName)
+        assertEquals(1, db.verdictDao().observeAll().first().size)
+    }
+
+    @Test
+    fun `rekey is a no-op when the old placeId has no verdict`() = runTest {
+        db.verdictDao().rekey("custom/never-verdicted", "node/2")
+
+        assertNull(db.verdictDao().getByPlaceId("node/2"))
+        assertEquals(0, db.verdictDao().observeAll().first().size)
+    }
 }

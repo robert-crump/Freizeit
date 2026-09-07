@@ -1,5 +1,53 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #49: Manual POI adding: reimport-time merge detection and confirmation
+
+- Picked via `/next-issue issue 49` (user-specified). Confirmed `ready-for-agent` and unblocked
+  (#45/#48 both closed). Already fully resolved in the issue body per the epic's established
+  convention; no `/grill-me` needed. This is the last open issue in the "Manual POI adding" epic
+  (#43) — #46/#47/#48/#49 are all now closed.
+- New `util/NameSimilarity.kt` (pure, no existing helper to reuse per the exploration pass):
+  normalizes (lowercase, collapse non-alnum runs to a single space) then matches on exact
+  equality, substring containment either direction, or a normalized-Levenshtein similarity ratio
+  above a threshold (0.6 default) — the "fuzzy substring/edit-distance" the issue asks for.
+  New `util/CustomPoiMergeMatch.kt` layers this on top of the same distance+category shape as
+  `CustomPoiProximity` (#45/#47) — reuses `GeoDistance`, same 40m threshold constant — but adds
+  the name check `CustomPoiProximity` deliberately doesn't have (that one's a same-category-only
+  dedup warning; #49 needs a real place-identity signal before ever proposing a merge). Yields at
+  most one `MergeCandidate` per custom POI (its nearest qualifying match), so "no candidates"
+  falls out naturally when nothing clears both thresholds.
+- `PoiRepository.importFrom` now returns a new `ImportResult(count, mergeCandidates)` instead of
+  a bare `Int` — candidates computed once the transaction commits, against `parsed.pois` (exactly
+  what was just upserted) and a fresh `customPoiDao().getAll()`. New
+  `PoiRepository.mergeCustomPoiInto(customPoiId, poiId)`: one `db.withTransaction` re-keying the
+  Verdict (new `VerdictDao.rekey`, `UPDATE OR REPLACE` since `placeId` is that table's primary
+  key — the rare case the target OSM place already had its own verdict is resolved in the custom
+  POI's favor) and every Visit (new `VisitDao.rekey`, plain `UPDATE`, no PK conflict since `id` is
+  the actual primary key there) onto the matched `poi.id`, then deletes the `custom_poi` row —
+  deliberately the mirror image of `MapViewModel.commitPendingDelete` (#47), which deletes those
+  rows outright instead of re-keying them; that method's doc comment already named #49 as the
+  future contrast.
+- `SettingsViewModel` gained a `mergeCandidates: StateFlow<List<MergeCandidate>>` (populated
+  alongside `ImportStatus.Success` in `importPoiFile`) plus `confirmMerge`/`dismissMerge`, both of
+  which pop the front entry — `SettingsScreen` renders only `mergeCandidates.firstOrNull()` as an
+  `AlertDialog` (the existing two-button `confirmButton`/`dismissButton` shape already used for
+  the auto-check-in disclosure dialog), so several candidates from one import walk through as a
+  sequence of single dialogs rather than needing new stacked-dialog UI. Per the issue's explicit
+  "no additional undo" — confirming just calls `mergeCustomPoiInto` and dismissing is a pure
+  state-list edit, no Snackbar/undo path like #47's delete.
+- Tests: 257 total, 0 failures. New `NameSimilarityTest.kt`, `CustomPoiMergeMatchTest.kt` (mirrors
+  `CustomPoiProximityTest.kt`'s GeoDistance-derived-offset convention), `VerdictDao`/`VisitDao`
+  `rekey` cases (including the already-has-a-verdict/visits-at-the-target-id edge cases), and
+  `PoiImportTest.kt` additions covering `importFrom` surfacing (and not surfacing) candidates plus
+  `mergeCustomPoiInto`'s full re-key-then-delete transaction end to end.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
+  no new warnings.
+- Not verified on device: the actual Settings flow (import a `.pbf`-derived file that introduces a
+  near-duplicate of an existing custom POI, confirm the dialog appears with the right two names,
+  merge, and check the custom POI's marker/favorite/check-in history now live under the OSM
+  place's id) is real Compose/Room integration no unit test exercises — needs a real
+  import-and-merge pass on Robert's phone.
+
 ## 2026-09-07 — Issue #46: Manual POI adding: address search for custom POI creation
 
 - User explicitly picked this one (`/next-issue issue 46`) rather than the usual "pick the
@@ -210,35 +258,4 @@
   edit-a-custom-POI and delete-then-undo-then-let-it-time-out pass on Robert's phone, plus
   confirming a deleted custom POI's marker, favorite/verdict, and check-in history are all
   actually gone after the Snackbar times out (not just visually hidden).
-
-## 2026-09-07 — Add-POI header alignment + Google Maps-style compass
-
-- No GitHub issue; user asked directly for two Map-screen fixes noticed while using the add-POI
-  flow (#45). Implemented directly, no `/grill-me` needed — both were concrete, unambiguous asks.
-- Add-POI header alignment: `AddPoiPinOverlay`'s back-arrow/hint row and `AddPoiForm`'s back-
-  arrow/title row both called `.statusBarsPadding()` on top of an already-applied top inset —
-  `MapScreen` (and by extension anything it hosts, including these two full-screen steps) already
-  sits inside `FreizeitApp`'s `Scaffold`-provided `innerPadding`, which accounts for the status bar
-  itself. The doubled inset pushed both rows visibly below `SearchOval`, which relies on that same
-  single inset and adds no `statusBarsPadding` of its own. Fix: dropped `.statusBarsPadding()` from
-  both and matched their `Row` padding to `horizontal = 4.dp, vertical = 8.dp` (already what
-  `AddPoiForm`'s row used) — now both align with `SearchOval`'s top position and with each other.
-- Compass: MapLibre's compass was never actually broken (fade-facing-north — hidden at north,
-  fades in on rotation, tap resets to north — is already the SDK default and left otherwise
-  untouched, just made explicit via `setCompassFadeFacingNorth(true)`); it was rendering at its
-  default top-right position *underneath* `MapScreen`'s Compose `SearchOval`+`PoiCategoryChipRow`
-  column, which is drawn on top of the native `MapView` in the same `Box` and spans the full width
-  of that same top strip — permanently invisible regardless of bearing. Fix: `MapScreen` measures
-  that column's actual rendered height via `Modifier.onGloballyPositioned` (not a fixed dp guess —
-  stays correct if the category row is ever empty, or system font scale changes its height) and
-  passes it down as `PoiMap`'s new `compassTopMarginPx`, which nudges only the compass's top
-  margin (via `UiSettings.setCompassMargins`, left/right/bottom untouched) to clear that column
-  plus an 8dp gap. Zeroed out during the add-POI pin-placement step, where that column isn't shown.
-- Tests: 351 total, 0 failures (unchanged — no pure function touched; both fixes are Compose
-  layout/native-widget wiring). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/
-  `testDebugUnitTest`/`assembleDebug`: all clean, no new warnings.
-- Not verified on device: both are visual fixes with no unit-test coverage possible — needs a real
-  run on Robert's phone, particularly the compass's fade timing/position relative to the category
-  chip row (including with zero categories, where that row still reserves ~16dp), and rotating the
-  map to confirm it fades in and tapping it resets to north.
 

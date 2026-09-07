@@ -134,4 +134,40 @@ class VisitDaoTest {
 
         assertEquals(1, db.visitDao().getAll().size)
     }
+
+    /** #49: reimport-time merge re-keys every visit logged against a custom POI onto the
+     *  matched OSM place, rather than deleting them the way #47's outright delete does. */
+    @Test
+    fun `rekey moves every visit from the old placeId to the new one`() = runTest {
+        db.visitDao().checkIn(poi.copy(id = "custom/1"))
+        db.visitDao().checkIn(poi.copy(id = "custom/1"))
+        db.visitDao().checkIn(poi.copy(id = "node/other"))
+
+        db.visitDao().rekey("custom/1", "node/2")
+
+        val all = db.visitDao().getAll()
+        assertEquals(2, all.count { it.placeId == "node/2" })
+        assertEquals(0, all.count { it.placeId == "custom/1" })
+        assertEquals(1, all.count { it.placeId == "node/other" })
+    }
+
+    @Test
+    fun `rekey onto a placeId that already has visits keeps both sets, all under the new id`() = runTest {
+        db.visitDao().checkIn(poi.copy(id = "custom/1"))
+        db.visitDao().checkIn(poi.copy(id = "node/2"))
+
+        db.visitDao().rekey("custom/1", "node/2")
+
+        assertEquals(2, db.visitDao().getAll().count { it.placeId == "node/2" })
+    }
+
+    @Test
+    fun `rekey is a no-op when the old placeId has no visits`() = runTest {
+        db.visitDao().checkIn(poi.copy(id = "node/other"))
+
+        db.visitDao().rekey("custom/never-visited", "node/2")
+
+        assertEquals(1, db.visitDao().getAll().size)
+        assertEquals(0, db.visitDao().getAll().count { it.placeId == "node/2" })
+    }
 }

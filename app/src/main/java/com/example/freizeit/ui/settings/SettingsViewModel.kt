@@ -15,6 +15,7 @@ import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
+import com.example.freizeit.util.MergeCandidate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,13 @@ class SettingsViewModel(
     private val _importStatus = MutableStateFlow<ImportStatus>(ImportStatus.Idle)
     val importStatus: StateFlow<ImportStatus> = _importStatus
 
+    /** #49: custom POIs the most recent import looks like a duplicate of, queued one at a time —
+     *  Settings shows a confirm/dismiss prompt for [List.first] and [confirmMerge]/[dismissMerge]
+     *  both pop it off the front, so an import with several candidates walks through them in
+     *  sequence rather than needing a stacked-dialog UI. */
+    private val _mergeCandidates = MutableStateFlow<List<MergeCandidate>>(emptyList())
+    val mergeCandidates: StateFlow<List<MergeCandidate>> = _mergeCandidates
+
     val suggestionRadiusKm: StateFlow<Int> = settingsRepository.suggestionRadiusKm
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsRepository.DEFAULT_RADIUS_KM)
 
@@ -81,13 +89,31 @@ class SettingsViewModel(
         viewModelScope.launch {
             _importStatus.value = ImportStatus.Importing
             _importStatus.value = try {
-                ImportStatus.Success(poiRepository.importFrom(uri))
+                val result = poiRepository.importFrom(uri)
+                _mergeCandidates.value = result.mergeCandidates
+                ImportStatus.Success(result.count)
             } catch (e: PoiParseException) {
                 ImportStatus.Error(e.message ?: "Invalid POI file")
             } catch (e: Exception) {
                 ImportStatus.Error("Import failed: ${e.message ?: e.javaClass.simpleName}")
             }
         }
+    }
+
+    /** Re-keys [candidate]'s Visit/Verdict rows onto the matched OSM place and drops the
+     *  `custom_poi` row (see [PoiRepository.mergeCustomPoiInto]), then pops it off the queue.
+     *  Per the issue's own spec there's no undo here — the confirm step itself is the safety
+     *  net, unlike #47's delete-then-Snackbar-undo for an outright delete. */
+    fun confirmMerge(candidate: MergeCandidate) {
+        viewModelScope.launch {
+            poiRepository.mergeCustomPoiInto(candidate.customPoi.id, candidate.poi.id)
+            _mergeCandidates.value = _mergeCandidates.value - candidate
+        }
+    }
+
+    /** Leaves both rows exactly as they are — [candidate] simply isn't a real duplicate. */
+    fun dismissMerge(candidate: MergeCandidate) {
+        _mergeCandidates.value = _mergeCandidates.value - candidate
     }
 
     fun exportBackup(uri: Uri) {

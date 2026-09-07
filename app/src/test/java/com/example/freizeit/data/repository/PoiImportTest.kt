@@ -6,7 +6,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.example.freizeit.data.FreizeitDatabase
 import com.example.freizeit.data.PoiParseException
+import com.example.freizeit.data.entity.CustomPoi
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.Visit
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -63,7 +66,7 @@ class PoiImportTest {
 
     @Test
     fun `valid file imports all categories`() = runTest {
-        val count = repository.importFrom(
+        val result = repository.importFrom(
             fileWith(
                 poiJson(
                     poi("node/1", "playground"),
@@ -75,7 +78,7 @@ class PoiImportTest {
             )
         )
 
-        assertEquals(5, count)
+        assertEquals(5, result.count)
         assertEquals(5, db.poiDao().count())
         val counts = db.poiDao().categoryCounts().first().associate { it.category to it.count }
         assertEquals(
@@ -87,7 +90,7 @@ class PoiImportTest {
 
     @Test
     fun `new coarse categories from the widened extractor import alongside the original five`() = runTest {
-        val count = repository.importFrom(
+        val result = repository.importFrom(
             fileWith(
                 poiJson(
                     poi("node/1", "playground"),
@@ -101,7 +104,7 @@ class PoiImportTest {
             )
         )
 
-        assertEquals(7, count)
+        assertEquals(7, result.count)
         assertEquals(7, db.poiDao().count())
         val counts = db.poiDao().categoryCounts().first().associate { it.category to it.count }
         assertEquals(
@@ -212,5 +215,72 @@ class PoiImportTest {
         }
         assertEquals(0, db.poiDao().count())
         assertNull(db.importInfoDao().observe().first())
+    }
+
+    // #49: reimport-time merge detection - importFrom itself surfacing likely custom-POI
+    // duplicates against the rows it just upserted.
+
+    @Test
+    fun `importFrom surfaces a merge candidate for a close same-category similarly-named custom poi`() = runTest {
+        db.customPoiDao().upsert(
+            CustomPoi(id = "custom/1", category = "cafe", lat = 50.5, lon = 6.5, name = "Cafe Sonne")
+        )
+
+        val result = repository.importFrom(fileWith(poiJson(poi("node/1", "cafe", "Cafe Sonne"))))
+
+        assertEquals(1, result.mergeCandidates.size)
+        assertEquals("custom/1", result.mergeCandidates[0].customPoi.id)
+        assertEquals("node/1", result.mergeCandidates[0].poi.id)
+    }
+
+    @Test
+    fun `importFrom surfaces no merge candidates when nothing plausibly matches`() = runTest {
+        db.customPoiDao().upsert(
+            CustomPoi(id = "custom/1", category = "cafe", lat = 50.5, lon = 6.5, name = "Cafe Sonne")
+        )
+
+        val result = repository.importFrom(fileWith(poiJson(poi("node/1", "park", "Central Park"))))
+
+        assertTrue(result.mergeCandidates.isEmpty())
+    }
+
+    @Test
+    fun `mergeCustomPoiInto re-keys verdict and visits then deletes the custom poi`() = runTest {
+        val customPoi = CustomPoi(id = "custom/1", category = "cafe", lat = 50.5, lon = 6.5, name = "Cafe Sonne")
+        db.customPoiDao().upsert(customPoi)
+        db.poiDao().upsertAll(listOf(
+            Poi(id = "node/1", category = "cafe", lat = 50.5001, lon = 6.5, name = "Cafe Sonne")
+        ))
+        db.verdictDao().upsert(
+            Verdict(
+                placeId = "custom/1", value = Verdict.VALUE_FAVORITE, verdictedAt = 1L,
+                snapshotName = "Cafe Sonne", snapshotLat = 50.5, snapshotLon = 6.5, snapshotCategory = "cafe"
+            )
+        )
+        db.visitDao().insert(
+            Visit(
+                placeId = "custom/1", visitedAt = 1L, source = Visit.SOURCE_MANUAL,
+                snapshotName = "Cafe Sonne", snapshotLat = 50.5, snapshotLon = 6.5, snapshotCategory = "cafe"
+            )
+        )
+
+        repository.mergeCustomPoiInto("custom/1", "node/1")
+
+        assertNull(db.customPoiDao().getById("custom/1"))
+        assertNull(db.verdictDao().getByPlaceId("custom/1"))
+        assertEquals(Verdict.VALUE_FAVORITE, db.verdictDao().getByPlaceId("node/1")?.value)
+        assertEquals(1, db.visitDao().getAll().count { it.placeId == "node/1" })
+        assertEquals(0, db.visitDao().getAll().count { it.placeId == "custom/1" })
+    }
+
+    @Test
+    fun `mergeCustomPoiInto deletes the custom poi even with no verdict or visits to rekey`() = runTest {
+        db.customPoiDao().upsert(
+            CustomPoi(id = "custom/1", category = "cafe", lat = 50.5, lon = 6.5, name = "Cafe Sonne")
+        )
+
+        repository.mergeCustomPoiInto("custom/1", "node/1")
+
+        assertNull(db.customPoiDao().getById("custom/1"))
     }
 }

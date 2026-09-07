@@ -35,6 +35,14 @@ interface VisitDao {
     /** Shared across [Visit.SOURCE_MANUAL]/[Visit.SOURCE_NOTIFICATION] — one cooldown clock per place. */
     @Query("SELECT MAX(visitedAt) FROM visit WHERE placeId = :placeId")
     suspend fun lastVisitedAt(placeId: String): Long?
+
+    /** Used by #49's reimport-time merge: re-keys every visit logged against a custom POI onto
+     *  the OSM `poi.id` it was just matched to, instead of deleting them the way
+     *  [deleteByPlaceId] does for #47's unconditional delete. `placeId` isn't this table's
+     *  primary key (`id` is, autoGenerate), so unlike [VerdictDao.rekey] there's no conflict to
+     *  resolve — a plain UPDATE. A no-op (0 rows) if [oldId] has no visits at all. */
+    @Query("UPDATE visit SET placeId = :newId WHERE placeId = :oldId")
+    suspend fun rekey(oldId: String, newId: String)
 }
 
 /** Logs a check-in, snapshotting the poi as it is right now. Returns the new row's id. */
