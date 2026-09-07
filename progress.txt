@@ -1,5 +1,68 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #51: Minimal Glance widget: top-3 suggestions
+
+- Picked from eight open `ready-for-agent` issues: of the three actually unblocked (#46/#49, the
+  remaining Manual POI adding leftovers; #51 itself), #51 was the highest-impact pick by a wide
+  margin — it's the foundation five other filed issues (#52-#56) all transitively depend on,
+  versus #46/#49 which unblock nothing further. The prior #50 session had explicitly deferred
+  #51 for exactly this reason ("a much bigger single slice better left as its own pickup") —
+  picking it up now as that dedicated pickup. Already fully resolved in the issue body per the
+  epic's established convention; no `/grill-me` needed.
+- New `androidx.glance:glance-appwidget:1.1.1` + `androidx.glance:glance-material3:1.1.1`
+  dependencies (`app/build.gradle`) — the app's first Glance usage, no prior widget
+  infrastructure to extend. `SuggestionWidgetReceiver`/`SuggestionWidget` in a new `ui/widget`
+  package, registered in `AndroidManifest.xml` + new `res/xml/suggestion_widget_info.xml`
+  (2x1 min, resizable up to 5-rows-tall, `previewImage`/`description` for the widget picker).
+  Deliberately no `updatePeriodMillis` — #55 is explicitly filed as "the app's first periodic
+  background job," so this slice doesn't jump ahead and add scheduling of its own.
+- No new ranking logic, per the issue's own spec: `SuggestionWidget.provideGlance` mirrors
+  `HomeViewModel`'s exact data assembly (same `poiDao.observeByVerdictValues` candidate pool,
+  `verdictDao`/`visitDao`/`poiCustomNameDao` one-shot reads via `.first()`/`getAll()` instead of
+  `combine`, `locationRepository.refreshOnce()` + `weatherRepository.refresh()`, then
+  `SuggestionEngine.withinRadius` → `rankAll`) rather than reusing `HomeViewModel` itself (a
+  `ViewModel` isn't something a `GlanceAppWidget` can hold — no `ViewModelStore` to own it).
+  Note for whoever picks up #52/#53: Home's own candidate pool is `poiDao.observeByVerdictValues`
+  only, never merged with `customPoiDao` the way `MapViewModel`/`CheckInViewModel` are (#48) — a
+  favorited *custom* POI currently won't appear in Home's deck *or* this widget. Mirrored
+  faithfully rather than silently fixed here (out of scope for #51's "no new ranking logic"), but
+  worth its own issue if confirmed on Robert's phone.
+- Row content (`SuggestionWidgetContent.kt`, new, pure/no Android types): `rows()` resolves each
+  suggestion's display name (`customNames` override → `poi.name` → an "Unnamed <category>"
+  fallback, mirroring `Poi.displayName()`'s precedence but as a plain function since that one's
+  `@Composable`-only) and travel-time label, both via caller-supplied formatter lambdas so the
+  actual `context.getString(R.string.map_unnamed/duration_minutes, ...)` calls happen once in
+  `SuggestionWidget` and this file stays unit-testable with no Robolectric. `rowCountForSize()`
+  and the `WIDGET_SIZES` breakpoint list (Android's `70dp*cells-16dp` cell-size formula, 1..5
+  rows) are the single source both `SizeMode.Responsive`'s declared sizes and the row-count
+  lookup read from, so they can't disagree about what a given placed size means.
+- Theming: below Android 12, `SuggestionWidgetColors` wraps `FreizeitTheme`'s own
+  `LightColors`/`DarkColors` (now `internal` rather than `private` in `Theme.kt` specifically so
+  this file can reuse them instead of re-deriving the same four color values) in
+  `androidx.glance.material3.ColorProviders`; Android 12+ uses `GlanceTheme.colors`'s own dynamic
+  wallpaper-derived scheme untouched.
+- Tap target: generic `actionStartActivity(Intent(context, MainActivity::class.java))`, built
+  once in `provideGlance` (plain `Context`, not inside the `@Composable` body) specifically to
+  dodge an overload-resolution ambiguity between `actionStartActivity`'s Intent-based and
+  reified-generic-type signatures that `compileDebugKotlin` caught immediately when tried inline.
+  #52 swaps this for a per-row `PendingIntent` carrying the tapped place's id.
+- Tests: 222 total (fresh `clean` run — the "351" prior sessions kept citing was and remains
+  stale/wrong, per #47's session note; not re-investigated, still out of scope for this issue),
+  0 failures. New `SuggestionWidgetContentTest.kt` (row capping/ordering, travel-label
+  formatting incl. the null-travel-minutes case, custom-name precedence, `rowCountForSize`
+  boundary behavior, `WIDGET_SIZES` internal consistency). No test for `SuggestionWidget` itself
+  — Glance composables/`provideGlance` aren't unit-testable without Robolectric+the Glance test
+  library, neither of which this repo has any existing pattern for; all the actual logic worth
+  asserting was already pulled into the pure `SuggestionWidgetContent` above.
+  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all
+  clean, no new warnings (same pre-existing `LocalLifecycleOwner`/unused-`customNames` warnings
+  as before).
+- Not verified on device: the entire actual widget experience — adding it from the picker,
+  resizing it through all five row-count steps, dynamic color actually matching wallpaper on a
+  real Android 12+ device vs. the fixed scheme below it, and confirming the tap really does land
+  on Home rather than some stale/backgrounded task state — is real AppWidget-host/launcher
+  behavior no unit test exercises, needs a real run on Robert's phone.
+
 ## 2026-09-07 — Issue #50: Deep-link Home to a specific place's detail sheet
 
 - Picked from the widget epic (design discussion referenced by #51-#56): of the two entirely
@@ -183,78 +246,3 @@
   needs confirmation on Robert's phone, along with the check-in search screen actually surfacing a
   custom POI in its results and quick-picks.
 
-## 2026-08-05 — Issue #45: Manual POI adding — add custom POI via drop-pin
-
-- Picked from five open `ready-for-agent` "Manual POI adding" issues (#45-#49, all children of
-  epic #43): #45 is the only one with no `Blocked by`, and #46/#47/#48 all list `Blocked by: #45`
-  (#49 additionally blocks on #48) — picked as the foundational vertical slice the other four
-  build on, per the issue body's own spec (no `/grill-me` needed, already fully resolved).
-- New `custom_poi` Room table/entity (`data/entity/CustomPoi.kt`) mirroring `Poi`'s fields, added
-  via `MIGRATION_6_7` (version 6→7) — deliberately untouched by `PoiRepository.importFrom`'s
-  markAllMissing→upsertAll→deleteUnverdictedMissing cycle, same rationale as the existing
-  `PoiCustomName` precedent. Unlike `Poi`, `name`/`category` are non-null (required at creation
-  by the form, not the DB). Ids use a new `custom/<uuid>` scheme (`newCustomPoiId()`/
-  `isCustomPoiId()`) — guaranteed never to collide with OSM's `node/`/`way/`/`relation/` ids, and
-  the `custom/` prefix is there specifically so #47's later edit/delete-only-for-custom-POIs check
-  can tell the two apart without a DB round trip.
-- Merge strategy (the key architectural call): `CustomPoi.toPoi()` (`data/entity/CustomPoi.kt`)
-  projects a custom place into the existing `Poi` shape, and `MapViewModel`'s
-  `poisVerdictsAndNames` combine now folds `customPoiDao.observeAll().map { it.toPoi() }` into the
-  same list as `poiDao.observeAll()` before anything downstream ever sees it. Every existing
-  consumer — `filterAndSort`, `PoiMap`'s marker rendering, `visibleCategories`'s chip row, search —
-  needed zero changes as a result: they already operate on `List<Poi>`/`PoiWithDistance` and don't
-  care which table a row came from. `Poi`/`Triple` destructuring became a new private
-  `PoisVerdictsNames` data class purely because a 4th flow (`customPoiDao.observeAll()`) was added
-  to that combine, not for any merge-specific reason. Favoriting a custom POI from the detail sheet
-  already works today as a side effect of this merge (`setVerdict` operates on whatever `Poi` the
-  sheet was given) — issue #48's actual remaining scope is narrower than its title suggests: just
-  `CheckInViewModel`'s geofence matching and `CheckInSearchScreen`'s search, the two consumers that
-  read `poiDao` directly instead of through this merged list.
-- Add-POI flow, driven by a new FAB on `MapScreen` (state machine lives in `MapViewModel` as
-  `AddPoiStep` — NONE/PLACING_PIN/FORM, plus `addPoiCenter: StateFlow<LatLon?>`):
-  - `PLACING_PIN`: `PoiMap` gained an `addPoiActive`/`onCameraIdle` pair — while active, every
-    camera-idle event (plus one fired immediately on entry, via a `LaunchedEffect(addPoiActive)`,
-    so tapping "Use this location" without panning at all still has a center to confirm) reports
-    the map's current center to `MapViewModel.updateAddPoiCenter`. The crosshair itself
-    (`AddPoiPinOverlay`, new `ui/map/AddPoiFlow.kt`) is a fixed icon drawn over the already-shown
-    map, not a second `MapView` — reusing the same singleton `MapViewHolder`-backed instance the
-    rest of the screen already retains across tab switches, rather than standing up a competing one.
-  - `FORM`: `AddPoiForm` (same file) — name (required) + category (required, single-select chip row
-    over every `CATEGORY_ORDER` entry, not just the map's curated `PRIMARY_MAP_CATEGORIES` subset)
-    + optional street/housenumber/postcode/city/opening-hours. Save is disabled until name+category
-    are set; tapping it runs `MapViewModel.findNearbyDuplicate` (wraps the new pure
-    `util/CustomPoiProximity.findNearbyMatch`, checked against `MapUiState.allPois` — already the
-    merged list, so one check covers both `poi` and `custom_poi` with no separate branch) and shows
-    an `AlertDialog` ("There's already a café ~15m away — add anyway?") only when a same-category
-    match sits within 40m; confirming or skipping the dialog both call `MapViewModel.saveCustomPoi`.
-  - The Map screen's empty-state text ("No places yet...") used to replace the whole `PoiMap`
-    composable when both `pois`/`allPois` were empty — changed to float on top of an always-mounted
-    map instead, since the "Add place" FAB (and the map it pin-drops against) needs to be reachable
-    even on a fresh install with no `.pbf` import yet; this was a real gap, not scope creep; the
-    FAB/pin-drop mechanics literally didn't exist to reach otherwise in that state.
-- Backup (`BackupJsonCodec`/`BackupRepository`/`BackupData`): `custom_poi` is now exported/restored
-  alongside verdicts and custom names — unlike OSM `poi` rows (excluded on purpose, they regenerate
-  from the next `.pbf` reimport), `custom_poi` has no other source of truth. `customPois` defaults
-  to `emptyList()` in `BackupData` and is parsed leniently (missing key ≠ error) so an old backup
-  file predating this session still imports cleanly.
-- Tests: 197 total, 0 failures. New `CustomPoiDaoTest` (upsert/upsertAll/delete/deleteAll/getById/
-  observeAll), `CustomPoiTest` (id prefixing/uniqueness, `toPoi()` field-for-field + always-
-  `missingFromOsm = false`), `CustomPoiProximityTest` (category filter, threshold boundary via a
-  same-call re-measured distance rather than a synthetic offset to avoid Haversine round-trip
-  flakiness, nearest-of-several, empty list, custom threshold override), and
-  `FreizeitDatabaseMigrationTest` (`MIGRATION_6_7`'s raw SQL against a hand-built v6
-  `SupportSQLiteDatabase` — this project doesn't export Room schemas, so there's no schema JSON for
-  `MigrationTestHelper` to work from). `BackupRepositoryTest` gained 3 cases for the new
-  `customPois` round trip, wholesale-replace-on-import, and old-file-without-the-key compatibility.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
-  no new warnings (the pre-existing `LocalLifecycleOwner` deprecation warnings and `PoiMap`'s
-  unused `customNames` param are both unchanged from before this session).
-- Not verified on device: the entire pin-drop flow (crosshair tracking a real pan, the "Use this
-  location" tap landing exactly where the crosshair was, the category chip row's scroll/selection
-  feel, the proximity-warning dialog's wording against a real nearby place, a saved custom POI's
-  marker/icon/color rendering correctly and surviving a `.pbf` reimport) is new Compose/MapLibre
-  wiring with no prior on-device confirmation — needs a real run on Robert's phone, particularly
-  confirming the always-mounted map doesn't regress first-load performance or flash oddly before
-  POI data loads, and that a favorited custom POI actually shows up correctly in the detail sheet's
-  heart/bookmark state (the "already works as a side effect" claim above is untested outside unit
-  tests).

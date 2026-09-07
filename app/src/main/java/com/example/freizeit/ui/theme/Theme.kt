@@ -10,14 +10,16 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
-private val LightColors = lightColorScheme(
+// Module-visible (not private) so the Glance widget (#51) can build its own fallback
+// GlanceTheme colors from the exact same fixed scheme, below Android 12's dynamic color.
+internal val LightColors = lightColorScheme(
     primary = GreenPrimary,
     onPrimary = GreenOnPrimary,
     primaryContainer = GreenPrimaryContainer,
     onPrimaryContainer = GreenOnPrimaryContainer
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = GreenPrimaryDark,
     onPrimary = GreenOnPrimaryDark,
     primaryContainer = GreenPrimaryContainerDark,

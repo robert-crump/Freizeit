@@ -31,6 +31,17 @@
             android:name=".data.geofence.GeofenceBroadcastReceiver"
             android:exported="false" />
 
+        <receiver
+            android:name=".ui.widget.SuggestionWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/suggestion_widget_info" />
+        </receiver>
+
     </application>
 
 </manifest>
