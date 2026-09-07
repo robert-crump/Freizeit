@@ -18,6 +18,7 @@ import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.toCustomPoi
 import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.ui.common.PRIMARY_MAP_CATEGORIES
@@ -76,6 +77,16 @@ fun visibleCategories(pois: List<Poi>): List<String> {
     val present = pois.mapTo(HashSet()) { it.category }
     return PRIMARY_MAP_CATEGORIES.filter { it in present }
 }
+
+/** Drops [pendingDeleteId] (if any) from [customPois] — pulled out as a pure function, mirroring
+ *  [filterAndSort]/[visibleCategories] above, so the "the marker disappears immediately, before
+ *  the underlying row is actually deleted" half of #47's optimistic-delete-with-undo is
+ *  unit-testable without a Room/ViewModel round trip. The `custom_poi` row (and its Verdict/Visit)
+ *  survive in the DB — and so in [CustomPoiDao.observeAll]'s emissions — until
+ *  [MapViewModel.commitPendingDelete] runs; this is what hides it from every downstream consumer
+ *  (map markers, search, the merged POI list) in the meantime. */
+fun excludePendingDelete(customPois: List<CustomPoi>, pendingDeleteId: String?): List<CustomPoi> =
+    if (pendingDeleteId == null) customPois else customPois.filterNot { it.id == pendingDeleteId }
 
 private fun matchesSearch(name: String, query: String): Boolean {
     val trimmedQuery = query.trim()
@@ -171,6 +182,20 @@ class MapViewModel(
     private val _addPoiCenter = MutableStateFlow<LatLon?>(null)
     val addPoiCenter: StateFlow<LatLon?> = _addPoiCenter
 
+    // Edit-in-place (#47): non-null routes the FORM step's save through an update (same id,
+    // preserved via buildCandidate's initial?.id fallback) rather than newCustomPoiId(). Set by
+    // startEditCustomPoi, cleared alongside addPoiStep/addPoiCenter by cancelAddPoi/saveCustomPoi.
+    private val _editingCustomPoi = MutableStateFlow<CustomPoi?>(null)
+    val editingCustomPoi: StateFlow<CustomPoi?> = _editingCustomPoi
+
+    // Optimistic delete-with-undo (#47): set by requestDeleteCustomPoi, filtered out of
+    // poisVerdictsAndNames below (via excludePendingDelete) so the marker vanishes immediately —
+    // the underlying custom_poi/Verdict/Visit rows are untouched until commitPendingDelete
+    // actually runs, so undoDeleteCustomPoi needs only clear this back to null, nothing to
+    // restore. At most one pending delete at a time; a second request commits the first.
+    private val _pendingDeleteCustomPoiId = MutableStateFlow<String?>(null)
+    val pendingDeleteCustomPoiId: StateFlow<String?> = _pendingDeleteCustomPoiId
+
     private data class PoisVerdictsNames(
         val pois: List<Poi>,
         val verdicts: Map<String, Verdict>,
@@ -184,10 +209,11 @@ class MapViewModel(
         poiDao.observeAll(),
         customPoiDao.observeAll(),
         verdictDao.observeAll(),
-        poiCustomNameDao.observeAll()
-    ) { pois, customPois, verdicts, customNames ->
+        poiCustomNameDao.observeAll(),
+        _pendingDeleteCustomPoiId
+    ) { pois, customPois, verdicts, customNames, pendingDeleteId ->
         PoisVerdictsNames(
-            pois = pois + customPois.map { it.toPoi() },
+            pois = pois + excludePendingDelete(customPois, pendingDeleteId).map { it.toPoi() },
             verdicts = verdicts.associateBy { it.placeId },
             customNames = customNames.associate { it.placeId to it.customName }
         )
@@ -356,17 +382,64 @@ class MapViewModel(
     fun cancelAddPoi() {
         _addPoiStep.value = AddPoiStep.NONE
         _addPoiCenter.value = null
+        _editingCustomPoi.value = null
     }
 
     /** The nearest existing same-category place within [CustomPoiProximity]'s threshold, if any —
-     *  the form calls this on Save to decide whether to show the "add anyway?" warning. */
-    fun findNearbyDuplicate(lat: Double, lon: Double, category: String): Poi? =
-        CustomPoiProximity.findNearbyMatch(lat, lon, category, uiState.value.allPois)
+     *  the form calls this on Save to decide whether to show the "add anyway?" warning.
+     *  [excludeId] skips a custom POI being edited in place (#47) — otherwise it would always
+     *  match itself at distance zero. */
+    fun findNearbyDuplicate(lat: Double, lon: Double, category: String, excludeId: String? = null): Poi? =
+        CustomPoiProximity.findNearbyMatch(lat, lon, category, uiState.value.allPois, excludeId = excludeId)
 
     fun saveCustomPoi(customPoi: CustomPoi) {
         viewModelScope.launch(Dispatchers.IO) { customPoiDao.upsert(customPoi) }
         _addPoiStep.value = AddPoiStep.NONE
         _addPoiCenter.value = null
+        _editingCustomPoi.value = null
+    }
+
+    /** Opens the add-POI form pre-filled with [poi]'s current values (issue #47's Edit action,
+     *  only ever offered for a `custom_poi`-backed [Poi] — see [isCustomPoiId]). Skips
+     *  pin-placement and reuses the place's existing coordinates unchanged: this flow edits the
+     *  form fields, not the location. */
+    fun startEditCustomPoi(poi: Poi) {
+        _editingCustomPoi.value = poi.toCustomPoi()
+        _addPoiCenter.value = LatLon(poi.lat, poi.lon)
+        _addPoiStep.value = AddPoiStep.FORM
+        selectPoi(null)
+    }
+
+    /** Optimistic delete (issue #47): [id] disappears from the map/search immediately (see
+     *  [excludePendingDelete] above) but its `custom_poi`/Verdict/Visit rows aren't touched until
+     *  [commitPendingDelete] actually runs — either the Snackbar timing out/being dismissed, or
+     *  [MapScreen] committing on dispose if the user navigates away first. A second delete request
+     *  while one is already pending commits the first rather than dropping it silently. */
+    fun requestDeleteCustomPoi(id: String) {
+        if (_pendingDeleteCustomPoiId.value != null) commitPendingDelete()
+        _pendingDeleteCustomPoiId.value = id
+        selectPoi(null)
+    }
+
+    /** Reverses [requestDeleteCustomPoi] — since nothing was actually deleted yet, this is just
+     *  clearing the pending id, which makes [poisVerdictsAndNames] show the place again. */
+    fun undoDeleteCustomPoi() {
+        _pendingDeleteCustomPoiId.value = null
+    }
+
+    /** Actually deletes whatever [requestDeleteCustomPoi] left pending, re-keying nothing (unlike
+     *  #49's reimport-time merge) — the place, its Verdict, and every Visit logged against it are
+     *  all gone together. No-op if nothing is pending (safe to call unconditionally from
+     *  [MapScreen]'s onDispose). Clears the pending id only after the deletes land, so a
+     *  DAO Flow emission racing this can't briefly show the place again with nothing pending. */
+    fun commitPendingDelete() {
+        val id = _pendingDeleteCustomPoiId.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            verdictDao.delete(id)
+            visitDao.deleteByPlaceId(id)
+            customPoiDao.delete(id)
+            if (_pendingDeleteCustomPoiId.value == id) _pendingDeleteCustomPoiId.value = null
+        }
     }
 
     companion object {

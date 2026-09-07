@@ -50,6 +50,36 @@ import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 
 /**
+ * Builds the [CustomPoi] a form Save resolves to. Pulled out as a pure function (mirroring
+ * [MapViewModel]'s filterAndSort/excludePendingDelete convention) so #47's edit-save path — a
+ * non-null [initial] reuses its `id` so the result upserts in place instead of
+ * [newCustomPoiId] minting a second, separate place — is unit-testable without a Compose harness.
+ */
+fun buildCustomPoiCandidate(
+    initial: CustomPoi?,
+    category: String,
+    lat: Double,
+    lon: Double,
+    name: String,
+    openingHours: String?,
+    street: String?,
+    housenumber: String?,
+    postcode: String?,
+    city: String?
+): CustomPoi = CustomPoi(
+    id = initial?.id ?: newCustomPoiId(),
+    category = category,
+    lat = lat,
+    lon = lon,
+    name = name,
+    openingHours = openingHours,
+    street = street,
+    housenumber = housenumber,
+    postcode = postcode,
+    city = city
+)
+
+/**
  * Fixed center crosshair drawn over [PoiMap] while [AddPoiStep.PLACING_PIN] is active — the map
  * itself pans underneath it (issue #45's "drop a pin" step); [MapViewModel.addPoiCenter] tracks
  * wherever it's currently pointing via [PoiMap]'s onCameraIdle callback.
@@ -107,10 +137,16 @@ fun AddPoiPinOverlay(
 }
 
 /**
- * Name/category/address form for a new [CustomPoi], seeded at [centerLatLon] (wherever the pin
+ * Name/category/address form for a [CustomPoi], seeded at [centerLatLon] (wherever the pin
  * landed). [findNearbyDuplicate] backs the pre-save proximity warning (issue #45's "there's
  * already a X ~Ym away" check) — confirming it saves anyway, dismissing it returns to the form
  * unchanged.
+ *
+ * [initial] is null for the normal add flow (a fresh [newCustomPoiId] is minted on save) or a
+ * custom POI's current values when reopened via #47's Edit action — the form fields seed from it
+ * instead of starting blank, and Save reuses its `id` so the result upserts in place rather than
+ * creating a second place; [centerLatLon] stays fixed at the original location either way, since
+ * editing doesn't re-enter pin-placement.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,22 +155,23 @@ fun AddPoiForm(
     findNearbyDuplicate: (Double, Double, String) -> Poi?,
     onDismiss: () -> Unit,
     onSave: (CustomPoi) -> Unit,
+    initial: CustomPoi? = null,
     modifier: Modifier = Modifier
 ) {
-    var name by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf<String?>(null) }
-    var street by rememberSaveable { mutableStateOf("") }
-    var housenumber by rememberSaveable { mutableStateOf("") }
-    var postcode by rememberSaveable { mutableStateOf("") }
-    var city by rememberSaveable { mutableStateOf("") }
-    var openingHours by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf(initial?.name.orEmpty()) }
+    var category by rememberSaveable { mutableStateOf(initial?.category) }
+    var street by rememberSaveable { mutableStateOf(initial?.street.orEmpty()) }
+    var housenumber by rememberSaveable { mutableStateOf(initial?.housenumber.orEmpty()) }
+    var postcode by rememberSaveable { mutableStateOf(initial?.postcode.orEmpty()) }
+    var city by rememberSaveable { mutableStateOf(initial?.city.orEmpty()) }
+    var openingHours by rememberSaveable { mutableStateOf(initial?.openingHours.orEmpty()) }
     var pendingDuplicate by remember { mutableStateOf<Poi?>(null) }
 
     val trimmedName = name.trim()
     val canSave = trimmedName.isNotBlank() && category != null
 
-    fun buildCandidate(selectedCategory: String) = CustomPoi(
-        id = newCustomPoiId(),
+    fun buildCandidate(selectedCategory: String) = buildCustomPoiCandidate(
+        initial = initial,
         category = selectedCategory,
         lat = centerLatLon.lat,
         lon = centerLatLon.lon,
@@ -171,7 +208,10 @@ fun AddPoiForm(
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.add_poi_close))
                 }
-                Text(stringResource(R.string.add_poi_title), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    text = stringResource(if (initial != null) R.string.add_poi_edit_title else R.string.add_poi_title),
+                    style = MaterialTheme.typography.titleLarge
+                )
             }
             Column(
                 modifier = Modifier

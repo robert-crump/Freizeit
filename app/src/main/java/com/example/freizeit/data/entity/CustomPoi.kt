@@ -61,3 +61,23 @@ fun CustomPoi.toPoi(): Poi = Poi(
     city = city,
     missingFromOsm = false
 )
+
+/**
+ * Reverses [toPoi] — reconstructs the [CustomPoi] a projected [Poi] came from, so #47's Edit
+ * action can pre-fill the add-POI form straight from the already-merged map POI list instead of a
+ * DB round trip. Only ever called on a [Poi] already known to be custom-POI-backed (see
+ * [isCustomPoiId]); [name] is guaranteed non-null in that case since the add-POI form always
+ * requires one at creation time.
+ */
+fun Poi.toCustomPoi(): CustomPoi = CustomPoi(
+    id = id,
+    category = category,
+    lat = lat,
+    lon = lon,
+    name = name.orEmpty(),
+    openingHours = openingHours,
+    street = street,
+    housenumber = housenumber,
+    postcode = postcode,
+    city = city
+)

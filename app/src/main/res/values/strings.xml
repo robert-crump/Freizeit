@@ -47,6 +47,12 @@
     <string name="add_poi_cancel">Cancel</string>
     <string name="add_poi_proximity_warning">There\'s already a %1$s ~%2$s away — add anyway?</string>
     <string name="add_poi_proximity_add_anyway">Add anyway</string>
+    <!-- Edit/delete custom POI (issue #47) -->
+    <string name="add_poi_edit_title">Edit place</string>
+    <string name="detail_custom_poi_edit">Edit place</string>
+    <string name="detail_custom_poi_delete">Delete</string>
+    <string name="detail_custom_poi_deleted_snackbar">%1$s deleted</string>
+    <string name="detail_custom_poi_undo">Undo</string>
     <!-- Check-in -->
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
     <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>

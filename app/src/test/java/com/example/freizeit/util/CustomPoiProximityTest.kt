@@ -81,4 +81,27 @@ class CustomPoiProximityTest {
 
         assertNull(CustomPoiProximity.findNearbyMatch(nearLat, cafe.lon, "cafe", listOf(cafe), thresholdMeters = 2.0))
     }
+
+    @Test
+    fun `excludeId skips the place being edited in place at its own unmoved location`() {
+        // Regression case for #47: editing a custom POI without moving it reopens the form at
+        // exactly its own lat-lon, so without excludeId it would always match itself at distance
+        // zero and wrongly trip the "already exists" warning on every save.
+        val match = CustomPoiProximity.findNearbyMatch(
+            cafe.lat, cafe.lon, "cafe", listOf(cafe), excludeId = cafe.id
+        )
+
+        assertNull(match)
+    }
+
+    @Test
+    fun `excludeId only skips the matching id, a different nearby place still warns`() {
+        val other = cafe.copy(id = "node/other-cafe")
+
+        val match = CustomPoiProximity.findNearbyMatch(
+            cafe.lat, cafe.lon, "cafe", listOf(cafe, other), excludeId = cafe.id
+        )
+
+        assertEquals("node/other-cafe", match?.id)
+    }
 }

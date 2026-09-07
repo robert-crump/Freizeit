@@ -55,4 +55,29 @@ class CustomPoiTest {
         assertEquals("Aachen", poi.city)
         assertFalse(poi.missingFromOsm)
     }
+
+    @Test
+    fun `toCustomPoi reverses toPoi, round-tripping every field`() {
+        val original = CustomPoi(
+            id = "custom/1",
+            category = "cafe",
+            lat = 50.9,
+            lon = 6.9,
+            name = "Our Café",
+            openingHours = "Mo-Fr 08:00-18:00",
+            street = "Beispielstraße",
+            housenumber = "1",
+            postcode = "52062",
+            city = "Aachen"
+        )
+
+        assertEquals(original, original.toPoi().toCustomPoi())
+    }
+
+    @Test
+    fun `toCustomPoi falls back to an empty name rather than crashing on null`() {
+        val poi = Poi(id = "custom/2", category = "park", lat = 50.9, lon = 6.9, name = null)
+
+        assertEquals("", poi.toCustomPoi().name)
+    }
 }

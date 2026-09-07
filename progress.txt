@@ -1,5 +1,56 @@
 # Freizeit v2 progress log
 
+## 2026-09-07 — Issue #47: Manual POI adding: edit/delete custom POI, with undo
+
+- Picked from the "Manual POI adding" epic (#43): of the three remaining open issues (#46/#47/#49,
+  all unblocked now that #45/#48 are closed), #47 was the highest-impact pick — it's the only one
+  of the three fixing a real gap in already-shipped functionality (a custom POI, once created, has
+  no way to fix a typo or remove one added by mistake) rather than adding a new capability on top
+  (#46's address search, #49's reimport merge-detection). Also the best fit for the user's own
+  stated preference for undo/safety-net affordances on destructive actions (see
+  `feedback-ux-safety-nets.md`). Already fully resolved in the issue body per the epic's
+  established convention; no `/grill-me` needed.
+- Edit and Delete actions added to `PlaceDetailSheet` (`onEdit`/`onDelete`, both nullable — omitted
+  entirely, not shown disabled, for an OSM-sourced `Poi`); `MapScreen` only ever passes non-null
+  callbacks when `isCustomPoiId(item.poi.id)`.
+- Edit reopens `AddPoiForm` pre-filled via new `Poi.toCustomPoi()` (`CustomPoi.kt`) — the exact
+  reverse of the existing `toPoi()` projection, round-trip-tested in `CustomPoiTest.kt` — skipping
+  pin-placement entirely (the location itself isn't editable here, only the form fields) and
+  saving through the existing `id` rather than minting a new one. `AddPoiForm` gained an `initial:
+  CustomPoi? = null` param seeding every field; the id-preservation logic itself was pulled out
+  into a new pure `buildCustomPoiCandidate()` (mirroring this file's own convention of extracting
+  pure logic for testability) and unit-tested directly (`BuildCustomPoiCandidateTest.kt`) rather
+  than only through Compose. `CustomPoiProximity.findNearbyMatch` gained an `excludeId` param so
+  editing in place (same lat/lon, unchanged) doesn't trip its own "already exists" warning against
+  itself — regression-tested in `CustomPoiProximityTest.kt`.
+- Delete is optimistic per the issue's spec: `MapViewModel.requestDeleteCustomPoi` sets a new
+  `pendingDeleteCustomPoiId` and closes the sheet; `poisVerdictsAndNames`' merge now runs a new
+  pure `excludePendingDelete()` (unit-tested in `PendingCustomPoiDeleteTest.kt`) so the marker
+  disappears from the map/search instantly while the `custom_poi`/`Verdict`/`Visit` rows are
+  untouched in the DB. Since nothing is actually deleted yet, `undoDeleteCustomPoi()` is just
+  clearing that pending id back to null — "restoring" the Visit/Verdict needs no extra work because
+  they were never removed. `MapScreen` shows a "Deleted — Undo" Snackbar (own `SnackbarHostState`,
+  same `showSnackbar`+`SnackbarResult` pattern as `CheckInDateTimeFlow`'s check-in undo): Undo taps
+  call `undoDeleteCustomPoi()`, a timeout/swipe-dismiss calls `commitPendingDelete()` (which deletes
+  the Verdict, every Visit via new `VisitDao.deleteByPlaceId()`, then the `custom_poi` row itself,
+  in that order). A `DisposableEffect(Unit)` in `MapScreen` also calls `commitPendingDelete()` on
+  dispose, covering the spec's "or the user navigates away" case if the Snackbar never resolves on
+  its own (e.g. switching bottom-nav tabs mid-countdown) — safe to call unconditionally since it
+  no-ops once nothing is pending.
+- Tests: 217 total (this repo's actual current count — noting it since the last two progress
+  entries' claimed "351" doesn't match either `@Test` grep or the JUnit XML output, seemingly a
+  stale/incorrect figure carried forward; not investigated further as out of scope for #47), 0
+  failures. New: `BuildCustomPoiCandidateTest.kt`, `PendingCustomPoiDeleteTest.kt`, two
+  `CustomPoiTest.kt` cases (`toCustomPoi` round trip + null-name fallback), two
+  `CustomPoiProximityTest.kt` cases (`excludeId`), two `VisitDaoTest.kt` cases
+  (`deleteByPlaceId`). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
+  `assembleDebug`: all clean, no new warnings.
+- Not verified on device: the Snackbar timing/Undo tap and the DisposableEffect's navigate-away
+  commit are real Compose lifecycle/timing behavior no unit test exercises — needs a real
+  edit-a-custom-POI and delete-then-undo-then-let-it-time-out pass on Robert's phone, plus
+  confirming a deleted custom POI's marker, favorite/verdict, and check-in history are all
+  actually gone after the Snackbar times out (not just visually hidden).
+
 ## 2026-09-07 — Add-POI header alignment + Google Maps-style compass
 
 - No GitHub issue; user asked directly for two Map-screen fixes noticed while using the add-POI
@@ -202,86 +253,3 @@
   actually occluding rows scrolling underneath it are Compose layout behavior no unit test
   exercises — worth a real scroll-through on Robert's phone, along with a visual check that the
   section header's `labelLarge`/`onSurfaceVariant` styling reads clearly against the list.
-
-## 2026-08-01 — Suggestion card polish, map zoom/search styling, check-in fixes
-
-- No GitHub issue; user described four areas of UI polish directly, worked out via a full
-  /grill-me session before any code was touched (car-chip visibility, favorite-icon alignment
-  target, which "closed" text to drop, resting-peek removal vs. drag-follow vs. fade-in slide for
-  the swipe redesign, what "start zoom" meant, border scope across themes, which keyboard-dismiss
-  paths should clear focus, and — the one that changed scope mid-session — whether to bump
-  compose-bom for a stable pull-to-refresh API or patch around the old one — every branch resolved
-  with the user first). Implemented directly from that spec; no issue to comment/close.
-- Suggestion card (`DurationBadge.kt`, `HomeScreen.kt`): bike chip now always carries a
-  `DirectionsBike` icon (AutoMirrored variant — the plain one is deprecated as of this session's
-  Material3 bump); car duration stays conditional (only once bike time is gray-banded, ≥25min)
-  but is now an icon+number chip (`DirectionsCar`, reusing the gray band's colors) instead of the
-  old plain "~N min by car" text — `duration_car_alternative` string deleted, both chips share
-  `duration_minutes` ("%1$d min"). Favorite/bookmark `IconButton` gets a new
-  `HEART_ICON_END_NUDGE_DP = 12` horizontal offset (matching its existing vertical nudge) so the
-  glyph reads flush with the card's 20dp content edge instead of sitting inset inside the button's
-  48dp touch target. The "Closed now" badge next to opening hours is gone (`home_closed_now`
-  string deleted) — redundant with the "Warning: Currently closed" line already shown from
-  `suggestion.warnings`, same underlying condition.
-- Suggestion card swipe animation rewritten (`SwipeableSuggestionCard`): the old resting-state
-  peek (neighbor card visible as a scaled-down sliver behind the current one) is gone entirely —
-  only one card is ever visible. Dragging still translates the displayed card with the finger;
-  releasing past the threshold now fades it out in place (`FADE_OUT_MILLIS = 150`) rather than
-  sliding it off-screen, then fades the next/previous card in (`FADE_IN_MILLIS = 200`) with a
-  slight slide from the swipe direction (`ENTER_SLIDE_DP = 24`) — sequential, not a crossfade.
-  Removing a verdict runs the same sequence (always toward "next"). New `displayedId` state tracks
-  which POI is the visible card independently of the persisted `localIndex`/`deck` lookup: a swipe
-  bumps `localIndex` synchronously so the two stay in lockstep, but a verdict removal's DB round
-  trip is async, so the fade-in target is captured up front (keyed by id) instead of re-derived
-  from `localIndex` each frame — avoids waiting on that round trip the way the old peek-based
-  design's "leave localIndex untouched, let the mod arithmetic self-correct once the deck shrinks"
-  trick implicitly did. `topCardAlpha`/`revealProgress`/`isRevealTarget`/`revealZIndex`/
-  `dragProgress`/`thresholdProgress`/`PEEK_REST_SCALE`/`PEEK_REST_OFFSET_DP`/
-  `REVEAL_DISTANCE_MULTIPLIER` all deleted along with the peek mechanic; `isPastSwipeThreshold` is
-  the only pure function left (still gates commit-vs-spring-back).
-- Map (`PoiMap.kt`): initial camera zoom on first load now reuses `LOCATE_ME_ZOOM` (16.0) instead
-  of the old `DEFAULT_ZOOM` (12.0, deleted) — opened too far out to be immediately useful for
-  exploring nearby surroundings; the fallback zoom in `applyLocation`'s accuracy-radius calc
-  (`state.map?.cameraPosition?.zoom ?: DEFAULT_ZOOM`) needed the same swap, easy to miss since a
-  files_with_matches grep for the old constant only surfaces the file, not each usage within it.
-- Map search oval (`MapScreen.kt`): new `.border(1.dp, markerForegroundColor(darkTheme), ovalShape)`
-  on `SearchOval`'s `Surface`, matching `PoiCategoryChipRow`'s chip border (same color source, same
-  default 1dp width) in both light and dark themes — the oval previously relied on elevation alone,
-  sometimes hard to make out against the dark map style.
-- Check-in (`CheckInSearchScreen.kt`): search field now clears focus whenever the IME is dismissed
-  by any means (back gesture/button, swipe-down, etc.), tracked via `WindowInsets.isImeVisible`
-  rather than a single explicit back handler — `imeWasVisible` guards against the initial
-  false-before-first-show reading as a dismiss. Pull-to-refresh migrated from the experimental
-  `PullToRefreshContainer`/`rememberPullToRefreshState` to the stable `PullToRefreshBox`, fixing a
-  leftover gray-circle indicator artifact; the manual `isRefreshing` + 300ms-minimum-spin logic is
-  unchanged, just re-wired to the new API shape. Confirmed (before writing any code) that favorites
-  list + duration recompute already cascade automatically from `refreshLocation()` via
-  `CheckInViewModel`'s existing `combine()` pipeline — no separate data-refresh fix was needed.
-- Dependency bump required for the PTR fix (`PullToRefreshBox` doesn't exist before Material3
-  1.3.0/compose-bom 2024.09.00 — this project was pinned to 2024.02.02 specifically because a prior
-  session, #40, had already confirmed `PullToRefreshBox` didn't exist at that version): Kotlin
-  1.9.22→1.9.24, KSP 1.9.22-1.0.17→1.9.24-1.0.20, `kotlinCompilerExtensionVersion`
-  1.5.10→1.5.14, compose-bom 2024.02.02→2024.09.00 (both `implementation` and
-  `androidTestImplementation`). Deliberately stayed on the Kotlin 1.9.x line rather than jumping to
-  Kotlin 2.0 (1.5.14/Kotlin 1.9.24 is the last Compose Compiler pairing before Kotlin 2.0's
-  integrated K2 compiler plugin) — verified via web search before touching any version number,
-  since a wrong guess here breaks the whole build; user explicitly chose the wider-blast-radius bump
-  over patching the old experimental API in place, after being warned it wasn't same-scope. Confirmed
-  via a bare `compileDebugKotlin` that the old `PullToRefreshContainer` API actually broke (not just
-  theoretically deprecated) before starting the migration. This surfaced a new
-  `LocalLifecycleOwner` deprecation warning (moved to `lifecycle-runtime-compose`) in
-  `CheckInSearchScreen.kt`/`HomeScreen.kt`/`MapScreen.kt`/`PoiMap.kt` — not present on the old BOM,
-  left unaddressed as out of scope for this session.
-- Tests: 161 total, 0 failures (`HomeSwipeDeckMathTest` trimmed to just `isPastSwipeThreshold`'s
-  two cases, the only pure function left after the peek mechanic's removal; no other test file
-  needed changes). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
-  `assembleDebug`: all clean.
-- Not verified on device: every visual/interaction change here is new Compose wiring with no prior
-  on-device confirmation — needs a real run on Robert's phone, particularly the swipe deck's new
-  fade-out/fade-in feel (timing, the slight enter-slide direction), the verdict-removal fade
-  correctly landing on the right POI despite the async DB round trip, the check-in keyboard/focus
-  fix across all its dismissal paths, the pull-to-refresh indicator no longer leaving an artifact,
-  and the map's higher initial zoom/search-oval border in both light and dark theme. The Kotlin/
-  compose-bom bump itself is also unverified beyond compiling and testing cleanly — worth a general
-  smoke pass across screens the compiler wouldn't catch a regression in (theming, animations,
-  Compose Preview if used).
