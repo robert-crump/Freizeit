@@ -104,21 +104,31 @@ class SuggestionWidget : GlanceAppWidget() {
         )
 
         // Built here (plain Context, no ambiguity between actionStartActivity's Intent-based and
-        // reified-type overloads) rather than inside the composable below — generic "open Home"
-        // for this slice; #52 replaces this with a per-row PendingIntent carrying the tapped
-        // place's id via MainActivity.EXTRA_TARGET_POI_ID.
-        val openAppAction = actionStartActivity(Intent(context, MainActivity::class.java))
+        // reified-type overloads) rather than inside the composable below — one PendingIntent per
+        // row (#52), each carrying that row's own place id via MainActivity.EXTRA_TARGET_POI_ID
+        // so the tap lands directly on its detail sheet rather than a generic "open Home". A
+        // vanished-by-tap-time place is MainActivity/HomeViewModel.openTargetPoi's problem, not
+        // this widget's — that path already fails quietly (#50).
+        // FLAG_ACTIVITY_SINGLE_TOP so a tap while MainActivity is already running is delivered to
+        // its existing instance via onNewIntent (recomposing with the new id) instead of stacking
+        // a second instance on top — the issue's "not on the (possibly already-reshuffled) deck".
+        val rowActions = rows.map { row ->
+            actionStartActivity(
+                Intent(context, MainActivity::class.java)
+                    .putExtra(MainActivity.EXTRA_TARGET_POI_ID, row.poiId)
+                    .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
+        }
         val refreshContentDescription = context.getString(R.string.widget_refresh_content_description)
 
         provideContent {
-            SuggestionWidgetBody(rows, openAppAction, refreshContentDescription)
+            SuggestionWidgetBody(rows.zip(rowActions), refreshContentDescription)
         }
     }
 
     @Composable
     private fun SuggestionWidgetBody(
-        rows: List<SuggestionWidgetRow>,
-        openAppAction: Action,
+        rows: List<Pair<SuggestionWidgetRow, Action>>,
         refreshContentDescription: String
     ) {
         val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -149,18 +159,18 @@ class SuggestionWidget : GlanceAppWidget() {
                             .clickable(actionRunCallback<RefreshWidgetAction>())
                     )
                 }
-                rows.take(rowCount).forEach { row -> SuggestionRow(row, openAppAction) }
+                rows.take(rowCount).forEach { (row, action) -> SuggestionRow(row, action) }
             }
         }
     }
 
     @Composable
-    private fun SuggestionRow(row: SuggestionWidgetRow, openAppAction: Action) {
+    private fun SuggestionRow(row: SuggestionWidgetRow, action: Action) {
         Column(
             modifier = GlanceModifier
                 .fillMaxWidth()
                 .padding(vertical = 6.dp)
-                .clickable(openAppAction)
+                .clickable(action)
         ) {
             Text(
                 text = row.name,
