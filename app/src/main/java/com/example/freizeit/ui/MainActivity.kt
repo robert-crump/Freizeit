@@ -29,8 +29,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** A relaunch while already running (e.g. a future widget/notification tap using
-     *  FLAG_ACTIVITY_SINGLE_TOP) is delivered here instead of a fresh onCreate — pick up its
+    /** A relaunch while already running — e.g. a widget row tap (#52), which sets
+     *  FLAG_ACTIVITY_SINGLE_TOP — is delivered here instead of a fresh onCreate; pick up its
      *  extra the same way, and keep it as the Activity's current intent. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
