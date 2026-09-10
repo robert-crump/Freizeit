@@ -5,21 +5,28 @@ import android.content.Intent
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.LocalSize
 import androidx.glance.action.Action
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
+import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
+import androidx.glance.layout.size
 import androidx.glance.material3.ColorProviders
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
@@ -45,8 +52,9 @@ private val SuggestionWidgetColors = ColorProviders(light = LightColors, dark = 
  * Home-screen widget mirroring Home's own suggestion deck (issue #51) — no ranking logic of its
  * own, straight reuse of [SuggestionEngine] over the same favorite/want-to-go pool, cached
  * location, and weather snapshot [com.example.freizeit.ui.home.HomeViewModel] uses. Content is
- * computed once per Glance update cycle (widget added, or a future manual/scheduled/event-driven
- * trigger from #52-#56) — no scheduling of its own yet.
+ * computed once per Glance update cycle: widget added, a manual refresh tap (issue #54, via
+ * [SuggestionWidgetUpdater]), or a future scheduled/event-driven trigger (#55/#56) — no scheduling
+ * of its own yet.
  */
 class SuggestionWidget : GlanceAppWidget() {
 
@@ -100,14 +108,19 @@ class SuggestionWidget : GlanceAppWidget() {
         // for this slice; #52 replaces this with a per-row PendingIntent carrying the tapped
         // place's id via MainActivity.EXTRA_TARGET_POI_ID.
         val openAppAction = actionStartActivity(Intent(context, MainActivity::class.java))
+        val refreshContentDescription = context.getString(R.string.widget_refresh_content_description)
 
         provideContent {
-            SuggestionWidgetBody(rows, openAppAction)
+            SuggestionWidgetBody(rows, openAppAction, refreshContentDescription)
         }
     }
 
     @Composable
-    private fun SuggestionWidgetBody(rows: List<SuggestionWidgetRow>, openAppAction: Action) {
+    private fun SuggestionWidgetBody(
+        rows: List<SuggestionWidgetRow>,
+        openAppAction: Action,
+        refreshContentDescription: String
+    ) {
         val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             GlanceTheme.colors
         } else {
@@ -121,6 +134,21 @@ class SuggestionWidget : GlanceAppWidget() {
                     .background(GlanceTheme.colors.widgetBackground)
                     .padding(8.dp)
             ) {
+                // Distinct tap target from the suggestion rows below (issue #54) — forces the
+                // shared recompute-and-push routine instead of waiting for a schedule.
+                Row(
+                    modifier = GlanceModifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Image(
+                        provider = ImageProvider(R.drawable.ic_widget_refresh),
+                        contentDescription = refreshContentDescription,
+                        colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
+                        modifier = GlanceModifier
+                            .size(20.dp)
+                            .clickable(actionRunCallback<RefreshWidgetAction>())
+                    )
+                }
                 rows.take(rowCount).forEach { row -> SuggestionRow(row, openAppAction) }
             }
         }
