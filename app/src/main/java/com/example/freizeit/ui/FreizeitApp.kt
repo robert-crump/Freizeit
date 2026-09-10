@@ -20,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,7 +71,11 @@ fun FreizeitApp(
     /** A POI id to auto-open in Home's detail sheet on launch — MainActivity's deep-link intent
      *  extra (#50). Held in [pendingTargetPoiId] below rather than read directly at each Home
      *  composition, so it fires once per incoming value and not again on a later tab revisit. */
-    targetPoiId: String? = null
+    targetPoiId: String? = null,
+    /** A [FreizeitDestination] route to navigate to on launch — the widget's empty-state hint
+     *  rows' deep link (#53), MainActivity.EXTRA_TARGET_DESTINATION. Held in
+     *  [pendingTargetDestination] the same way [targetPoiId] is held in [pendingTargetPoiId]. */
+    targetDestination: String? = null
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -94,6 +99,31 @@ fun FreizeitApp(
     // consumed it, so navigating away from and back to the Home tab doesn't reopen the sheet.
     var pendingTargetPoiId by rememberSaveable(targetPoiId) { mutableStateOf(targetPoiId) }
 
+    // Same reset-on-fresh-value/clear-once-consumed shape as pendingTargetPoiId above, for the
+    // widget's empty-state hint rows (#53) landing on a specific tab instead of a specific place.
+    var pendingTargetDestination by rememberSaveable(targetDestination) { mutableStateOf(targetDestination) }
+
+    // Shared by the bottom-nav clicks below and the pendingTargetDestination effect further down,
+    // so a widget-driven tab switch behaves identically to tapping that tab by hand (same
+    // popUpTo/saveState/restoreState so the destination's own back stack/scroll position is
+    // preserved either way).
+    fun navigateToDestination(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    LaunchedEffect(pendingTargetDestination) {
+        pendingTargetDestination?.let { route ->
+            navigateToDestination(route)
+            pendingTargetDestination = null
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             bottomBar = {
@@ -103,15 +133,7 @@ fun FreizeitApp(
                             ?.any { it.route == destination.route } == true
                         NavigationBarItem(
                             selected = selected,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            onClick = { navigateToDestination(destination.route) },
                             icon = {
                                 Icon(
                                     imageVector = if (selected) destination.selectedIcon

@@ -18,13 +18,19 @@ class MainActivity : ComponentActivity() {
      *  only ever taking effect on a fresh cold start. See #50. */
     private var targetPoiId by mutableStateOf<String?>(null)
 
+    /** A [FreizeitDestination] route to navigate to on launch — the widget's empty-state hint
+     *  rows (#53), which have no specific place to deep-link to, use this instead of
+     *  [targetPoiId] to land on Explore (Map) or Settings rather than the default Home tab. */
+    private var targetDestination by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         targetPoiId = intent.getStringExtra(EXTRA_TARGET_POI_ID)
+        targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
         setContent {
             FreizeitTheme {
-                FreizeitApp(targetPoiId = targetPoiId)
+                FreizeitApp(targetPoiId = targetPoiId, targetDestination = targetDestination)
             }
         }
     }
@@ -36,6 +42,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         targetPoiId = intent.getStringExtra(EXTRA_TARGET_POI_ID)
+        targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
     }
 
     companion object {
@@ -44,5 +51,8 @@ class MainActivity : ComponentActivity() {
          *  `adb shell am start -n com.example.freizeit/.ui.MainActivity --es target_poi_id <id>`
          */
         const val EXTRA_TARGET_POI_ID = "target_poi_id"
+
+        /** Intent extra carrying a [FreizeitDestination.route] to navigate to on launch (#53). */
+        const val EXTRA_TARGET_DESTINATION = "target_destination"
     }
 }

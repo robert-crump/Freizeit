@@ -68,6 +68,59 @@ class SuggestionWidgetContentTest {
     }
 
     @Test
+    fun `state with no verdicted places returns a hint pointing to Explore, regardless of deck`() {
+        val state = SuggestionWidgetContent.state(
+            deck = listOf(suggestion("a")),
+            hasVerdictedPlaces = false,
+            hasVerdictedPlacesWithinRadius = false,
+            customNames = emptyMap(), maxRows = 5,
+            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
+            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
+        )
+        assertEquals(
+            SuggestionWidgetState.Hint("No favorites yet", HintDestination.EXPLORE),
+            state
+        )
+    }
+
+    @Test
+    fun `state with verdicted places but none within radius returns a hint pointing to Settings`() {
+        val state = SuggestionWidgetContent.state(
+            deck = emptyList(),
+            hasVerdictedPlaces = true,
+            hasVerdictedPlacesWithinRadius = false,
+            customNames = emptyMap(), maxRows = 5,
+            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
+            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
+        )
+        assertEquals(
+            SuggestionWidgetState.Hint("Nothing within 5 km", HintDestination.SETTINGS),
+            state
+        )
+    }
+
+    @Test
+    fun `state with qualifying places returns the normal rows, not a hint`() {
+        val deck = listOf(suggestion("a"), suggestion("b"))
+        val state = SuggestionWidgetContent.state(
+            deck = deck,
+            hasVerdictedPlaces = true,
+            hasVerdictedPlacesWithinRadius = true,
+            customNames = emptyMap(), maxRows = 5,
+            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
+            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
+        )
+        assertEquals(
+            SuggestionWidgetState.Rows(
+                SuggestionWidgetContent.rows(
+                    deck, emptyMap(), 5, unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
+                )
+            ),
+            state
+        )
+    }
+
+    @Test
     fun `WIDGET_SIZES has one step per row from 1 to MAX_ROWS, strictly increasing height`() {
         val sizes = SuggestionWidgetContent.WIDGET_SIZES
         assertEquals(SuggestionWidgetContent.MAX_ROWS, sizes.size)
