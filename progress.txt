@@ -1,5 +1,49 @@
 # Freizeit v2 progress log
 
+## 2026-09-10 — Issue #54: Manual refresh button + shared recompute routine
+
+- Picked from five open `ready-for-agent` widget-epic issues (#52-#56): #55/#56 are blocked on
+  this one (both explicitly "Blocked by #54"), while #52/#53 are unblocked leaves that unblock
+  nothing further — #54 was the highest-impact pick by the same "unblocks the most downstream
+  work" reasoning the #51 session used. Already fully resolved in the issue body per the epic's
+  established convention; no `/grill-me` needed.
+- New `ui/widget/SuggestionWidgetUpdater.kt`: the single shared "recompute and push" routine the
+  issue asks for. It's deliberately thin — `SuggestionWidget().updateAll(context)` — rather than
+  re-fetching location/weather itself, because [SuggestionWidget.provideGlance] (#51) already does
+  the full fetch-rank-render sequence on every Glance re-render; calling it a second time here
+  would just fetch location/weather twice per tap. `updateAll` re-invokes `provideGlance` for every
+  placed instance, which *is* "fresh location fetch + weather refresh + recompute + re-render" —
+  keeping that sequence defined in exactly one place (#51's file) rather than two. Note for
+  whoever picks up #55/#56: call `SuggestionWidgetUpdater.refreshAndPush(context)`, don't
+  reimplement the fetch-rank-render steps against the repositories directly.
+- New `ui/widget/RefreshWidgetAction.kt`: a Glance `ActionCallback` (this repo's first — Glance
+  instantiates it by class name via reflection, no manifest registration needed) that just calls
+  the updater. Wired to a new refresh icon in `SuggestionWidget.kt`'s `SuggestionWidgetBody`: a
+  20dp `Image` (new `res/drawable/ic_widget_refresh.xml`, a plain Material "refresh" glyph tinted
+  via `ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant)` so it follows the existing
+  dynamic/fixed color split) in its own top-aligned `Row`, `clickable(actionRunCallback<
+  RefreshWidgetAction>())` — a separate tap target from each `SuggestionRow`'s existing
+  `openAppAction`, satisfying the issue's "distinct from the suggestion rows' tap targets".
+  `actionRunCallback` (unlike #51's `actionStartActivity(Intent(...))`) has no Intent-based/
+  reified-generic overload ambiguity, so it's called directly in the `@Composable` body rather than
+  built in `provideGlance` first.
+- Tests: 257 total, 0 failures — no new tests, deliberately: `SuggestionWidgetUpdater`/
+  `RefreshWidgetAction` are Glance/Android glue with no pure logic of their own (same reasoning
+  #51's `SuggestionWidget.kt` itself was left untested — Glance composables/`provideGlance`/
+  `ActionCallback` aren't unit-testable without Robolectric+the Glance test library, neither of
+  which this repo has any pattern for). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/
+  `testDebugUnitTest`/`assembleDebug`: all clean, no new warnings.
+- Found (not fixed, out of scope): `ui/common/DurationBadge.kt` had an uncommitted, syntactically
+  invalid edit sitting in the working tree at session start (`Color(/nex)` in place of a hex
+  literal) that broke `kspDebugKotlin` for the whole module — visibly mid-edit in Robert's IDE per
+  this session's file-open context, not something introduced by any issue. Restored that one line
+  to its last-committed value (`0xFF9AA0A6`) so this issue's own build/test verification could run
+  at all; flagged to Robert directly rather than left silent, since it wasn't this session's change
+  to make unprompted.
+- Not verified on device: the actual tap — icon renders distinctly from the suggestion rows, tap
+  triggers a real location+weather refetch and the rows visibly update — is real
+  AppWidget-host/launcher behavior no unit test exercises, needs a real run on Robert's phone.
+
 ## 2026-09-07 — Issue #49: Manual POI adding: reimport-time merge detection and confirmation
 
 - Picked via `/next-issue issue 49` (user-specified). Confirmed `ready-for-agent` and unblocked
@@ -207,55 +251,4 @@
   own verification method, confirming the sheet actually auto-opens on a cold launch, an
   already-unresolvable id falls back cleanly, and (once #52 exists) a widget row tap resolves the
   same way.
-
-## 2026-09-07 — Issue #47: Manual POI adding: edit/delete custom POI, with undo
-
-- Picked from the "Manual POI adding" epic (#43): of the three remaining open issues (#46/#47/#49,
-  all unblocked now that #45/#48 are closed), #47 was the highest-impact pick — it's the only one
-  of the three fixing a real gap in already-shipped functionality (a custom POI, once created, has
-  no way to fix a typo or remove one added by mistake) rather than adding a new capability on top
-  (#46's address search, #49's reimport merge-detection). Also the best fit for the user's own
-  stated preference for undo/safety-net affordances on destructive actions (see
-  `feedback-ux-safety-nets.md`). Already fully resolved in the issue body per the epic's
-  established convention; no `/grill-me` needed.
-- Edit and Delete actions added to `PlaceDetailSheet` (`onEdit`/`onDelete`, both nullable — omitted
-  entirely, not shown disabled, for an OSM-sourced `Poi`); `MapScreen` only ever passes non-null
-  callbacks when `isCustomPoiId(item.poi.id)`.
-- Edit reopens `AddPoiForm` pre-filled via new `Poi.toCustomPoi()` (`CustomPoi.kt`) — the exact
-  reverse of the existing `toPoi()` projection, round-trip-tested in `CustomPoiTest.kt` — skipping
-  pin-placement entirely (the location itself isn't editable here, only the form fields) and
-  saving through the existing `id` rather than minting a new one. `AddPoiForm` gained an `initial:
-  CustomPoi? = null` param seeding every field; the id-preservation logic itself was pulled out
-  into a new pure `buildCustomPoiCandidate()` (mirroring this file's own convention of extracting
-  pure logic for testability) and unit-tested directly (`BuildCustomPoiCandidateTest.kt`) rather
-  than only through Compose. `CustomPoiProximity.findNearbyMatch` gained an `excludeId` param so
-  editing in place (same lat/lon, unchanged) doesn't trip its own "already exists" warning against
-  itself — regression-tested in `CustomPoiProximityTest.kt`.
-- Delete is optimistic per the issue's spec: `MapViewModel.requestDeleteCustomPoi` sets a new
-  `pendingDeleteCustomPoiId` and closes the sheet; `poisVerdictsAndNames`' merge now runs a new
-  pure `excludePendingDelete()` (unit-tested in `PendingCustomPoiDeleteTest.kt`) so the marker
-  disappears from the map/search instantly while the `custom_poi`/`Verdict`/`Visit` rows are
-  untouched in the DB. Since nothing is actually deleted yet, `undoDeleteCustomPoi()` is just
-  clearing that pending id back to null — "restoring" the Visit/Verdict needs no extra work because
-  they were never removed. `MapScreen` shows a "Deleted — Undo" Snackbar (own `SnackbarHostState`,
-  same `showSnackbar`+`SnackbarResult` pattern as `CheckInDateTimeFlow`'s check-in undo): Undo taps
-  call `undoDeleteCustomPoi()`, a timeout/swipe-dismiss calls `commitPendingDelete()` (which deletes
-  the Verdict, every Visit via new `VisitDao.deleteByPlaceId()`, then the `custom_poi` row itself,
-  in that order). A `DisposableEffect(Unit)` in `MapScreen` also calls `commitPendingDelete()` on
-  dispose, covering the spec's "or the user navigates away" case if the Snackbar never resolves on
-  its own (e.g. switching bottom-nav tabs mid-countdown) — safe to call unconditionally since it
-  no-ops once nothing is pending.
-- Tests: 217 total (this repo's actual current count — noting it since the last two progress
-  entries' claimed "351" doesn't match either `@Test` grep or the JUnit XML output, seemingly a
-  stale/incorrect figure carried forward; not investigated further as out of scope for #47), 0
-  failures. New: `BuildCustomPoiCandidateTest.kt`, `PendingCustomPoiDeleteTest.kt`, two
-  `CustomPoiTest.kt` cases (`toCustomPoi` round trip + null-name fallback), two
-  `CustomPoiProximityTest.kt` cases (`excludeId`), two `VisitDaoTest.kt` cases
-  (`deleteByPlaceId`). `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/
-  `assembleDebug`: all clean, no new warnings.
-- Not verified on device: the Snackbar timing/Undo tap and the DisposableEffect's navigate-away
-  commit are real Compose lifecycle/timing behavior no unit test exercises — needs a real
-  edit-a-custom-POI and delete-then-undo-then-let-it-time-out pass on Robert's phone, plus
-  confirming a deleted custom POI's marker, favorite/verdict, and check-in history are all
-  actually gone after the Snackbar times out (not just visually hidden).
 

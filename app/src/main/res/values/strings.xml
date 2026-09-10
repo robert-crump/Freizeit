@@ -154,4 +154,6 @@
 
     <!-- Home-screen widget (issue #51) -->
     <string name="widget_suggestions_description">Top suggestions from your favorites and want-to-go places</string>
+    <!-- Manual refresh button (issue #54) -->
+    <string name="widget_refresh_content_description">Refresh suggestions</string>
 </resources>
