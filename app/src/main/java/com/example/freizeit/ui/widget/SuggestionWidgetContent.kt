@@ -64,4 +64,38 @@ object SuggestionWidgetContent {
                 travelLabel = suggestion.travelMinutes?.let(travelLabel)
             )
         }
+
+    /** What the widget should render for one update cycle (#53) — mirrors the same three-way
+     *  branch HomeScreen's `when` uses over `hasVerdictedPlaces`/`hasVerdictedPlacesWithinRadius`
+     *  (the `!hasPois` case doesn't apply here: an empty POI table also means no favorites, so
+     *  it already falls out of `hasVerdictedPlaces`). Either empty case fully replaces [rows] —
+     *  never shown alongside it — so the caller only has one thing to render per cycle. */
+    fun state(
+        deck: List<Suggestion>,
+        hasVerdictedPlaces: Boolean,
+        hasVerdictedPlacesWithinRadius: Boolean,
+        customNames: Map<String, String>,
+        maxRows: Int,
+        noFavoritesHint: String,
+        noSuggestionsWithinRadiusHint: String,
+        unnamedLabel: (category: String) -> String,
+        travelLabel: (minutes: Int) -> String
+    ): SuggestionWidgetState = when {
+        !hasVerdictedPlaces -> SuggestionWidgetState.Hint(noFavoritesHint, HintDestination.EXPLORE)
+        !hasVerdictedPlacesWithinRadius ->
+            SuggestionWidgetState.Hint(noSuggestionsWithinRadiusHint, HintDestination.SETTINGS)
+        else -> SuggestionWidgetState.Rows(rows(deck, customNames, maxRows, unnamedLabel, travelLabel))
+    }
+}
+
+/** Where a tap on [SuggestionWidgetState.Hint] should open the app to (#53) — resolved to an
+ *  actual `Action`/route by the caller, kept as a plain enum here so this file stays free of
+ *  Glance/Intent types. */
+enum class HintDestination { EXPLORE, SETTINGS }
+
+/** Result of [SuggestionWidgetContent.state]: either the normal row content, or a single
+ *  compact hint replacing it entirely. */
+sealed interface SuggestionWidgetState {
+    data class Rows(val rows: List<SuggestionWidgetRow>) : SuggestionWidgetState
+    data class Hint(val message: String, val destination: HintDestination) : SuggestionWidgetState
 }

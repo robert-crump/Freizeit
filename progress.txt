@@ -1,5 +1,57 @@
 # Freizeit v2 progress log
 
+## 2026-09-10 — Issue #53: Widget empty/error states
+
+- User-specified pickup (`/next-issue issue 53`). Confirmed `ready-for-agent` and unblocked (#51
+  closed). Already fully resolved in the issue body per the epic's established convention; no
+  `/grill-me` needed. Last open leaf of the widget epic besides #55 (twice-daily scheduled
+  refresh, its own bigger/riskier slice per the #56 session's note).
+- `SuggestionWidgetContent` gained a new pure `state()` function plus a `SuggestionWidgetState`
+  sealed interface (`Rows`/`Hint`) and `HintDestination` enum (`EXPLORE`/`SETTINGS`) — mirrors
+  HomeScreen's own `when` over `hasVerdictedPlaces`/`hasVerdictedPlacesWithinRadius` exactly (the
+  `!hasPois` branch doesn't apply to the widget: an empty POI table also means no favorites, so it
+  already falls out of `hasVerdictedPlaces`). `SuggestionWidget.provideGlance` now computes those
+  same two booleans from the same `candidatePois`/`candidatesInRange` it already had (byte-for-byte
+  the same expressions as `HomeViewModel.uiState`) and calls `state()` instead of `rows()`
+  directly, so the widget and Home can never disagree about which of the three states applies.
+- `SuggestionWidget.kt`: split the old single `SuggestionWidgetBody` into a shared
+  `SuggestionWidgetScaffold` (background/padding/refresh-button row) plus two callers —
+  `SuggestionWidgetBody` (normal rows, unchanged appearance) and a new `SuggestionWidgetHintBody`
+  (one `Text` row, `maxLines = 2`, clickable, `onSurfaceVariant` styling to read as a hint rather
+  than content) — so the two states fully replace each other rather than one showing alongside a
+  partial/empty deck, per the issue's explicit note.
+- The hint's tap target reuses the exact same `actionStartActivity(Intent(context,
+  MainActivity::class.java)...)` shape #52 already built for per-row taps, just with a new
+  `MainActivity.EXTRA_TARGET_DESTINATION` extra (a `FreizeitDestination.route` string) instead of
+  `EXTRA_TARGET_POI_ID`. Wired that extra through `MainActivity` (new `targetDestination` state,
+  read in both `onCreate` and `onNewIntent` alongside the existing `targetPoiId`) and `FreizeitApp`
+  (new `targetDestination` param → `pendingTargetDestination`, consumed by a `LaunchedEffect` that
+  calls a new `navigateToDestination()` local function — factored out of the bottom `NavigationBar`
+  item's existing `onClick` lambda so a widget-driven tab switch takes the exact same
+  `popUpTo`/`saveState`/`restoreState` path a manual tab tap does, rather than a second, subtly
+  different nav call). "Explore" in the issue's wording maps to `FreizeitDestination.MAP` — the
+  app has no screen literally named Explore; Map is where places actually get favorited/want-to-go'd,
+  which is what's missing in that branch. New short strings (`widget_no_favorites_hint`,
+  `widget_no_suggestions_within_radius_hint`) rather than reusing Home's own
+  `home_no_favorites`/`home_no_suggestions_within_radius` — those are full paragraphs sized for
+  Home's centered hint, not a compact widget row.
+- Reverts to normal rows on its own (issue's third AC): no new code — `state()` is a pure function
+  of the current data on every `provideGlance` call (widget add, manual refresh #54, or the
+  event-driven trigger #56 already wired to every verdict/check-in/radius change), so a qualifying
+  place existing again just makes the next call take the `Rows` branch instead of `Hint`.
+- Tests: 260 total, 0 failures. New `SuggestionWidgetContentTest` cases for `state()`'s three
+  branches (no verdicted places → `Hint(EXPLORE)`; verdicted places but none in radius →
+  `Hint(SETTINGS)`; qualifying places → `Rows` matching plain `rows()`). No new test for
+  `SuggestionWidget.kt`/`FreizeitApp.kt` themselves — same Glance/Compose-navigation
+  Robolectric-free constraint prior widget-epic entries note; `navigateToDestination`'s reuse
+  by both the bottom nav and the new effect is a one-line extraction, not judged worth a dedicated
+  harness. `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`:
+  all clean, no new warnings.
+- Not verified on device: the actual tap — a hint row lands on Map/Settings respectively rather
+  than Home, and the widget visibly reverts to normal rows on the next update once a qualifying
+  place exists again — is real AppWidget-host/launcher + Activity-lifecycle behavior no unit test
+  exercises, needs a real run on Robert's phone.
+
 ## 2026-09-10 — Issue #52: Wire widget row taps to the deep link
 
 - User-specified pickup (`/next-issue issue 52`). Confirmed `ready-for-agent` and unblocked (#50
@@ -177,49 +229,3 @@
   merge, and check the custom POI's marker/favorite/check-in history now live under the OSM
   place's id) is real Compose/Room integration no unit test exercises — needs a real
   import-and-merge pass on Robert's phone.
-
-## 2026-09-07 — Issue #46: Manual POI adding: address search for custom POI creation
-
-- User explicitly picked this one (`/next-issue issue 46`) rather than the usual "pick the
-  highest-impact open issue" — skipped the epic-priority writeup other recent entries include.
-  Confirmed `ready-for-agent` and unblocked (#45 closed); already fully resolved in the issue body
-  per the epic's established convention, no `/grill-me` needed.
-- New `data/geocoding/NominatimClient.kt` (object, mirrors `OpenMeteoClient`'s exact pattern: plain
-  `HttpURLConnection` + Gson, one GET per search, null-on-any-failure) plus a new
-  `domain/geocoding/GeocodeResult.kt` (lat/lon/displayName/street/housenumber/postcode/city — the
-  reduced shape the rest of the app needs, not Nominatim's full response). `search()` biases (not
-  restricts — `bounded=0`) to the same Aachen/South Limburg box as
-  `tools/poi_extraction/extract_pois.py`'s `AACHEN_BBOX`, duplicated as a literal since one side is
-  Python. User-Agent identifies the app + repo URL rather than a personal contact address — real
-  per Nominatim's usage policy (a default HttpURLConnection one is rejected) without sending any
-  user-identifying data to this third-party service.
-- UI lives in `AddPoiPinOverlay` (the pin-drop step), not the form: a new `AddressSearchBar`
-  private composable — `OutlinedTextField` + explicit "Search" button/IME action (no live-
-  typeahead, respects Nominatim's 1 req/sec policy without debounce logic), permanent "©
-  OpenStreetMap contributors" caption beneath it, and a results `Card` below that. Selecting a
-  result re-centers the pin by reusing the existing `MapViewModel.focusOn` camera-jump path (its
-  resulting camera-idle callback already feeds `updateAddPoiCenter` during `PLACING_PIN`) rather
-  than inventing a second "move the crosshair" mechanism, and stashes the structured address in a
-  new `pendingAddressPrefill` StateFlow. `AddPoiForm` gained a `prefillAddress: GeocodeResult?`
-  param seeding street/housenumber/postcode/city (still editable after) whenever `initial` (#47's
-  edit flow) is null — edit's own values always win since it never re-enters pin-placement/search.
-- `MapViewModel` gained `AddressSearchState` (query/results/isSearching/error/searched — `error`
-  vs. an empty `results` list are distinct so the empty-state message only shows after a genuine
-  zero-match search, not a network failure) plus `updateAddressSearchQuery`/`searchAddress`/
-  `selectAddressResult`. `searchAddress`'s IO-dispatched response checks the query hasn't changed
-  since the request fired before applying it (mirrors `selectPoi`'s existing late-response guard)
-  rather than adding a generation counter. Both new StateFlows are cleared in `cancelAddPoi` and
-  `saveCustomPoi` alongside the existing `addPoiCenter`/`editingCustomPoi` resets.
-- Tests: 228 total, 0 failures. New `NominatimClientTest.kt` (mirrors `OpenMeteoClientTest`'s
-  pattern): result-array parsing into `GeocodeResult`s, city→town→village fallback, empty array vs.
-  null-on-garbage/non-array JSON, a hit missing lat/lon dropped rather than crashing the whole
-  parse, and blank-query search short-circuiting before any network call. No Compose-level test for
-  the prefill precedence (`initial` over `prefillAddress`) or the search bar itself — same
-  Robolectric-free constraint noted in prior entries for this file's other Compose pieces;
-  the underlying logic is a one-line `?:` chain, not judged worth a dedicated harness.
-  `compileDebugKotlin`/`compileDebugUnitTestKotlin`/`testDebugUnitTest`/`assembleDebug`: all clean,
-  no new warnings.
-- Not verified on device: an actual Nominatim round trip (rate-limit behavior, real result
-  ordering/quality for Aachen/South Limburg addresses, a genuine network-failure inline message)
-  and the visual layout of the new search bar/results card sitting above the pin crosshair — needs
-  a real run on Robert's phone.

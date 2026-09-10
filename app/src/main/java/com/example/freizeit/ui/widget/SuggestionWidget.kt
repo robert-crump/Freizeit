@@ -36,6 +36,7 @@ import com.example.freizeit.R
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
+import com.example.freizeit.ui.FreizeitDestination
 import com.example.freizeit.ui.MainActivity
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.DarkColors
@@ -93,10 +94,21 @@ class SuggestionWidget : GlanceAppWidget() {
         )
         val deck = SuggestionEngine.rankAll(candidatesInRange, suggestionContext)
 
-        val rows = SuggestionWidgetContent.rows(
+        // Mirrors HomeViewModel.uiState's own hasVerdictedPlaces/hasVerdictedPlacesWithinRadius
+        // exactly (issue #53) — same two booleans, same source data, so the widget and Home never
+        // disagree about which of the three states applies.
+        val hasVerdictedPlaces = candidatePois.isNotEmpty()
+        val hasVerdictedPlacesWithinRadius = candidatePois.isEmpty() || candidatesInRange.isNotEmpty()
+
+        val widgetState = SuggestionWidgetContent.state(
             deck = deck,
+            hasVerdictedPlaces = hasVerdictedPlaces,
+            hasVerdictedPlacesWithinRadius = hasVerdictedPlacesWithinRadius,
             customNames = customNames,
             maxRows = SuggestionWidgetContent.MAX_ROWS,
+            noFavoritesHint = context.getString(R.string.widget_no_favorites_hint),
+            noSuggestionsWithinRadiusHint =
+                context.getString(R.string.widget_no_suggestions_within_radius_hint, radiusKm),
             unnamedLabel = { category ->
                 context.getString(R.string.map_unnamed, categoryDisplayName(category).lowercase())
             },
@@ -112,17 +124,36 @@ class SuggestionWidget : GlanceAppWidget() {
         // FLAG_ACTIVITY_SINGLE_TOP so a tap while MainActivity is already running is delivered to
         // its existing instance via onNewIntent (recomposing with the new id) instead of stacking
         // a second instance on top — the issue's "not on the (possibly already-reshuffled) deck".
-        val rowActions = rows.map { row ->
-            actionStartActivity(
-                Intent(context, MainActivity::class.java)
-                    .putExtra(MainActivity.EXTRA_TARGET_POI_ID, row.poiId)
-                    .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            )
-        }
+        fun openAppAction(extraKey: String, extraValue: String) = actionStartActivity(
+            Intent(context, MainActivity::class.java)
+                .putExtra(extraKey, extraValue)
+                .setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        )
+
         val refreshContentDescription = context.getString(R.string.widget_refresh_content_description)
 
         provideContent {
-            SuggestionWidgetBody(rows.zip(rowActions), refreshContentDescription)
+            when (widgetState) {
+                is SuggestionWidgetState.Rows -> {
+                    val rowActions = widgetState.rows.map { row ->
+                        openAppAction(MainActivity.EXTRA_TARGET_POI_ID, row.poiId)
+                    }
+                    SuggestionWidgetBody(widgetState.rows.zip(rowActions), refreshContentDescription)
+                }
+                is SuggestionWidgetState.Hint -> {
+                    // No favorites at all -> Explore (Map, where places actually get favorited);
+                    // favorites exist but none within radius -> Settings, to widen the radius.
+                    val route = when (widgetState.destination) {
+                        HintDestination.EXPLORE -> FreizeitDestination.MAP.route
+                        HintDestination.SETTINGS -> FreizeitDestination.SETTINGS.route
+                    }
+                    SuggestionWidgetHintBody(
+                        message = widgetState.message,
+                        action = openAppAction(MainActivity.EXTRA_TARGET_DESTINATION, route),
+                        refreshContentDescription = refreshContentDescription
+                    )
+                }
+            }
         }
     }
 
@@ -130,6 +161,41 @@ class SuggestionWidget : GlanceAppWidget() {
     private fun SuggestionWidgetBody(
         rows: List<Pair<SuggestionWidgetRow, Action>>,
         refreshContentDescription: String
+    ) {
+        SuggestionWidgetScaffold(refreshContentDescription) { rowCount ->
+            rows.take(rowCount).forEach { (row, action) -> SuggestionRow(row, action) }
+        }
+    }
+
+    /** The empty-state hint row (#53) — replaces [SuggestionWidgetBody]'s normal rows entirely,
+     *  a single clickable line rather than a partial/empty deck. */
+    @Composable
+    private fun SuggestionWidgetHintBody(
+        message: String,
+        action: Action,
+        refreshContentDescription: String
+    ) {
+        SuggestionWidgetScaffold(refreshContentDescription) {
+            Text(
+                text = message,
+                maxLines = 2,
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .clickable(action),
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant)
+            )
+        }
+    }
+
+    /** Shared chrome both [SuggestionWidgetBody] and [SuggestionWidgetHintBody] sit inside: the
+     *  themed background/padding and the refresh button row (issue #54), with [content] filling
+     *  in whichever of the two comes next — [rowCountForSize]'s current row budget is threaded
+     *  through since only the normal row content needs it. */
+    @Composable
+    private fun SuggestionWidgetScaffold(
+        refreshContentDescription: String,
+        content: @Composable (rowCount: Int) -> Unit
     ) {
         val colors = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             GlanceTheme.colors
@@ -144,8 +210,8 @@ class SuggestionWidget : GlanceAppWidget() {
                     .background(GlanceTheme.colors.widgetBackground)
                     .padding(8.dp)
             ) {
-                // Distinct tap target from the suggestion rows below (issue #54) — forces the
-                // shared recompute-and-push routine instead of waiting for a schedule.
+                // Distinct tap target from the content below (issue #54) — forces the shared
+                // recompute-and-push routine instead of waiting for a schedule.
                 Row(
                     modifier = GlanceModifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.End
@@ -159,7 +225,7 @@ class SuggestionWidget : GlanceAppWidget() {
                             .clickable(actionRunCallback<RefreshWidgetAction>())
                     )
                 }
-                rows.take(rowCount).forEach { (row, action) -> SuggestionRow(row, action) }
+                content(rowCount)
             }
         }
     }

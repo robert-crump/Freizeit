@@ -156,4 +156,8 @@
     <string name="widget_suggestions_description">Top suggestions from your favorites and want-to-go places</string>
     <!-- Manual refresh button (issue #54) -->
     <string name="widget_refresh_content_description">Refresh suggestions</string>
+    <!-- Empty/error states (issue #53) — compact one-liners, unlike Home's longer home_no_favorites/
+         home_no_suggestions_within_radius hints, which don't fit a widget row. -->
+    <string name="widget_no_favorites_hint">No favorites yet. Tap to explore.</string>
+    <string name="widget_no_suggestions_within_radius_hint">Nothing within %1$d km. Tap to adjust.</string>
 </resources>
