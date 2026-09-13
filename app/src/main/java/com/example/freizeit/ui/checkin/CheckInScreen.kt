@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -87,7 +88,10 @@ fun CheckInScreen(
         if (undoMessage != null) {
             val result = deleteSnackbarHostState.showSnackbar(
                 message = undoMessage,
-                actionLabel = undoActionLabel
+                actionLabel = undoActionLabel,
+                // Material3 defaults duration to Indefinite whenever actionLabel is non-null —
+                // without this, the undo window would never actually time out on its own.
+                duration = SnackbarDuration.Long
             )
             if (result == SnackbarResult.ActionPerformed) {
                 viewModel.undoDelete()

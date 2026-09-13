@@ -35,6 +35,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -101,7 +102,10 @@ fun MapScreen(
         if (pendingDeleteCustomPoiId == null) return@LaunchedEffect
         val result = deleteSnackbarHostState.showSnackbar(
             message = String.format(deletedTemplate, pendingDeleteName),
-            actionLabel = undoLabel
+            actionLabel = undoLabel,
+            // Material3 defaults duration to Indefinite whenever actionLabel is non-null — without
+            // this, "timing out" (per the comment above) would never actually happen on its own.
+            duration = SnackbarDuration.Long
         )
         if (result == SnackbarResult.ActionPerformed) {
             viewModel.undoDeleteCustomPoi()

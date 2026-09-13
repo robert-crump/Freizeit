@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
@@ -163,7 +164,12 @@ fun CheckInDateTimeFlow(
                         )
                         val result = snackbarHostState.showSnackbar(
                             message = message,
-                            actionLabel = undoLabel
+                            actionLabel = undoLabel,
+                            // Material3 defaults duration to Indefinite whenever actionLabel is
+                            // non-null (which it always is here, for Undo) — without this, the
+                            // Snackbar would only ever go away via an explicit swipe or Undo tap,
+                            // never on its own.
+                            duration = SnackbarDuration.Long
                         )
                         if (result == SnackbarResult.ActionPerformed) {
                             onUndo(visitId)
