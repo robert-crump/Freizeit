@@ -5,6 +5,7 @@ import com.example.freizeit.data.geofence.GeofenceNotifications
 import com.example.freizeit.data.repository.observeAllFavorites
 import com.example.freizeit.di.AppContainer
 import com.example.freizeit.ui.widget.SuggestionWidgetUpdater
+import com.example.freizeit.ui.widget.WidgetRefreshScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +34,10 @@ class FreizeitApplication : Application() {
         MapLibre.getInstance(this)
         container = AppContainer(this)
         GeofenceNotifications.ensureChannel(this)
+        // Scheduled widget refresh (issue #55) — the other trigger alongside the manual button
+        // (#54) and the event-driven one below (#56). Idempotent (ExistingWorkPolicy.KEEP): a
+        // pending or already-rescheduled occurrence survives every later app launch untouched.
+        WidgetRefreshScheduler.scheduleIfNeeded(this)
         // Open the database off the main thread so schema creation
         // happens at startup rather than on first query.
         applicationScope.launch(Dispatchers.IO) {

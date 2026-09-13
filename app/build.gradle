@@ -94,6 +94,9 @@ dependencies {
     implementation 'androidx.glance:glance-appwidget:1.1.1'
     implementation 'androidx.glance:glance-material3:1.1.1'
 
+    // Scheduled background jobs (issue #55) — the widget's daily weekday/weekend refresh
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.11.1'
