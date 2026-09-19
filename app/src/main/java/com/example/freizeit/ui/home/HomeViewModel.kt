@@ -21,6 +21,7 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.findPoiById
+import com.example.freizeit.data.repository.observeAllByVerdictValues
 import com.example.freizeit.data.weather.WeatherRepository
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
@@ -96,7 +97,7 @@ class HomeViewModel(
     )
 
     private val poisVerdictsAndNames = combine(
-        poiDao.observeByVerdictValues(listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)),
+        observeAllByVerdictValues(poiDao, customPoiDao, listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)),
         poiDao.observeCount(),
         verdictDao.observeAll(),
         poiCustomNameDao.observeAll(),

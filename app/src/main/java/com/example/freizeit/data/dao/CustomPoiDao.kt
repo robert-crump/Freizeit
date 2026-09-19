@@ -37,6 +37,16 @@ interface CustomPoiDao {
     )
     fun observeFavorites(favoriteValue: String = Verdict.VALUE_FAVORITE): Flow<List<CustomPoi>>
 
+    /** Mirrors [PoiDao.observeByVerdictValues] for custom POIs (#57) — Home's deck pool. */
+    @Query(
+        """
+        SELECT custom_poi.* FROM custom_poi
+        INNER JOIN verdict ON verdict.placeId = custom_poi.id
+        WHERE verdict.value IN (:values)
+        """
+    )
+    fun observeByVerdictValues(values: List<String>): Flow<List<CustomPoi>>
+
     @Query("SELECT * FROM custom_poi")
     suspend fun getAll(): List<CustomPoi>
 

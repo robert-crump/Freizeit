@@ -34,6 +34,7 @@ import androidx.glance.text.TextStyle
 import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.observeAllByVerdictValues
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.ui.FreizeitDestination
@@ -76,9 +77,11 @@ class SuggestionWidget : GlanceAppWidget() {
         )
         val weather = container.weatherRepository.snapshot.value
 
-        val candidatePois = database.poiDao()
-            .observeByVerdictValues(listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO))
-            .first()
+        val candidatePois = observeAllByVerdictValues(
+            database.poiDao(),
+            database.customPoiDao(),
+            listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)
+        ).first()
         val verdicts = database.verdictDao().getAll().associateBy { it.placeId }
         val visits = database.visitDao().getAll().groupBy({ it.placeId }, { it.visitedAt })
         val customNames = database.poiCustomNameDao().getAll().associate { it.placeId to it.customName }

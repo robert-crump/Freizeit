@@ -25,6 +25,17 @@ fun observeAllFavorites(poiDao: PoiDao, customPoiDao: CustomPoiDao): Flow<List<P
 suspend fun allFavoritesOnce(poiDao: PoiDao, customPoiDao: CustomPoiDao): List<Poi> =
     observeAllFavorites(poiDao, customPoiDao).first()
 
+/** Every place holding one of [values] as its verdict, OSM or custom — Home's deck pool and the
+ *  widget's (#57). */
+fun observeAllByVerdictValues(
+    poiDao: PoiDao,
+    customPoiDao: CustomPoiDao,
+    values: List<String>
+): Flow<List<Poi>> =
+    combine(poiDao.observeByVerdictValues(values), customPoiDao.observeByVerdictValues(values)) { pois, customPois ->
+        pois + customPois.map { it.toPoi() }
+    }
+
 /** Looks a place up by id regardless of which table it lives in — routes on [isCustomPoiId]
  *  rather than trying `poiDao` first, since a custom id is by construction never present there. */
 suspend fun findPoiById(poiDao: PoiDao, customPoiDao: CustomPoiDao, id: String): Poi? =

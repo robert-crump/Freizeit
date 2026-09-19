@@ -101,6 +101,36 @@ class PoiLookupTest {
         assertEquals(emptyList<Poi>(), favorites)
     }
 
+    private fun verdict(placeId: String, value: String) = favorite(placeId).copy(value = value)
+
+    private val deckValues = listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)
+
+    @Test
+    fun `observeAllByVerdictValues merges favorite and want-to-go OSM and custom pois`() = runTest {
+        val customWant = customPoi.copy(id = "custom/2")
+        db.poiDao().upsertAll(listOf(osmPoi))
+        db.customPoiDao().upsert(customPoi)
+        db.customPoiDao().upsert(customWant)
+        db.verdictDao().upsert(favorite("node/1"))
+        db.verdictDao().upsert(favorite("custom/1"))
+        db.verdictDao().upsert(verdict("custom/2", Verdict.VALUE_WANT_TO_GO))
+
+        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), deckValues).first()
+
+        assertEquals(setOf("node/1", "custom/1", "custom/2"), pool.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `observeAllByVerdictValues excludes custom pois without a matching verdict`() = runTest {
+        db.customPoiDao().upsert(customPoi)
+        db.customPoiDao().upsert(customPoi.copy(id = "custom/2"))
+        db.verdictDao().upsert(verdict("custom/2", "SKIPPED"))
+
+        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), deckValues).first()
+
+        assertEquals(emptyList<Poi>(), pool)
+    }
+
     @Test
     fun `allFavoritesOnce returns the same merged result as a one-shot read`() = runTest {
         db.customPoiDao().upsert(customPoi)
