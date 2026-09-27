@@ -44,7 +44,9 @@ class FreizeitApplication : Application() {
             container.database.openHelper.writableDatabase
         }
         // Re-registers Play Services geofences (issue #28) whenever the auto check-in toggle or
-        // the favorite list changes, including at process start (geofences don't survive it).
+        // the favorite list changes, including at process start. Geofences survive a process
+        // restart but not a reboot; GeofenceSyncManager detects the latter (issue #58), and
+        // GeofenceBootReceiver re-registers right after boot without waiting for an app open.
         // Above 100 favorites this replays the last closest-100 selection rather than re-ranking
         // (issue #29) — re-ranking only happens on significant location change, armed/disarmed
         // here alongside the toggle via geofenceLocationMonitor.

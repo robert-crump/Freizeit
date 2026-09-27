@@ -4,6 +4,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.location.Location
+import android.provider.Settings
+import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
@@ -15,8 +17,13 @@ import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.findPoiById
 import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.AutoCheckInPermissions
+import com.example.freizeit.util.GeofenceEventLog
+import com.example.freizeit.util.effectiveRegisteredIds
 import com.example.freizeit.util.reconcileDwellingOnUnregister
+import com.example.freizeit.util.registrationEpoch
 import com.example.freizeit.util.selectClosestFavorites
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -47,6 +54,11 @@ class GeofenceSyncManager(
 
     private val geofencingClient = LocationServices.getGeofencingClient(context)
 
+    /** Serializes [sync]/[rerank] — after a reboot the boot receiver and the app-start collector
+     *  can both sync at once, and interleaved read-diff-write passes would corrupt the persisted
+     *  registered set. */
+    private val mutex = Mutex()
+
     private val geofencePendingIntent: PendingIntent by lazy {
         val intent = Intent(context, GeofenceBroadcastReceiver::class.java)
             .setAction(GeofenceBroadcastReceiver.ACTION_GEOFENCE_TRANSITION)
@@ -66,10 +78,10 @@ class GeofenceSyncManager(
      * itself; see the class doc for why. See [register] for why this reconciles rather than
      * rebuilding from scratch.
      */
-    suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>) {
+    suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>) = mutex.withLock {
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             removeAll()
-            return
+            return@withLock
         }
         val targets = if (favorites.size <= MAX_GEOFENCES) favorites else replaySelection(favorites)
         register(targets)
@@ -81,10 +93,10 @@ class GeofenceSyncManager(
      * own. Call this only from a significant-location-change fix (issue #29) — never on app-open,
      * never from a periodic job.
      */
-    suspend fun rerank(autoCheckInEnabled: Boolean, favorites: List<Poi>, location: Location) {
+    suspend fun rerank(autoCheckInEnabled: Boolean, favorites: List<Poi>, location: Location) = mutex.withLock {
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             removeAll()
-            return
+            return@withLock
         }
         val selected = selectClosestFavorites(favorites, location.latitude, location.longitude, MAX_GEOFENCES)
         geofenceState.setSelectedFavoriteIds(selected.map { it.id }.toSet())
@@ -118,11 +130,20 @@ class GeofenceSyncManager(
      * check-in notification for a place that's no longer even a favorite. If that place is the
      * one the currently-shown notification is for, the notification is cancelled immediately too
      * — see [reconcileDwellingOnUnregister].
+     *
+     * The persisted set is only trusted within the boot/install it was written in (issue #58):
+     * Play Services drops every geofence on reboot, so after one the diff starts from empty and
+     * re-adds everything — see [effectiveRegisteredIds].
      */
     private suspend fun register(favorites: List<Poi>) {
         val targetIds = favorites.map { it.id }.toSet()
-        val registeredIds = geofenceState.getRegisteredFavoriteIds()
+        val epoch = currentEpoch()
+        val persistedIds = geofenceState.getRegisteredFavoriteIds()
+        val registeredIds = effectiveRegisteredIds(persistedIds, geofenceState.getRegistrationEpoch(), epoch)
         if (targetIds == registeredIds) return
+        if (registeredIds.isEmpty() && persistedIds.isNotEmpty()) {
+            GeofenceEventLog.append(context, "register epoch reset (now $epoch): ${persistedIds.size} persisted ids no longer trusted")
+        }
 
         val idsToRemove = registeredIds - targetIds
         val toAdd = favorites.filter { it.id !in registeredIds }
@@ -140,6 +161,12 @@ class GeofenceSyncManager(
                 geofencingClient.addGeofences(request, geofencePendingIntent).await()
             }
             geofenceState.setRegisteredFavoriteIds(targetIds)
+            geofenceState.setRegistrationEpoch(epoch)
+            GeofenceEventLog.append(context, "register added=${toAdd.size} removed=${idsToRemove.size} total=${targetIds.size}")
+        } catch (e: ApiException) {
+            // E.g. GEOFENCE_NOT_AVAILABLE while location is switched off. Same reasoning as below:
+            // don't persist, let the next sync retry.
+            GeofenceEventLog.append(context, "register failed: ApiException ${e.statusCode}")
         } catch (e: SecurityException) {
             // Permission revoked between the check above and the call below (e.g. via system
             // Settings mid-flight) — leave Play Services in whatever state it's already in
@@ -180,11 +207,21 @@ class GeofenceSyncManager(
             geofencingClient.removeGeofences(geofencePendingIntent).await()
         } catch (e: SecurityException) {
             // Nothing to clean up if we never had permission to register in the first place.
+        } catch (e: ApiException) {
+            // Location off etc. — Play Services has already dropped them anyway.
         }
         geofenceState.setDwellingPlaceIds(emptySet())
         geofenceState.setRegisteredFavoriteIds(emptySet())
+        geofenceState.setRegistrationEpoch(null)
         geofenceState.setActiveNotificationPlaceId(null)
         GeofenceNotifications.cancel(context)
+    }
+
+    /** Changes on every reboot and every install/update — see [effectiveRegisteredIds]. */
+    private fun currentEpoch(): String {
+        val bootCount = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)
+        val lastUpdateTime = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        return registrationEpoch(bootCount, lastUpdateTime)
     }
 
     private fun hasRequiredPermissions(): Boolean =

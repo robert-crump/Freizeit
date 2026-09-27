@@ -51,6 +51,21 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
+     * The boot/install epoch [getRegisteredFavoriteIds] was last written under (issue #58) — see
+     * [com.example.freizeit.util.effectiveRegisteredIds]. Play Services drops every geofence on
+     * reboot, but this DataStore survives it, so the id set alone can't tell a live registration
+     * from one that silently vanished.
+     */
+    suspend fun getRegistrationEpoch(): String? =
+        dataStore.data.first()[REGISTRATION_EPOCH_KEY]
+
+    suspend fun setRegistrationEpoch(epoch: String?) {
+        dataStore.edit {
+            if (epoch == null) it.remove(REGISTRATION_EPOCH_KEY) else it[REGISTRATION_EPOCH_KEY] = epoch
+        }
+    }
+
+    /**
      * Which favorite the single outstanding check-in notification (if any) is for — lets
      * [GeofenceSyncManager.register] tell whether a favorite losing its geofence (e.g.
      * un-favorited mid-dwell) is the one currently on screen, so it can cancel that notification
@@ -70,5 +85,6 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
         val SELECTED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_selected_favorite_ids")
         val REGISTERED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_registered_favorite_ids")
         val ACTIVE_NOTIFICATION_PLACE_ID_KEY = stringPreferencesKey("geofence_active_notification_place_id")
+        val REGISTRATION_EPOCH_KEY = stringPreferencesKey("geofence_registration_epoch")
     }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofenceStatusCodes
 import com.google.android.gms.location.GeofencingEvent
 import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.dao.checkIn
@@ -50,6 +51,16 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) {
             Log.w(TAG, "Geofencing error code ${event.errorCode}")
+            GeofenceEventLog.append(app, "error code=${event.errorCode}")
+            if (event.errorCode == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
+                // Location was switched off: Play Services has dropped every geofence (issue #58).
+                // Forget what we think is registered so the next sync re-adds them all.
+                val geofenceState = app.container.geofenceStateRepository
+                geofenceState.setRegisteredFavoriteIds(emptySet())
+                geofenceState.setRegistrationEpoch(null)
+                geofenceState.setDwellingPlaceIds(emptySet())
+                cancelNotification(app)
+            }
             return
         }
         if (event.geofenceTransition == Geofence.GEOFENCE_TRANSITION_ENTER) {
