@@ -59,7 +59,6 @@
     <!-- Check-in -->
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
     <string name="checkin_empty_none_nearby">No places within 500 m right now.</string>
-    <string name="checkin_checked_in">Checked in to %1$s</string>
     <string name="checkin_search_button">Check in</string>
     <string name="checkin_history_title">Check-in history</string>
     <string name="checkin_history_back">Back</string>

@@ -29,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -90,7 +89,6 @@ fun FreizeitApp(
     // snackbar, driven from a row tap on checkin/search, surface back on checkin/entry once the
     // confirm flow auto-pops there (#39). CheckInCandidate isn't Parcelable, so plain remember.
     val checkInViewModel: CheckInViewModel = viewModel(factory = CheckInViewModel.Factory)
-    val checkInState by checkInViewModel.uiState.collectAsStateWithLifecycle()
     var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
     val checkInSnackbarHostState = remember { SnackbarHostState() }
 
@@ -174,7 +172,6 @@ fun FreizeitApp(
                     composable(CHECKIN_ENTRY_ROUTE) {
                         CheckInScreen(
                             onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
-                            lastCheckedInName = checkInState.lastCheckedInName,
                             checkInSnackbarHostState = checkInSnackbarHostState
                         )
                     }

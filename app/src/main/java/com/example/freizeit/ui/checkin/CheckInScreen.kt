@@ -2,17 +2,18 @@ package com.example.freizeit.ui.checkin
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -40,9 +41,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -54,17 +55,15 @@ import com.example.freizeit.util.formatVisitWeekdayAndTime
 
 /**
  * Check-in tab root: the check-in history list, with a "+" FAB that opens [CheckInSearchScreen]
- * to record a new one (#39). [lastCheckedInName]/[checkInSnackbarHostState] are hoisted at
- * `FreizeitApp` level (shared with the search screen and [CheckInDateTimeFlow]) so the
- * "Checked in to X" banner and its Undo snackbar surface here, after auto-popping back from
- * search on confirm — [CheckInHistoryViewModel]'s own selection/delete/undo stays local to this
+ * to record a new one (#39). [checkInSnackbarHostState] is hoisted at `FreizeitApp` level
+ * (shared with the search screen and [CheckInDateTimeFlow]) so the "Checked into X" Undo
+ * snackbar surfaces here, after auto-popping back from search on confirm — [CheckInHistoryViewModel]'s own selection/delete/undo stays local to this
  * route, unrelated to check-in creation.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CheckInScreen(
     onOpenSearch: () -> Unit,
-    lastCheckedInName: String?,
     checkInSnackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
     viewModel: CheckInHistoryViewModel = viewModel(factory = CheckInHistoryViewModel.Factory)
@@ -126,17 +125,6 @@ fun CheckInScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                lastCheckedInName?.let { name ->
-                    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                        Text(
-                            text = stringResource(R.string.checkin_checked_in, name),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
                 if (state.visits.isEmpty()) {
                     Text(
                         text = stringResource(R.string.checkin_history_empty),
@@ -147,14 +135,20 @@ fun CheckInScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        // Keeps the last row scrollable out from under the FAB.
+                        contentPadding = PaddingValues(bottom = 88.dp)
+                    ) {
                         sections.forEach { section ->
                             stickyHeader(key = section.label) {
                                 SectionHeader(section.label)
                             }
-                            items(section.visits, key = { it.id }) { visit ->
+                            itemsIndexed(section.visits, key = { _, visit -> visit.id }) { index, visit ->
                                 VisitRow(
                                     visit = visit,
+                                    isFirstInGroup = index == 0,
+                                    isLastInGroup = index == section.visits.lastIndex,
                                     timestampText = if (section.label == "Today") {
                                         formatVisitTimeOnly(visit.visitedAt)
                                     } else {
@@ -246,23 +240,32 @@ private fun SelectionTopBar(
 }
 
 /** Inert, sticky section label ("Today", "This week", ...) — not part of multi-select, since
- *  the [LazyColumn]'s `items` blocks only ever see [Visit]s, never headers. */
+ *  the [LazyColumn]'s `items` blocks only ever see [Visit]s, never headers. Opaque so rows
+ *  scrolling under it stay hidden. */
 @Composable
 private fun SectionHeader(label: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surface) {
+    Surface(modifier = modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.background) {
         Text(
             text = label,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
         )
     }
 }
+
+// Grouped-rows look borrowed from Hue and You's settings (#60): each section's rows are
+// separate rounded tiles with a small gap, and only the group's outer corners are large.
+private val GroupOuterCorner = 24.dp
+private val GroupInnerCorner = 4.dp
+private val GroupRowGap = 2.dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VisitRow(
     visit: Visit,
+    isFirstInGroup: Boolean,
+    isLastInGroup: Boolean,
     timestampText: String,
     isSelecting: Boolean,
     isSelected: Boolean,
@@ -270,30 +273,42 @@ private fun VisitRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val top = if (isFirstInGroup) GroupOuterCorner else GroupInnerCorner
+    val bottom = if (isLastInGroup) GroupOuterCorner else GroupInnerCorner
+    Surface(
+        shape = RoundedCornerShape(top, top, bottom, bottom),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainer
+        },
         modifier = modifier
             .fillMaxWidth()
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent
-            )
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(horizontal = 16.dp)
+            .padding(top = if (isFirstInGroup) 0.dp else GroupRowGap)
     ) {
-        if (isSelecting) {
-            Checkbox(checked = isSelected, onCheckedChange = { onClick() })
-        }
-        Column(modifier = Modifier.weight(1f)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onLongPress)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (isSelecting) {
+                Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = visit.snapshotName ?: stringResource(R.string.checkin_history_unnamed_place),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
             Text(
-                text = visit.snapshotName ?: stringResource(R.string.checkin_history_unnamed_place),
-                style = MaterialTheme.typography.bodyLarge
+                text = timestampText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Text(
-            text = timestampText,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }

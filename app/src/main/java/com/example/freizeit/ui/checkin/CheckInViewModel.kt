@@ -77,9 +77,7 @@ data class CheckInUiState(
     val searchResults: List<CheckInCandidate> = emptyList(),
     /** True when matches beyond the [CHECKIN_SEARCH_RESULTS_LIMIT] cap are being withheld. */
     val hasMoreSearchResults: Boolean = false,
-    val hasLocation: Boolean = false,
-    /** Name of the place last checked into this session, shown as a brief confirmation. */
-    val lastCheckedInName: String? = null
+    val hasLocation: Boolean = false
 ) {
     val isSearching: Boolean get() = searchQuery.trim().length >= SEARCH_MIN_LENGTH
 }
@@ -98,7 +96,6 @@ class CheckInViewModel(
      *  (construction + resume, mirrors HomeViewModel's identical snapshot-not-collect reasoning
      *  for #40/#34). */
     private val location = MutableStateFlow<LatLon?>(null)
-    private val lastCheckedInName = MutableStateFlow<String?>(null)
     private val searchQuery = MutableStateFlow("")
     private val showAllSearchResults = MutableStateFlow(false)
 
@@ -113,7 +110,6 @@ class CheckInViewModel(
         allPois,
         verdictDao.observeAll(),
         location,
-        lastCheckedInName,
         combine(
             // Debounced so the nearby-ranking pass runs once typing pauses, instead of on
             // every keystroke (mirrors MapViewModel's identical fix).
@@ -121,7 +117,7 @@ class CheckInViewModel(
             showAllSearchResults,
             ::SearchState
         )
-    ) { pois, verdicts, loc, lastName, search ->
+    ) { pois, verdicts, loc, search ->
         val nearby = loc?.let { rankNearbyForCheckIn(pois, verdicts.associateBy { it.placeId }, it) }
             ?: emptyList()
         val trimmedQuery = search.query.trim()
@@ -135,8 +131,7 @@ class CheckInViewModel(
             searchQuery = search.query,
             searchResults = if (search.showAll) matches else matches.take(CHECKIN_SEARCH_RESULTS_LIMIT),
             hasMoreSearchResults = !search.showAll && matches.size > CHECKIN_SEARCH_RESULTS_LIMIT,
-            hasLocation = loc != null,
-            lastCheckedInName = lastName
+            hasLocation = loc != null
         )
     }
         .flowOn(Dispatchers.Default)
@@ -169,9 +164,7 @@ class CheckInViewModel(
 
     /** Returns the new visit's id, so the caller can offer Undo. */
     suspend fun checkIn(poi: Poi, visitedAt: Long): Long {
-        val id = withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
-        lastCheckedInName.value = poi.name
-        return id
+        return withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
     }
 
     suspend fun undoCheckIn(visitId: Long) {
