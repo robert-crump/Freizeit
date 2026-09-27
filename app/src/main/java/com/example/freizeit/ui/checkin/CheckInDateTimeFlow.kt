@@ -42,7 +42,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
-import com.example.freizeit.util.formatVisitTimestamp
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -157,11 +156,7 @@ fun CheckInDateTimeFlow(
                     scope.launch {
                         val visitId = onConfirmed(poi, visitedAt)
                         onDismiss()
-                        val message = String.format(
-                            snackbarTemplate,
-                            placeName,
-                            formatVisitTimestamp(visitedAt)
-                        )
+                        val message = String.format(snackbarTemplate, placeName)
                         val result = snackbarHostState.showSnackbar(
                             message = message,
                             actionLabel = undoLabel,
@@ -169,7 +164,7 @@ fun CheckInDateTimeFlow(
                             // non-null (which it always is here, for Undo) — without this, the
                             // Snackbar would only ever go away via an explicit swipe or Undo tap,
                             // never on its own.
-                            duration = SnackbarDuration.Long
+                            duration = SnackbarDuration.Short
                         )
                         if (result == SnackbarResult.ActionPerformed) {
                             onUndo(visitId)

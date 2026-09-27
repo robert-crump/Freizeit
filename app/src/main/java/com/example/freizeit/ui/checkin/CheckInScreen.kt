@@ -12,7 +12,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -72,6 +74,9 @@ fun CheckInScreen(
     val sections = remember(state.visits) { bucketVisits(state.visits) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
     val deleteSnackbarHostState = remember { SnackbarHostState() }
+    val lazyListState = rememberLazyListState()
+    var previousVisitCount by remember { mutableStateOf(0) }
+
     val undoMessage = if (state.undoableDeleteCount > 0) {
         pluralStringResource(
             R.plurals.checkin_history_delete_undo_message,
@@ -82,6 +87,14 @@ fun CheckInScreen(
         null
     }
     val undoActionLabel = stringResource(R.string.checkin_history_undo_action)
+
+    // Scroll to top when a new check-in is added (detected by visits count increasing)
+    LaunchedEffect(state.visits.size) {
+        if (state.visits.isNotEmpty() && state.visits.size > previousVisitCount) {
+            lazyListState.animateScrollToItem(0)
+        }
+        previousVisitCount = state.visits.size
+    }
 
     LaunchedEffect(undoMessage) {
         if (undoMessage != null) {
@@ -138,7 +151,8 @@ fun CheckInScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         // Keeps the last row scrollable out from under the FAB.
-                        contentPadding = PaddingValues(bottom = 88.dp)
+                        contentPadding = PaddingValues(bottom = 88.dp),
+                        state = lazyListState
                     ) {
                         sections.forEach { section ->
                             stickyHeader(key = section.label) {
