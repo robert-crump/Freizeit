@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Attractions
 import androidx.compose.material.icons.filled.Business
-import androidx.compose.material.icons.filled.ChildCare
 import androidx.compose.material.icons.filled.Handyman
 import androidx.compose.material.icons.filled.Icecream
 import androidx.compose.material.icons.filled.Interests
@@ -22,12 +21,16 @@ import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorPainter
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -44,9 +47,50 @@ fun markerIconId(category: String): String = "marker-$category"
 /** Same icon shown on a POI's map marker, exposed for the Map chip row's leading icon. */
 fun categoryIcon(category: String): ImageVector = CATEGORY_ICONS[category] ?: CATEGORY_ICONS.getValue(UNKNOWN_CATEGORY)
 
-/** One Material icon per known POI category, plus a generic fallback for anything unmapped. */
+/**
+ * Playground glyph: an A-frame with a seat hanging on two chains. Material Icons has no swing,
+ * see-saw or slide, so it's hand-drawn. Bold strokes, since it has to read at marker size
+ * (~18 px glyph); tinted like the Material icons (the stroke color is replaced by the tint).
+ */
+val SwingIcon: ImageVector = ImageVector.Builder(
+    name = "Swing",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    // A-frame: top beam plus two splayed legs.
+    path(
+        stroke = SolidColor(Color.Black),
+        strokeLineWidth = 2.6f,
+        strokeLineCap = StrokeCap.Round,
+        strokeLineJoin = StrokeJoin.Round
+    ) {
+        moveTo(2.5f, 21.5f)
+        lineTo(6.5f, 3.5f)
+        lineTo(17.5f, 3.5f)
+        lineTo(21.5f, 21.5f)
+    }
+    // Chains.
+    path(stroke = SolidColor(Color.Black), strokeLineWidth = 1.9f, strokeLineCap = StrokeCap.Round) {
+        moveTo(9f, 4f)
+        lineTo(9f, 15f)
+        moveTo(15f, 4f)
+        lineTo(15f, 15f)
+    }
+    // Seat.
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(7.5f, 14.5f)
+        lineTo(16.5f, 14.5f)
+        lineTo(16.5f, 17.5f)
+        lineTo(7.5f, 17.5f)
+        close()
+    }
+}.build()
+
+/** One icon per known POI category (Material, except the hand-drawn [SwingIcon]), plus a generic fallback for anything unmapped. */
 private val CATEGORY_ICONS: Map<String, ImageVector> = mapOf(
-    "playground" to Icons.Filled.ChildCare,
+    "playground" to SwingIcon,
     "park" to Icons.Filled.Park,
     "cafe" to Icons.Filled.LocalCafe,
     "restaurant" to Icons.Filled.Restaurant,
