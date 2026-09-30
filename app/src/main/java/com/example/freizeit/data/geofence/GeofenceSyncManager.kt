@@ -19,6 +19,7 @@ import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.AutoCheckInPermissions
 import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.effectiveRegisteredIds
+import com.example.freizeit.util.isEpochReset
 import com.example.freizeit.util.reconcileDwellingOnUnregister
 import com.example.freizeit.util.registrationEpoch
 import com.example.freizeit.util.selectClosestFavorites
@@ -104,6 +105,23 @@ class GeofenceSyncManager(
     }
 
     /**
+     * The delayed second pass after an epoch reset (issue #61, run by [GeofenceReregisterWorker]):
+     * re-adds every current target regardless of what the persisted set claims is live. Re-adding
+     * an existing request id replaces it, so this is idempotent; the cost is that in-progress
+     * dwell clocks restart once. Unlike [sync] it never tears anything down when auto check-in is
+     * off, permissions are missing or there are no favorites — [sync] already handles those, so
+     * here it's simply a no-op.
+     */
+    suspend fun forceReregister(autoCheckInEnabled: Boolean, favorites: List<Poi>) = mutex.withLock {
+        if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
+            GeofenceEventLog.append(context, "delayed forced re-register skipped (enabled=$autoCheckInEnabled favorites=${favorites.size})")
+            return@withLock
+        }
+        val targets = if (favorites.size <= MAX_GEOFENCES) favorites else replaySelection(favorites)
+        register(targets, force = true)
+    }
+
+    /**
      * Looks the last-persisted selection up by id directly (not by filtering [currentFavorites]),
      * so an un-favorited place keeps resolving here — and keeps its geofence — until the next
      * [rerank] drops its id from the persisted set. Falls back to the first [MAX_GEOFENCES]
@@ -133,20 +151,24 @@ class GeofenceSyncManager(
      *
      * The persisted set is only trusted within the boot/install it was written in (issue #58):
      * Play Services drops every geofence on reboot, so after one the diff starts from empty and
-     * re-adds everything — see [effectiveRegisteredIds].
+     * re-adds everything — see [effectiveRegisteredIds]. Play Services may wipe them only after
+     * that re-add has landed, though (issue #61), so every epoch reset also schedules one delayed
+     * [forceReregister] pass, which re-adds all of [favorites] via [force].
      */
-    private suspend fun register(favorites: List<Poi>) {
+    private suspend fun register(favorites: List<Poi>, force: Boolean = false) {
         val targetIds = favorites.map { it.id }.toSet()
         val epoch = currentEpoch()
         val persistedIds = geofenceState.getRegisteredFavoriteIds()
-        val registeredIds = effectiveRegisteredIds(persistedIds, geofenceState.getRegistrationEpoch(), epoch)
-        if (targetIds == registeredIds) return
-        if (registeredIds.isEmpty() && persistedIds.isNotEmpty()) {
+        val persistedEpoch = geofenceState.getRegistrationEpoch()
+        val registeredIds = effectiveRegisteredIds(persistedIds, persistedEpoch, epoch)
+        if (!force && targetIds == registeredIds) return
+        val epochReset = isEpochReset(persistedIds, persistedEpoch, epoch)
+        if (epochReset) {
             GeofenceEventLog.append(context, "register epoch reset (now $epoch): ${persistedIds.size} persisted ids no longer trusted")
         }
 
         val idsToRemove = registeredIds - targetIds
-        val toAdd = favorites.filter { it.id !in registeredIds }
+        val toAdd = if (force) favorites else favorites.filter { it.id !in registeredIds }
 
         try {
             if (idsToRemove.isNotEmpty()) {
@@ -162,7 +184,9 @@ class GeofenceSyncManager(
             }
             geofenceState.setRegisteredFavoriteIds(targetIds)
             geofenceState.setRegistrationEpoch(epoch)
-            GeofenceEventLog.append(context, "register added=${toAdd.size} removed=${idsToRemove.size} total=${targetIds.size}")
+            val label = if (force) "delayed forced re-register ran" else "register"
+            GeofenceEventLog.append(context, "$label added=${toAdd.size} removed=${idsToRemove.size} total=${targetIds.size}")
+            if (epochReset && !force) GeofenceReregisterWorker.schedule(context)
         } catch (e: ApiException) {
             // E.g. GEOFENCE_NOT_AVAILABLE while location is switched off. Same reasoning as below:
             // don't persist, let the next sync retry.

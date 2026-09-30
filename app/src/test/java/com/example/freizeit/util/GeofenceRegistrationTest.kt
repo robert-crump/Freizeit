@@ -1,6 +1,8 @@
 package com.example.freizeit.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GeofenceRegistrationTest {
@@ -31,5 +33,30 @@ class GeofenceRegistrationTest {
     fun `missing epoch from a pre-fix install invalidates the persisted ids`() {
         val now = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
         assertEquals(emptySet<String>(), effectiveRegisteredIds(ids, null, now))
+    }
+
+    @Test
+    fun `different persisted epoch is a reset`() {
+        val before = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
+        val after = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 2_000L)
+        assertTrue(isEpochReset(ids, before, after))
+    }
+
+    @Test
+    fun `same persisted epoch is not a reset`() {
+        val epoch = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
+        assertFalse(isEpochReset(ids, epoch, epoch))
+    }
+
+    @Test
+    fun `nothing persisted is not a reset`() {
+        val now = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
+        assertFalse(isEpochReset(emptySet(), null, now))
+    }
+
+    @Test
+    fun `ids persisted without an epoch is a reset`() {
+        val now = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
+        assertTrue(isEpochReset(ids, null, now))
     }
 }

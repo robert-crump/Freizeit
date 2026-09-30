@@ -82,7 +82,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 "triggered=$triggeringPlaceIds dwelling=$dwellingIds"
         )
 
-        val triggerLocation = event.triggeringLocation ?: return
+        val triggerLocation = event.triggeringLocation ?: run {
+            GeofenceEventLog.append(app, "transition without triggering location, notification not refreshed")
+            return
+        }
         refreshNotification(app, dwellingIds, triggerLocation.latitude, triggerLocation.longitude)
     }
 
