@@ -3,20 +3,19 @@ package com.example.freizeit.ui.home
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -37,25 +36,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,8 +77,8 @@ import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.sign
 import kotlinx.coroutines.launch
 
 @Composable
@@ -140,13 +140,15 @@ fun HomeScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
+        // No horizontal padding here: the pager spans the full width so neighbor cards peek in
+        // at the screen edges; everything else brings its own 16dp gutter.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
+                .padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            WeatherStrip(state.weather)
+            WeatherStrip(state.weather, modifier = Modifier.padding(horizontal = 16.dp))
 
             when {
                 state.isLoading -> CenteredLoading()
@@ -155,13 +157,15 @@ fun HomeScreen(
                 !state.hasVerdictedPlacesWithinRadius -> CenteredHint(
                     stringResource(R.string.home_no_suggestions_within_radius, state.radiusKm)
                 )
-                else -> SwipeableSuggestionCard(
+                else -> SuggestionPager(
                     deck = state.deck,
                     customNames = state.customNames,
                     location = state.location,
                     onCheckIn = { suggestion -> pendingCheckIn = suggestion },
                     onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
                 )
             }
         }
@@ -197,61 +201,37 @@ fun HomeScreen(
     }
 }
 
-/** Drag distance (in dp) past which a horizontal drag counts as a swipe. */
-private const val SWIPE_THRESHOLD_DP = 160
+/** How much of each neighbor card is visible at the screen edge (MyQuotes' `pager_peek`). */
+private val PAGER_PEEK = 24.dp
 
-/** Fraction of the horizontal drag distance mirrored as a downward drift, so a dragged card
- *  visibly arcs rather than sliding on a straight horizontal rail. */
-private const val DRAG_VERTICAL_DRIFT_FACTOR = 0.15f
+/** The gap between two cards (MyQuotes' `pager_page_margin`). */
+private val PAGER_PAGE_MARGIN = 8.dp
 
-/** Duration of the departing card's fade-out, run to completion before the next/previous card
- *  starts fading in — sequential, not a crossfade, so only one card is ever visible at a time. */
-private const val FADE_OUT_MILLIS = 150
+/** Scale and alpha of a neighbor card one full page away from the center. */
+private const val NEIGHBOR_MIN_SCALE = 0.92f
+private const val NEIGHBOR_MIN_ALPHA = 0.6f
 
-/** Duration of the incoming card's fade-in (and its slide-in, run concurrently with it). */
-private const val FADE_IN_MILLIS = 200
-
-/** How far (in dp) the incoming card slides from, easing to its resting position as it fades in —
- *  a small motion cue alongside the fade, continuing in the swipe's direction. */
-private const val ENTER_SLIDE_DP = 24
-
-/** True once a drag has gone far enough to count as a completed swipe. */
-internal fun isPastSwipeThreshold(offsetPx: Float, thresholdPx: Float): Boolean =
-    abs(offsetPx) > thresholdPx
+/** Keeps the pager on the same place across deck changes; a plain field (not snapshot state)
+ *  since it's only bookkeeping, read and written during composition. */
+private class DeckAnchor {
+    var ids: List<String>? = null
+}
 
 /**
- * One favorite or want-to-go place at a time — no peek of the next/previous card at rest or
- * during a drag (explicit #43 decision replacing the old stacked-deck look). Dragging still
- * translates the displayed card with the finger; releasing past the threshold fades it out in
- * place, then fades the next/previous card in (with a slight slide from the swipe direction).
- * Releasing short of the threshold springs the drag back to rest. Removing a card's verdict runs
- * the same fade-out/fade-in sequence (always toward "next", since a button tap has no drag
- * direction to inherit) before applying the actual verdict change.
+ * The favorite and want-to-go places as a looping, peeking pager (#65, a close port of MyQuotes'
+ * `PagerPeek` + [LoopingPositions]): the previous and next cards peek in at the edges, scaled
+ * down and faded by their distance from the center, and swiping loops endlessly both ways. Each
+ * page is its own vertical scroll holding the card at its natural height, top-aligned.
  *
- * Position in [deck] is tracked locally ([localIndex]) rather than round-tripped through the
- * ViewModel: a swipe-driven page needs the very next frame to show the promoted card at rest,
- * and a Room/combine round trip (even a fast one) lands a beat too late. Removing a verdict still
- * goes through the ViewModel since it has to persist, and — same as before this session —
- * [localIndex] is deliberately left untouched for that path: once the deck shrinks (removing the
- * entry at [localIndex]), everything after it left-shifts by one, so [localIndex] already points
- * at the right next entry with no bump needed.
- *
- * [displayedId] tracks which POI is the big/visible card independently of [card] (which always
- * reflects the *persisted* [localIndex]/[deck]): a swipe bumps [localIndex] synchronously, so the
- * two stay in lockstep, but a verdict removal's [onRemoveVerdict] round trip is async — [deck]
- * won't actually shrink (and [card] won't catch up) until Room re-emits, possibly several frames
- * after the fade-in has already started. Fading in the entry captured as [commitTo]'s `target` up
- * front, keyed on id rather than re-derived from [localIndex] each frame, means the fade-in never
- * has to wait for that round trip — [card] simply catches up to already-correct [displayedId]
- * once the deck does shrink, with no visible jump.
- *
- * Previous/current/next cards are each key()'d by POI id rather than pinned to a fixed call site,
- * so a card's SuggestionsMiniMap (and its MapView) travels with its POI across commits instead of
- * being handed new suggestion data to render from scratch — the latter was the source of a
- * post-commit flicker (the reused MapView briefly still showing its previous POI's tiles).
+ * Deck changes (a location refresh re-ranking it, a removed verdict shrinking it) keep the pager
+ * on the same POI via [PagerState.requestScrollToPage] from the same composition, so the next
+ * frame already shows it — never a frame of whatever card the old page number now maps to.
+ * Removing a verdict first slides to the next card, so the removed one leaves the center before
+ * the deck shrinks under it. Page keys are "lap:id" and a re-anchor stays in the same lap number,
+ * so the card on screen (and its mini-map's MapView) keeps its composition across a shrink.
  */
 @Composable
-private fun SwipeableSuggestionCard(
+private fun SuggestionPager(
     deck: List<Suggestion>,
     customNames: Map<String, String>,
     location: LatLon?,
@@ -259,135 +239,94 @@ private fun SwipeableSuggestionCard(
     onRemoveVerdict: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val thresholdPx = with(density) { SWIPE_THRESHOLD_DP.dp.toPx() }
-    val enterSlidePx = with(density) { ENTER_SLIDE_DP.dp.toPx() }
     val scope = rememberCoroutineScope()
+    val size = deck.size
+    val pagerState = rememberPagerState(initialPage = LoopingPositions.pagerPositionOf(0, size, 0)) {
+        LoopingPositions.count(size)
+    }
 
-    var localIndex by rememberSaveable { mutableStateOf(0) }
-    val dragOffsetPx = remember { Animatable(0f) }
-    val cardAlpha = remember { Animatable(1f) }
-    val enterOffsetPx = remember { Animatable(0f) }
-    var isCommitting by remember { mutableStateOf(false) }
-
-    val card = deck[localIndex.mod(deck.size)]
-    val nextCard = if (deck.size <= 1) null else deck[(localIndex + 1).mod(deck.size)]
-    val previousCard = if (deck.size <= 1) null else deck[(localIndex - 1).mod(deck.size)]
-    // detectHorizontalDragGestures below runs as one long-lived coroutine (keyed on Unit, so it's
-    // never relaunched) rather than being re-invoked each recomposition, so a plain `val` read
-    // inside it would freeze at whatever nextCard/previousCard were on the composition that
-    // happened to be running when the coroutine last started listening for gestures — stale
-    // enough that a fast second swipe could resolve against pre-first-swipe neighbors and land on
-    // the card just departed. rememberUpdatedState keeps the read live.
-    val currentNextCard by rememberUpdatedState(nextCard)
-    val currentPreviousCard by rememberUpdatedState(previousCard)
-    var displayedId by remember { mutableStateOf(card.poi.id) }
-    // All three roles must come from this one loop (one call site) rather than the current card
-    // being rendered from a separate key() elsewhere: Compose only preserves a composable's
-    // state (and here, its MapView) across recompositions when the same key recurs at the same
-    // call site. Splitting current out into its own call site meant a card promoted from
-    // neighbor to current was actually torn down and rebuilt from scratch — losing the very
-    // continuity this keying was for. A 2-card deck's "previous" and "next" are the same POI;
-    // distinctBy dedupes that to a single neighbor entry.
-    val window = (listOfNotNull(previousCard, nextCard) + card).distinctBy { it.poi.id }
-    // displayedId is only ever written inside commitTo, but the deck can also change out from
-    // under it for reasons that never go through commitTo — a location refresh re-ranking the
-    // deck (HomeScreen's ON_RESUME hook fires right at cold start) leaves localIndex pointing at
-    // a different POI without touching displayedId. If the tracked id no longer matches anything
-    // in the current window, fall back to the freshly-recomputed card's id so a card is always
-    // shown instead of every entry rendering at alpha 0.
-    val effectiveDisplayedId = if (window.any { it.poi.id == displayedId }) displayedId else card.poi.id
-
-    fun commitTo(target: Suggestion, direction: Int, onCommitted: () -> Unit) {
-        if (isCommitting) return
-        isCommitting = true
-        scope.launch {
-            cardAlpha.animateTo(0f, tween(FADE_OUT_MILLIS))
-            onCommitted()
-            dragOffsetPx.snapTo(0f)
-            displayedId = target.poi.id
-            cardAlpha.snapTo(0f)
-            // Starts on the far side from `direction` and animates toward 0, so the slide
-            // continues moving in the swipe's direction rather than doubling back toward it.
-            enterOffsetPx.snapTo(-direction * enterSlidePx)
-            launch { enterOffsetPx.animateTo(0f, tween(FADE_IN_MILLIS)) }
-            cardAlpha.animateTo(1f, tween(FADE_IN_MILLIS))
-            isCommitting = false
+    // The POI on the current page, saved so the deck reopens where it was left.
+    var currentId by rememberSaveable { mutableStateOf<String?>(null) }
+    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    val anchor = remember { DeckAnchor() }
+    val ids = deck.map { it.poi.id }
+    if (ids != anchor.ids) {
+        val oldSize = anchor.ids?.size ?: size
+        anchor.ids = ids
+        // A removed POI falls through to the one that followed it, now at its index.
+        val index = ids.indexOf(currentId).takeIf { it >= 0 } ?: currentIndex.coerceIn(0, size - 1)
+        val lapStart = if (oldSize <= 1) 0 else pagerState.currentPage / oldSize * size
+        val target = LoopingPositions.pagerPositionOf(index, size, lapStart)
+        if (target != pagerState.currentPage) pagerState.requestScrollToPage(target)
+    }
+    val currentDeck by rememberUpdatedState(deck)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            val index = LoopingPositions.indexOf(page, currentDeck.size)
+            currentDeck.getOrNull(index)?.let {
+                currentId = it.poi.id
+                currentIndex = index
+            }
         }
     }
 
-    Box(
-        // The deck's own size tracks the current card's natural (wrap-content) size, animating
-        // to a new target whenever a swipe changes which card that is. Neighbor cards below are
-        // matchParentSize()'d so they always conform to this same (possibly still-animating)
-        // size instead of contributing to it — that's what stops a taller neighbor from bleeding
-        // past the current card's bounds.
-        modifier = modifier
-            .animateContentSize(tween(FADE_OUT_MILLIS + FADE_IN_MILLIS))
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        val direction = sign(dragOffsetPx.value).toInt()
-                        val target = if (direction < 0) currentPreviousCard else currentNextCard
-                        if (target != null && isPastSwipeThreshold(dragOffsetPx.value, thresholdPx)) {
-                            commitTo(target, direction) { localIndex += direction }
-                        } else {
-                            scope.launch { dragOffsetPx.animateTo(0f, animationSpec = spring()) }
-                        }
-                    },
-                    onDragCancel = {
-                        scope.launch { dragOffsetPx.animateTo(0f, animationSpec = spring()) }
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        if (isCommitting) return@detectHorizontalDragGestures
-                        change.consume()
-                        scope.launch { dragOffsetPx.snapTo(dragOffsetPx.value + dragAmount) }
-                    }
-                )
-            }
-    ) {
-        for (entry in window) {
-            key(entry.poi.id) {
-                val isDisplayed = entry.poi.id == effectiveDisplayedId
-                // A single SuggestionCard call site regardless of role: role-dependent behavior
-                // is expressed as plain values (modifier, callbacks) fed into that one call,
-                // never as which composable call executes — an if/else choosing between two
-                // separate SuggestionCard(...) call expressions would itself defeat the keying,
-                // for the same reason splitting current/neighbor into separate loops did.
-                SuggestionCard(
-                    suggestion = entry,
-                    customName = customNames[entry.poi.id],
-                    location = location,
-                    onCheckIn = if (isDisplayed) ({ onCheckIn(entry) }) else ({}),
-                    onRemoveVerdict = if (isDisplayed) {
-                        {
-                            val target = nextCard
-                            if (target != null) {
-                                commitTo(target, direction = 1) { onRemoveVerdict(entry) }
-                            } else {
-                                onRemoveVerdict(entry)
-                            }
-                        }
+    val layoutDirection = LocalLayoutDirection.current
+    HorizontalPager(
+        state = pagerState,
+        modifier = modifier,
+        // Neighbors sit one page spacing further out, so pad by peek + margin.
+        contentPadding = PaddingValues(horizontal = PAGER_PEEK + PAGER_PAGE_MARGIN),
+        pageSpacing = PAGER_PAGE_MARGIN,
+        beyondViewportPageCount = 1,
+        verticalAlignment = Alignment.Top,
+        key = { page ->
+            val lap = if (size <= 1) 0 else page / size
+            "$lap:${deck[LoopingPositions.indexOf(page, size)].poi.id}"
+        }
+    ) { page ->
+        val entry = deck[LoopingPositions.indexOf(page, size)]
+        val isCurrent = page == pagerState.currentPage
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    // Where this page sits relative to the center: 0 centered, ±1 a neighbor.
+                    val position = (page - pagerState.currentPage) - pagerState.currentPageOffsetFraction
+                    val distance = min(1f, abs(position))
+                    val onRight = (position > 0) != (layoutDirection == LayoutDirection.Rtl)
+                    // Pivot on the edge facing the center card, so the visible peek stays the same width.
+                    transformOrigin = TransformOrigin(
+                        pivotFractionX = if (position == 0f) 0.5f else if (onRight) 0f else 1f,
+                        pivotFractionY = 0.5f
+                    )
+                    val scale = 1f - (1f - NEIGHBOR_MIN_SCALE) * distance
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = 1f - (1f - NEIGHBOR_MIN_ALPHA) * distance
+                }
+                .verticalScroll(rememberScrollState())
+        ) {
+            SuggestionCard(
+                suggestion = entry,
+                customName = customNames[entry.poi.id],
+                location = location,
+                // A peeking neighbor's partly visible buttons do nothing; swipe it in first.
+                onCheckIn = { if (isCurrent) onCheckIn(entry) },
+                onRemoveVerdict = remove@{
+                    if (!isCurrent || pagerState.isScrollInProgress) return@remove
+                    if (size <= 1) {
+                        onRemoveVerdict(entry)
                     } else {
-                        {}
-                    },
-                    modifier = if (isDisplayed) {
-                        Modifier
-                            .fillMaxWidth()
-                            .zIndex(1f)
-                            .graphicsLayer {
-                                translationX = dragOffsetPx.value + enterOffsetPx.value
-                                translationY = abs(dragOffsetPx.value) * DRAG_VERTICAL_DRIFT_FACTOR
-                                alpha = cardAlpha.value
-                            }
-                    } else {
-                        Modifier
-                            .matchParentSize()
-                            .zIndex(0f)
-                            .graphicsLayer { alpha = 0f }
+                        scope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            onRemoveVerdict(entry)
+                        }
                     }
-                )
-            }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
         }
     }
 }
@@ -467,15 +406,10 @@ private fun SuggestionCard(
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
-    // Sizing is entirely up to the caller: the current card wraps its own content (driving the
-    // deck's animateContentSize), neighbor cards are matchParentSize()'d to whatever that
-    // resolves to, so a neighbor's extra content scrolls within its clipped bounds rather than
-    // poking out past the current card's edge.
+    // Natural (wrap-content) height; the pager page around it scrolls a card taller than the screen.
     Card(modifier = modifier) {
         Column(
-            modifier = Modifier
-                .padding(20.dp)
-                .verticalScroll(rememberScrollState()),
+            modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Grouped in their own Column so the name-to-duration gap can be set tighter than
@@ -594,7 +528,7 @@ private fun CenteredHint(text: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 48.dp)
+            .padding(horizontal = 16.dp, vertical = 48.dp)
     ) {
         Text(
             text = text,

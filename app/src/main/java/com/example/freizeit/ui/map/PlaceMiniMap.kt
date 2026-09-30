@@ -69,9 +69,9 @@ fun SuggestionsMiniMap(
 
     val mapView = remember {
         // Default MapView renders to a GLSurfaceView, which composites straight through
-        // SurfaceFlinger and ignores the Compose graphicsLayer alpha applied by the Home
-        // swipe deck (translationX still works since that's just view positioning, but the
-        // map wouldn't fade). Texture mode routes rendering through the normal View draw
+        // SurfaceFlinger and ignores the Compose graphicsLayer alpha the Home pager applies to
+        // its peeking neighbor cards (positioning and scale still work, but the map wouldn't
+        // fade). Texture mode routes rendering through the normal View draw
         // pass instead, so it fades along with the rest of the card.
         val options = MapLibreMapOptions.createFromAttributes(context)
             .textureMode(true)
