@@ -1,23 +1,34 @@
 # POI extraction (issue #1)
 
-Desktop preprocessing script for Freizeit 2.0. Reads the OSM `.pbf` extracts
-maintained for the Velometrics/Ride-Graph project and emits `data/pois.json`
+Desktop preprocessing script for Freizeit 2.0. Reads OpenStreetMap `.pbf`
+extracts and emits `data/pois.json`
 (app-importable) plus a per-category coverage report on stdout. This script
 IS the data pipeline — no runtime Overpass in the app.
 
 ## Run
 
-Any Python 3.10+ with the `osmium` package works; the Ride-Graph venv
-already has it:
+Any Python 3.10+ with the `osmium` package (`pip install osmium`) works.
+Download one or more `.osm.pbf` extracts covering your area (e.g. from
+[Geofabrik](https://download.geofabrik.de/)) into a folder and point the
+script at it:
+
+```bash
+python tools/poi_extraction/extract_pois.py --pbf-dir path/to/pbf-folder
+```
+
+It writes `data/pois.json` (git-ignored — regenerate on demand; override with
+`--out`). Import that file in the app's Settings. Outside Aachen, also pass
+`--bbox` or `--no-bbox` — the default box (below) keeps only the Aachen area.
+
+The defaults are the author's own setup: without `--pbf-dir` the script reads
+`C:\Users\bob22\PycharmProjects\Ride-Graph\data\pbf\*.pbf`, the extracts
+maintained for the (not yet public) Ride-Graph project, whose venv already has
+`osmium`:
 
 ```powershell
 & C:\Users\bob22\PycharmProjects\Ride-Graph\.venv\Scripts\python.exe `
     tools\poi_extraction\extract_pois.py
 ```
-
-Defaults: reads `C:\Users\bob22\PycharmProjects\Ride-Graph\data\pbf\*.pbf`,
-writes `data\pois.json` (git-ignored — regenerate on demand). Override with
-`--pbf-dir` / `--out`.
 
 By default the output is trimmed to a bounding box around Aachen (center
 ±20km, i.e. a ~40km × 40km area: lat 50.5956–50.9550, lon 5.7996–6.3682).
@@ -28,9 +39,9 @@ filtering.
 Re-run the same command whenever the Ride-Graph `.pbf` files are refreshed,
 then re-import the JSON into the app.
 
-## Which .pbf files
+## Which .pbf files (author's setup)
 
-The **full extracts** at the top level of `Ride-Graph\data\pbf\`
+Any full OSM extract works. For the author's default setup: the **full extracts** at the top level of `Ride-Graph\data\pbf\`
 (`koeln-regbez-*.osm.pbf`, `limburg-*.osm.pbf`, `wallonia_*_community.pbf`).
 The `precut\` subdirectory must NOT be used: those files are Ride-Graph's
 routing cache, filtered to highway data — they contain no POIs (see
