@@ -64,6 +64,7 @@
     <string name="checkin_history_back">Back</string>
     <string name="checkin_history_empty">No check-ins yet — tap + to check in somewhere.</string>
     <string name="checkin_history_unnamed_place">Unnamed place</string>
+    <string name="checkin_history_place_gone">Place no longer exists</string>
     <string name="checkin_search_icon">Search</string>
     <string name="checkin_search_clear">Clear search</string>
     <string name="checkin_search_placeholder">Search places by name</string>

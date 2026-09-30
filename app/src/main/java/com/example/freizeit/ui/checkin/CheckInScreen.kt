@@ -60,12 +60,14 @@ import com.example.freizeit.util.formatVisitWeekdayAndTime
  * to record a new one (#39). [checkInSnackbarHostState] is hoisted at `FreizeitApp` level
  * (shared with the search screen and [CheckInDateTimeFlow]) so the "Checked into X" Undo
  * snackbar surfaces here, after auto-popping back from search on confirm — [CheckInHistoryViewModel]'s own selection/delete/undo stays local to this
- * route, unrelated to check-in creation.
+ * route, unrelated to check-in creation. A row tap outside selection mode calls [onOpenPlace]
+ * with the visit's place id (#63); a place that's gone is reported on that same snackbar host.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CheckInScreen(
     onOpenSearch: () -> Unit,
+    onOpenPlace: (placeId: String) -> Unit,
     checkInSnackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
     viewModel: CheckInHistoryViewModel = viewModel(factory = CheckInHistoryViewModel.Factory)
@@ -171,7 +173,13 @@ fun CheckInScreen(
                                     isSelecting = state.isSelecting,
                                     isSelected = visit.id in state.selectedIds,
                                     onLongPress = { viewModel.startSelecting(visit.id) },
-                                    onClick = { if (state.isSelecting) viewModel.toggleSelected(visit.id) }
+                                    onClick = {
+                                        if (state.isSelecting) {
+                                            viewModel.toggleSelected(visit.id)
+                                        } else {
+                                            onOpenPlace(visit.placeId)
+                                        }
+                                    }
                                 )
                             }
                         }

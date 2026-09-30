@@ -23,14 +23,23 @@ class MainActivity : ComponentActivity() {
      *  [targetPoiId] to land on Explore (Map) or Settings rather than the default Home tab. */
     private var targetDestination by mutableStateOf<String?>(null)
 
+    /** A POI id to open on the Map (#63): tab switch, filters cleared, camera on the place, its
+     *  detail sheet open. Unlike [targetPoiId], which opens Home's own sheet. */
+    private var openOnMapPoiId by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         targetPoiId = intent.getStringExtra(EXTRA_TARGET_POI_ID)
         targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
+        openOnMapPoiId = intent.getStringExtra(EXTRA_OPEN_ON_MAP_POI_ID)
         setContent {
             FreizeitTheme {
-                FreizeitApp(targetPoiId = targetPoiId, targetDestination = targetDestination)
+                FreizeitApp(
+                    targetPoiId = targetPoiId,
+                    targetDestination = targetDestination,
+                    openOnMapPoiId = openOnMapPoiId
+                )
             }
         }
     }
@@ -43,6 +52,7 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         targetPoiId = intent.getStringExtra(EXTRA_TARGET_POI_ID)
         targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
+        openOnMapPoiId = intent.getStringExtra(EXTRA_OPEN_ON_MAP_POI_ID)
     }
 
     companion object {
@@ -54,5 +64,10 @@ class MainActivity : ComponentActivity() {
 
         /** Intent extra carrying a [FreizeitDestination.route] to navigate to on launch (#53). */
         const val EXTRA_TARGET_DESTINATION = "target_destination"
+
+        /** Intent extra carrying a POI id (OSM or custom) to open on the Map (#63). Verify with:
+         *  `adb shell am start -n com.example.freizeit/.ui.MainActivity --es open_on_map_poi_id <id>`
+         */
+        const val EXTRA_OPEN_ON_MAP_POI_ID = "open_on_map_poi_id"
     }
 }

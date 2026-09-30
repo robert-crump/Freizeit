@@ -128,6 +128,9 @@ fun PoiMap(
                     // be immediately useful for exploring nearby surroundings.
                     .zoom(LOCATE_ME_ZOOM)
                     .build()
+                // A focus requested before the map existed (e.g. "open place on Map" on the very
+                // first Map visit, #63) is applied now instead of being lost.
+                applyPendingFocus(state)
 
                 map.setStyle(
                     Style.Builder()
@@ -189,15 +192,15 @@ fun PoiMap(
         }
     }
 
-    // Bumped when a search suggestion is picked; jumps the camera to that POI regardless
-    // of whether it's currently on-screen, since the whole point is to reveal it.
-    var lastHandledFocus by remember { mutableIntStateOf(0) }
+    // Bumped when a search suggestion is picked or a place is opened on the Map (#63); jumps the
+    // camera to that POI regardless of whether it's currently on-screen, since the whole point is
+    // to reveal it. The handled request lives in the retained PoiMapState, not a remember, so
+    // revisiting the Map tab doesn't jump back to an old target.
     LaunchedEffect(focusRequest, focusTarget) {
-        if (focusRequest != 0 && focusRequest != lastHandledFocus && focusTarget != null) {
-            state.map?.animateCamera(
-                CameraUpdateFactory.newLatLngZoom(LatLng(focusTarget.lat, focusTarget.lon), SEARCH_FOCUS_ZOOM)
-            )
-            lastHandledFocus = focusRequest
+        if (focusRequest != 0 && focusRequest != state.handledFocusRequest && focusTarget != null) {
+            state.handledFocusRequest = focusRequest
+            state.pendingFocus = focusTarget
+            applyPendingFocus(state)
         }
     }
 
@@ -253,6 +256,16 @@ private class PoiMapState {
     var poiById: Map<String, PoiWithDistance> = emptyMap()
     var onPoiClick: (PoiWithDistance) -> Unit = {}
     var onCameraIdle: (LatLon) -> Unit = {}
+    var handledFocusRequest: Int = 0
+    /** A focus target waiting for [map] to be ready, see [applyPendingFocus]. */
+    var pendingFocus: LatLon? = null
+}
+
+private fun applyPendingFocus(state: PoiMapState) {
+    val map = state.map ?: return
+    val target = state.pendingFocus ?: return
+    map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(target.lat, target.lon), SEARCH_FOCUS_ZOOM))
+    state.pendingFocus = null
 }
 
 /**

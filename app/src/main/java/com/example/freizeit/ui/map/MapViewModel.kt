@@ -22,6 +22,7 @@ import com.example.freizeit.data.entity.toCustomPoi
 import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.data.geocoding.NominatimClient
 import com.example.freizeit.data.repository.LocationRepository
+import com.example.freizeit.data.repository.findPoiById
 import com.example.freizeit.domain.geocoding.GeocodeResult
 import com.example.freizeit.ui.common.PRIMARY_MAP_CATEGORIES
 import com.example.freizeit.util.CustomPoiProximity
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PoiWithDistance(val poi: Poi, val distanceMeters: Double?)
 
@@ -69,6 +71,37 @@ data class MapUiState(
     val wantToGoOnly: Boolean = false,
     val committedSearchQuery: String? = null
 )
+
+/**
+ * The Map's filter state: the single-select category chip, the Favorites / Want to go rows and
+ * the committed search. At most one is ever active — each setter below that turns one on starts
+ * from a blank [MapFilters], turning one off only clears that one. Pulled out as a pure value so
+ * the exclusivity rules and [MapViewModel.openPlace]'s reset (#63) are unit-testable.
+ */
+data class MapFilters(
+    val activeCategory: String? = null,
+    val favoritesOnly: Boolean = false,
+    val wantToGoOnly: Boolean = false,
+    val searchQuery: String? = null
+) {
+    /** Tapping the already-active category clears it (shows nothing), a different one switches. */
+    fun toggleCategory(category: String): MapFilters =
+        if (activeCategory == category) copy(activeCategory = null) else MapFilters(activeCategory = category)
+
+    fun toggleFavoritesOnly(): MapFilters =
+        if (favoritesOnly) copy(favoritesOnly = false) else MapFilters(favoritesOnly = true)
+
+    fun toggleWantToGoOnly(): MapFilters =
+        if (wantToGoOnly) copy(wantToGoOnly = false) else MapFilters(wantToGoOnly = true)
+
+    /** A blank query only clears the search, leaving any other (already inactive) filter as is. */
+    fun commitSearch(query: String): MapFilters {
+        val trimmed = query.trim()
+        return if (trimmed.isBlank()) copy(searchQuery = null) else MapFilters(searchQuery = trimmed)
+    }
+
+    fun clearSearch(): MapFilters = copy(searchQuery = null)
+}
 
 /** Start index of every "word" in [text] — a run of letters/digits preceded by either the
  *  string start or a non-letter/digit character. Used by [matchesSearch] to anchor prefix
@@ -160,19 +193,16 @@ fun filterAndSort(
 
 class MapViewModel(
     private val locationRepository: LocationRepository,
-    poiDao: PoiDao,
+    private val poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val poiCustomNameDao: PoiCustomNameDao,
     private val visitDao: VisitDao,
     private val customPoiDao: CustomPoiDao
 ) : ViewModel() {
 
-    // Single-select category chip (replaces #33's multi-select "All POIs" mode) — mutually
-    // exclusive with favoritesOnly/wantToGoOnly/searchQuery, see selectCategory.
-    private val activeCategory = MutableStateFlow<String?>(null)
-    private val favoritesOnly = MutableStateFlow(false)
-    private val wantToGoOnly = MutableStateFlow(false)
-    private val committedSearchQuery = MutableStateFlow<String?>(null)
+    // Category chip, Favorites / Want to go and committed search — mutually exclusive, see
+    // MapFilters.
+    private val filters = MutableStateFlow(MapFilters())
 
     private val _selectedPoi = MutableStateFlow<PoiWithDistance?>(null)
     val selectedPoi: StateFlow<PoiWithDistance?> = _selectedPoi
@@ -243,27 +273,13 @@ class MapViewModel(
         )
     }
 
-    private data class LayerSelection(
-        val activeCategory: String?,
-        val favoritesOnly: Boolean,
-        val wantToGoOnly: Boolean
-    )
-
-    // Folded into one flow because the outer combine below is already at the stdlib 5-flow
-    // arity limit (see #8's note) — activeCategory/favoritesOnly/wantToGoOnly are mutually
-    // exclusive anyway, so they travel together.
-    private val layerSelection = combine(
-        activeCategory, favoritesOnly, wantToGoOnly
-    ) { active, favOnly, wantToGo -> LayerSelection(active, favOnly, wantToGo) }
-
     val uiState: StateFlow<MapUiState> = combine(
         poisVerdictsAndNames,
-        layerSelection,
-        locationRepository.location,
-        committedSearchQuery
-    ) { poisVerdictsNames, layer, loc, query ->
+        filters,
+        locationRepository.location
+    ) { poisVerdictsNames, filter, loc ->
         val (pois, verdictMap, customNames) = poisVerdictsNames
-        val (active, favOnly, wantToGo) = layer
+        val (active, favOnly, wantToGo, query) = filter
         val categories = visibleCategories(pois)
         val verdictIds = when {
             favOnly -> verdictMap.values.filter { it.value == Verdict.VALUE_FAVORITE }.map { it.placeId }.toSet()
@@ -290,55 +306,46 @@ class MapViewModel(
         refreshLocation()
     }
 
-    /**
-     * Single-select chip toggle: tapping the already-active category clears the filter
-     * (shows nothing), tapping a different one switches to it. Mutually exclusive with
-     * Favorites/Want to go and search.
-     */
     fun selectCategory(category: String) {
-        activeCategory.value = if (activeCategory.value == category) null else category
-        if (activeCategory.value != null) {
-            favoritesOnly.value = false
-            wantToGoOnly.value = false
-            committedSearchQuery.value = null
-        }
+        filters.value = filters.value.toggleCategory(category)
     }
 
-    /** Mutually exclusive with the chip row, the other layer row, and search. */
     fun toggleFavoritesOnly() {
-        favoritesOnly.value = !favoritesOnly.value
-        if (favoritesOnly.value) {
-            wantToGoOnly.value = false
-            activeCategory.value = null
-            committedSearchQuery.value = null
-        }
+        filters.value = filters.value.toggleFavoritesOnly()
     }
 
-    /** Mutually exclusive with the chip row, the other layer row, and search. */
     fun toggleWantToGoOnly() {
-        wantToGoOnly.value = !wantToGoOnly.value
-        if (wantToGoOnly.value) {
-            favoritesOnly.value = false
-            activeCategory.value = null
-            committedSearchQuery.value = null
-        }
+        filters.value = filters.value.toggleWantToGoOnly()
     }
 
-    /** Commits a search overlay query to the map, mutually exclusive with the chip row and the
-     *  layer rows. Called both by the overlay's keyboard Search action and by tapping one of
-     *  its rows (which also focuses/selects that POI). */
+    /** Commits a search overlay query to the map. Called both by the overlay's keyboard Search
+     *  action and by tapping one of its rows (which also focuses/selects that POI). */
     fun commitSearch(query: String) {
-        val trimmed = query.trim()
-        committedSearchQuery.value = trimmed.ifBlank { null }
-        if (trimmed.isNotBlank()) {
-            favoritesOnly.value = false
-            wantToGoOnly.value = false
-            activeCategory.value = null
-        }
+        filters.value = filters.value.commitSearch(query)
     }
 
     fun clearSearch() {
-        committedSearchQuery.value = null
+        filters.value = filters.value.clearSearch()
+    }
+
+    /**
+     * "Open place on Map" (#63), shared by the check-in history and MainActivity's
+     * [com.example.freizeit.ui.MainActivity.EXTRA_OPEN_ON_MAP_POI_ID] (for the widget, #66):
+     * clears every filter so the marker is guaranteed to show, cancels a half-done add-place flow
+     * that would cover the map, jumps the camera to the place and opens its detail sheet. Works
+     * for OSM and custom places alike (via [findPoiById]). Returns false, changing nothing, if
+     * the place no longer exists — including a custom place whose delete is still pending Undo.
+     */
+    suspend fun openPlace(poiId: String): Boolean {
+        val poi = withContext(Dispatchers.IO) { findPoiById(poiDao, customPoiDao, poiId) }
+        if (poi == null || poi.id == _pendingDeleteCustomPoiId.value) return false
+        filters.value = MapFilters()
+        cancelAddPoi()
+        val loc = locationRepository.location.value
+        val distanceMeters = loc?.let { GeoDistance.metersBetween(it.lat, it.lon, poi.lat, poi.lon) }
+        focusOn(LatLon(poi.lat, poi.lon))
+        selectPoi(PoiWithDistance(poi, distanceMeters))
+        return true
     }
 
     /** Jumps the map camera to [latLon] — bumps [focusRequest] so [PoiMap]'s LaunchedEffect

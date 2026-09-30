@@ -24,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -49,6 +51,7 @@ import com.example.freizeit.ui.map.SearchOverlay
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.home.HomeScreen
 import com.example.freizeit.ui.settings.SettingsScreen
+import kotlinx.coroutines.launch
 
 enum class FreizeitDestination(
     val route: String,
@@ -65,6 +68,13 @@ enum class FreizeitDestination(
 private const val CHECKIN_ENTRY_ROUTE = "checkin/entry"
 private const val CHECKIN_SEARCH_ROUTE = "checkin/search"
 
+/** True while the Map is shown pushed on top of the check-in history (#63) rather than as its own
+ *  tab root: its previous back-stack entry then belongs to the Check-in graph. */
+private fun isMapPushedOverCheckIn(navController: NavHostController): Boolean =
+    navController.currentDestination?.route == FreizeitDestination.MAP.route &&
+        navController.previousBackStackEntry?.destination?.hierarchy
+            ?.any { it.route == FreizeitDestination.CHECKIN.route } == true
+
 @Composable
 fun FreizeitApp(
     /** A POI id to auto-open in Home's detail sheet on launch — MainActivity's deep-link intent
@@ -74,7 +84,10 @@ fun FreizeitApp(
     /** A [FreizeitDestination] route to navigate to on launch — the widget's empty-state hint
      *  rows' deep link (#53), MainActivity.EXTRA_TARGET_DESTINATION. Held in
      *  [pendingTargetDestination] the same way [targetPoiId] is held in [pendingTargetPoiId]. */
-    targetDestination: String? = null
+    targetDestination: String? = null,
+    /** A POI id to open on the Map (#63) — MainActivity.EXTRA_OPEN_ON_MAP_POI_ID, for the
+     *  widget (#66). Held in [pendingOpenOnMapPoiId] the same way as [targetPoiId]. */
+    openOnMapPoiId: String? = null
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -106,6 +119,10 @@ fun FreizeitApp(
     // popUpTo/saveState/restoreState so the destination's own back stack/scroll position is
     // preserved either way).
     fun navigateToDestination(route: String) {
+        // A Map pushed over the check-in history (#63) is dropped first: otherwise saveState
+        // below would store it as part of the Check-in tab, and the next tap on Check-in would
+        // restore the Map instead of the history.
+        if (isMapPushedOverCheckIn(navController)) navController.popBackStack()
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = true
@@ -119,6 +136,32 @@ fun FreizeitApp(
         pendingTargetDestination?.let { route ->
             navigateToDestination(route)
             pendingTargetDestination = null
+        }
+    }
+
+    // "Open place on Map" (#63). From the check-in history ([overCheckIn]) the Map is pushed on
+    // top of it, so Back returns to the history at its scroll position; a place that's gone
+    // stays on the history with a snackbar. From outside (MainActivity's extra, the widget) it's
+    // a normal tab switch, and a vanished place just lands on the Map.
+    val placeGoneMessage = stringResource(R.string.checkin_history_place_gone)
+    val scope = rememberCoroutineScope()
+    fun openPlaceOnMap(poiId: String, overCheckIn: Boolean) {
+        scope.launch {
+            val found = mapViewModel.openPlace(poiId)
+            searchOverlayOpen = false
+            when {
+                overCheckIn && found -> navController.navigate(FreizeitDestination.MAP.route)
+                overCheckIn -> checkInSnackbarHostState.showSnackbar(placeGoneMessage)
+                else -> navigateToDestination(FreizeitDestination.MAP.route)
+            }
+        }
+    }
+
+    var pendingOpenOnMapPoiId by rememberSaveable(openOnMapPoiId) { mutableStateOf(openOnMapPoiId) }
+    LaunchedEffect(pendingOpenOnMapPoiId) {
+        pendingOpenOnMapPoiId?.let { poiId ->
+            openPlaceOnMap(poiId, overCheckIn = false)
+            pendingOpenOnMapPoiId = null
         }
     }
 
@@ -172,6 +215,7 @@ fun FreizeitApp(
                     composable(CHECKIN_ENTRY_ROUTE) {
                         CheckInScreen(
                             onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
+                            onOpenPlace = { placeId -> openPlaceOnMap(placeId, overCheckIn = true) },
                             checkInSnackbarHostState = checkInSnackbarHostState
                         )
                     }
