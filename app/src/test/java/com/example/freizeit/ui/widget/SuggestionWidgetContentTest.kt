@@ -2,12 +2,15 @@ package com.example.freizeit.ui.widget
 
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.datastore.preferences.core.mutablePreferencesOf
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SuggestionWidgetContentTest {
@@ -15,121 +18,178 @@ class SuggestionWidgetContentTest {
     private fun poi(id: String, name: String? = "Café Central", category: String = "cafe") =
         Poi(id = id, category = category, lat = 50.0, lon = 6.0, name = name)
 
-    private fun suggestion(id: String, travelMinutes: Int? = 12, name: String? = "Café Central") =
-        Suggestion(
-            poi = poi(id, name),
-            score = 0.0,
-            distanceMeters = travelMinutes?.let { it * 250.0 },
-            travelMinutes = travelMinutes,
-            openStatus = OpenStatus.UNKNOWN,
-            reasons = emptyList(),
-            verdictValue = Verdict.VALUE_FAVORITE
+    private fun suggestion(
+        id: String,
+        travelMinutes: Int? = 12,
+        distanceMeters: Double? = travelMinutes?.let { it * 250.0 },
+        name: String? = "Café Central",
+        category: String = "cafe"
+    ) = Suggestion(
+        poi = poi(id, name, category),
+        score = 0.0,
+        distanceMeters = distanceMeters,
+        travelMinutes = travelMinutes,
+        openStatus = OpenStatus.UNKNOWN,
+        reasons = emptyList(),
+        verdictValue = Verdict.VALUE_FAVORITE
+    )
+
+    private fun rows(deck: List<Suggestion>, customNames: Map<String, String> = emptyMap(), maxRows: Int = 5) =
+        SuggestionWidgetContent.rows(
+            deck, customNames, maxRows,
+            unnamedLabel = { category -> "Unnamed $category" },
+            distanceLabel = { "${it.toInt()} m" },
+            travelLabel = { "$it min" }
+        )
+
+    private fun state(deck: List<Suggestion>, hasVerdictedPlaces: Boolean, withinRadius: Boolean) =
+        SuggestionWidgetContent.state(
+            deck = deck,
+            hasVerdictedPlaces = hasVerdictedPlaces,
+            hasVerdictedPlacesWithinRadius = withinRadius,
+            customNames = emptyMap(),
+            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
+            unnamedLabel = { category -> "Unnamed $category" },
+            distanceLabel = { "${it.toInt()} m" },
+            travelLabel = { "$it min" }
         )
 
     @Test
     fun `rows caps at maxRows, best-first`() {
         val deck = listOf(suggestion("a"), suggestion("b"), suggestion("c"), suggestion("d"))
-        val rows = SuggestionWidgetContent.rows(
-            deck, customNames = emptyMap(), maxRows = 3,
-            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-        )
-        assertEquals(listOf("a", "b", "c"), rows.map { it.poiId })
+        assertEquals(listOf("a", "b", "c"), rows(deck, maxRows = 3).map { it.poiId })
     }
 
     @Test
-    fun `travel label formats minutes, null travel means null label`() {
-        val deck = listOf(suggestion("a", travelMinutes = 7), suggestion("b", travelMinutes = null))
-        val rows = SuggestionWidgetContent.rows(
-            deck, customNames = emptyMap(), maxRows = 5,
-            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-        )
-        assertEquals("7 min", rows[0].travelLabel)
-        assertNull(rows[1].travelLabel)
+    fun `state keeps only the deck's top 3 for the carousel`() {
+        val deck = listOf(suggestion("a"), suggestion("b"), suggestion("c"), suggestion("d"))
+        val state = state(deck, hasVerdictedPlaces = true, withinRadius = true) as SuggestionWidgetState.Rows
+        assertEquals(listOf("a", "b", "c"), state.rows.map { it.poiId })
     }
 
     @Test
-    fun `custom name wins over poi name, falls back to unnamed label`() {
-        val deck = listOf(suggestion("a", name = "OSM Name"), suggestion("b", name = null))
-        val rows = SuggestionWidgetContent.rows(
-            deck, customNames = mapOf("a" to "My Name"), maxRows = 5,
-            unnamedLabel = { category -> "Unnamed $category" }, travelLabel = { "$it min" }
+    fun `state with a shorter deck keeps all of it`() {
+        val state = state(listOf(suggestion("a")), hasVerdictedPlaces = true, withinRadius = true)
+        assertEquals(1, (state as SuggestionWidgetState.Rows).rows.size)
+    }
+
+    @Test
+    fun `detail label is distance dot duration, null without a location fix`() {
+        val deck = listOf(
+            suggestion("a", travelMinutes = 7, distanceMeters = 1200.0),
+            suggestion("b", travelMinutes = null, distanceMeters = null)
         )
+        val rows = rows(deck)
+        assertEquals("1200 m · 7 min", rows[0].detailLabel)
+        assertNull(rows[1].detailLabel)
+    }
+
+    @Test
+    fun `detail label drops a missing part without a dangling separator`() {
+        val label = SuggestionWidgetContent.detailLabel(
+            suggestion("a", travelMinutes = null, distanceMeters = 800.0),
+            distanceLabel = { "${it.toInt()} m" },
+            travelLabel = { "$it min" }
+        )
+        assertEquals("800 m", label)
+    }
+
+    @Test
+    fun `custom name wins over poi name, falls back to unnamed label, category is kept`() {
+        val deck = listOf(suggestion("a", name = "OSM Name"), suggestion("b", name = null, category = "playground"))
+        val rows = rows(deck, customNames = mapOf("a" to "My Name"))
         assertEquals("My Name", rows[0].name)
-        assertEquals("Unnamed cafe", rows[1].name)
-    }
-
-    @Test
-    fun `rowCountForSize floors to the step at or below, min 1 max the list size`() {
-        val sizes = listOf(DpSize(120.dp, 54.dp), DpSize(120.dp, 124.dp), DpSize(120.dp, 194.dp))
-        assertEquals(1, SuggestionWidgetContent.rowCountForSize(DpSize(120.dp, 30.dp), sizes))
-        assertEquals(1, SuggestionWidgetContent.rowCountForSize(DpSize(120.dp, 54.dp), sizes))
-        assertEquals(2, SuggestionWidgetContent.rowCountForSize(DpSize(120.dp, 130.dp), sizes))
-        assertEquals(3, SuggestionWidgetContent.rowCountForSize(DpSize(120.dp, 500.dp), sizes))
+        assertEquals("Unnamed playground", rows[1].name)
+        assertEquals("playground", rows[1].category)
     }
 
     @Test
     fun `state with no verdicted places returns a hint pointing to Explore, regardless of deck`() {
-        val state = SuggestionWidgetContent.state(
-            deck = listOf(suggestion("a")),
-            hasVerdictedPlaces = false,
-            hasVerdictedPlacesWithinRadius = false,
-            customNames = emptyMap(), maxRows = 5,
-            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
-            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-        )
         assertEquals(
             SuggestionWidgetState.Hint("No favorites yet", HintDestination.EXPLORE),
-            state
+            state(listOf(suggestion("a")), hasVerdictedPlaces = false, withinRadius = false)
         )
     }
 
     @Test
     fun `state with verdicted places but none within radius returns a hint pointing to Settings`() {
-        val state = SuggestionWidgetContent.state(
-            deck = emptyList(),
-            hasVerdictedPlaces = true,
-            hasVerdictedPlacesWithinRadius = false,
-            customNames = emptyMap(), maxRows = 5,
-            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
-            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-        )
         assertEquals(
             SuggestionWidgetState.Hint("Nothing within 5 km", HintDestination.SETTINGS),
-            state
+            state(emptyList(), hasVerdictedPlaces = true, withinRadius = false)
         )
     }
 
     @Test
-    fun `state with qualifying places returns the normal rows, not a hint`() {
-        val deck = listOf(suggestion("a"), suggestion("b"))
-        val state = SuggestionWidgetContent.state(
-            deck = deck,
-            hasVerdictedPlaces = true,
-            hasVerdictedPlacesWithinRadius = true,
-            customNames = emptyMap(), maxRows = 5,
-            noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
-            unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-        )
-        assertEquals(
-            SuggestionWidgetState.Rows(
-                SuggestionWidgetContent.rows(
-                    deck, emptyMap(), 5, unnamedLabel = { "Unnamed" }, travelLabel = { "$it min" }
-                )
-            ),
-            state
-        )
+    fun `stepIndex wraps both ways`() {
+        assertEquals(1, SuggestionWidgetContent.stepIndex(0, 1, 3))
+        assertEquals(0, SuggestionWidgetContent.stepIndex(2, 1, 3))
+        assertEquals(2, SuggestionWidgetContent.stepIndex(0, -1, 3))
+        assertEquals(0, SuggestionWidgetContent.stepIndex(1, -1, 2))
+        assertEquals(0, SuggestionWidgetContent.stepIndex(0, 1, 1))
+        assertEquals(0, SuggestionWidgetContent.stepIndex(0, 1, 0))
     }
 
     @Test
-    fun `WIDGET_SIZES has one step per row from 1 to MAX_ROWS, strictly increasing height`() {
-        val sizes = SuggestionWidgetContent.WIDGET_SIZES
-        assertEquals(SuggestionWidgetContent.MAX_ROWS, sizes.size)
-        for (i in 1 until sizes.size) {
-            assert(sizes[i].height > sizes[i - 1].height) { "sizes must strictly increase in height" }
+    fun `dots mark the current position`() {
+        assertEquals("● ○ ○", SuggestionWidgetContent.dots(0, 3))
+        assertEquals("○ ○ ●", SuggestionWidgetContent.dots(2, 3))
+        assertEquals("○ ●", SuggestionWidgetContent.dots(1, 2))
+    }
+
+    @Test
+    fun `isTall only from 2 cells tall`() {
+        assertFalse(SuggestionWidgetContent.isTall(DpSize(250.dp, 40.dp)))
+        assertFalse(SuggestionWidgetContent.isTall(DpSize(250.dp, 60.dp)))
+        assertTrue(SuggestionWidgetContent.isTall(DpSize(250.dp, 110.dp)))
+    }
+
+    @Test
+    fun `nothing stored yet reads as null`() {
+        assertNull(SuggestionWidgetContent.storedState(mutablePreferencesOf()))
+    }
+
+    @Test
+    fun `stored rows and hints round-trip`() {
+        val rowsState = state(
+            listOf(suggestion("a"), suggestion("b", travelMinutes = null, distanceMeters = null)),
+            hasVerdictedPlaces = true, withinRadius = true
+        )
+        val hint = SuggestionWidgetState.Hint("Nothing within 5 km", HintDestination.SETTINGS)
+        for (original in listOf(rowsState, hint)) {
+            val prefs = mutablePreferencesOf()
+            SuggestionWidgetContent.storeRecomputed(prefs, original)
+            assertEquals(original, SuggestionWidgetContent.storedState(prefs))
         }
-        // Every declared step round-trips to its own 1-based row count.
-        sizes.forEachIndexed { index, size ->
-            assertEquals(index + 1, SuggestionWidgetContent.rowCountForSize(size))
-        }
+    }
+
+    @Test
+    fun `arrow steps wrap through the stored cards, recompute resets to the first`() {
+        val prefs = mutablePreferencesOf()
+        val three = state(listOf(suggestion("a"), suggestion("b"), suggestion("c")), true, true)
+        SuggestionWidgetContent.storeRecomputed(prefs, three)
+        assertEquals(0, SuggestionWidgetContent.storedIndex(prefs))
+
+        SuggestionWidgetContent.storeStep(prefs, -1)
+        assertEquals(2, SuggestionWidgetContent.storedIndex(prefs))
+        SuggestionWidgetContent.storeStep(prefs, 1)
+        assertEquals(0, SuggestionWidgetContent.storedIndex(prefs))
+        SuggestionWidgetContent.storeStep(prefs, 1)
+        assertEquals(1, SuggestionWidgetContent.storedIndex(prefs))
+
+        SuggestionWidgetContent.storeRecomputed(prefs, three)
+        assertEquals(0, SuggestionWidgetContent.storedIndex(prefs))
+    }
+
+    @Test
+    fun `recompute to a shorter deck drops the old cards and the index`() {
+        val prefs = mutablePreferencesOf()
+        SuggestionWidgetContent.storeRecomputed(prefs, state(listOf(suggestion("a"), suggestion("b"), suggestion("c")), true, true))
+        SuggestionWidgetContent.storeStep(prefs, 2)
+        val one = state(listOf(suggestion("x")), true, true)
+        SuggestionWidgetContent.storeRecomputed(prefs, one)
+        assertEquals(one, SuggestionWidgetContent.storedState(prefs))
+        assertEquals(0, SuggestionWidgetContent.storedIndex(prefs))
+        SuggestionWidgetContent.storeStep(prefs, 1)
+        assertEquals(0, SuggestionWidgetContent.storedIndex(prefs))
     }
 }

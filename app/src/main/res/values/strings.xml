@@ -157,4 +157,7 @@
          home_no_suggestions_within_radius hints, which don't fit a widget row. -->
     <string name="widget_no_favorites_hint">No favorites yet. Tap to explore.</string>
     <string name="widget_no_suggestions_within_radius_hint">Nothing within %1$d km. Tap to adjust.</string>
+    <!-- Carousel arrows (issue #67) -->
+    <string name="widget_previous_content_description">Previous suggestion</string>
+    <string name="widget_next_content_description">Next suggestion</string>
 </resources>

@@ -26,14 +26,20 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.graphics.vector.VectorPainter
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.graphics.vector.toPath
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
@@ -159,4 +165,73 @@ private fun drawMarkerBitmap(
         }
     }
     return imageBitmap.asAndroidBitmap()
+}
+
+/**
+ * A category's marker circle as two white masks, for the home-screen widget (#67): [disc] is the
+ * filled circle (tint it with [markerBackgroundColor]), [foreground] the ring plus glyph (tint it
+ * with [markerForegroundColor]). Split so each layer can be tinted with a day/night color and the
+ * widget follows the system theme without re-rendering — a single pre-colored bitmap can't.
+ * Same geometry as the map marker, scaled to [diameter].
+ */
+class CategoryCircleMasks(val disc: Bitmap, val foreground: Bitmap)
+
+fun categoryCircleMasks(category: String, density: Density, diameter: Dp): CategoryCircleMasks {
+    val sizePx = with(density) { diameter.toPx() }.toInt().coerceAtLeast(1)
+    val strokePx = sizePx * (MARKER_STROKE_WIDTH / MARKER_DIAMETER)
+    val iconSizePx = sizePx * ICON_SCALE
+    val fillRadius = sizePx / 2f - strokePx / 2f
+    val center = Offset(sizePx / 2f, sizePx / 2f)
+    val disc = drawMaskBitmap(sizePx, density) {
+        drawCircle(color = Color.White, radius = fillRadius, center = center)
+    }
+    val foreground = drawMaskBitmap(sizePx, density) {
+        drawCircle(color = Color.White, radius = fillRadius, center = center, style = Stroke(width = strokePx))
+        val iconOffset = (sizePx - iconSizePx) / 2f
+        translate(left = iconOffset, top = iconOffset) {
+            drawVector(categoryIcon(category), iconSizePx, Color.White)
+        }
+    }
+    return CategoryCircleMasks(disc, foreground)
+}
+
+private fun drawMaskBitmap(sizePx: Int, density: Density, block: DrawScope.() -> Unit): Bitmap {
+    val imageBitmap = ImageBitmap(sizePx, sizePx)
+    CanvasDrawScope().draw(
+        density, LayoutDirection.Ltr, Canvas(imageBitmap), Size(sizePx.toFloat(), sizePx.toFloat()), block
+    )
+    return imageBitmap.asAndroidBitmap()
+}
+
+/** Draws [icon] into a [sizePx] square in [color] without a [VectorPainter] (that needs a
+ *  Compose UI composition, which a Glance widget doesn't have). Fills and strokes only; group
+ *  transforms are ignored since none of [CATEGORY_ICONS] use them. */
+private fun DrawScope.drawVector(icon: ImageVector, sizePx: Float, color: Color) {
+    scale(sizePx / icon.viewportWidth, sizePx / icon.viewportHeight, pivot = Offset.Zero) {
+        drawVectorGroup(icon.root, color)
+    }
+}
+
+private fun DrawScope.drawVectorGroup(group: VectorGroup, color: Color) {
+    group.forEach { node ->
+        when (node) {
+            is VectorGroup -> drawVectorGroup(node, color)
+            is VectorPath -> {
+                val path = node.pathData.toPath().apply { fillType = node.pathFillType }
+                if (node.fill != null) drawPath(path, color)
+                if (node.stroke != null && node.strokeLineWidth > 0f) {
+                    drawPath(
+                        path,
+                        color,
+                        style = Stroke(
+                            width = node.strokeLineWidth,
+                            miter = node.strokeLineMiter,
+                            cap = node.strokeLineCap,
+                            join = node.strokeLineJoin
+                        )
+                    )
+                }
+            }
+        }
+    }
 }

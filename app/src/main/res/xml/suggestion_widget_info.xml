@@ -1,17 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Minimal top-3 suggestions widget (issue #51). Row count grows with height, not width
-  (SuggestionWidgetContent.WIDGET_SIZES/rowCountForSize in SuggestionWidget.kt) — resizeMode
-  allows both directions so the launcher's grid still lets the user pick a wider cell, but only
-  height changes what's rendered.
+  One-at-a-time carousel of the top 3 suggestions (issue #67). Defaults to 4x1, resizable from
+  3x1 to 5x2; more room only adds breathing room / larger text and, from 2 cells tall, the
+  position dots (SuggestionWidgetContent.WIDGET_SIZES/isTall) — never more suggestions.
+  Cell sizes per the "70dp * cells - 30dp" formula; minWidth is the pre-Android-12 default size.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="110dp"
+    android:minWidth="250dp"
     android:minHeight="40dp"
-    android:targetCellWidth="2"
+    android:minResizeWidth="180dp"
+    android:minResizeHeight="40dp"
+    android:maxResizeWidth="320dp"
+    android:maxResizeHeight="110dp"
+    android:targetCellWidth="4"
     android:targetCellHeight="1"
-    android:maxResizeWidth="250dp"
-    android:maxResizeHeight="340dp"
     android:resizeMode="vertical|horizontal"
     android:widgetCategory="home_screen"
     android:previewImage="@mipmap/ic_launcher"
