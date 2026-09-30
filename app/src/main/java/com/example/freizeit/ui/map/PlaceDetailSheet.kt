@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,7 +49,8 @@ import com.example.freizeit.util.GeoDistance
 /** Shared place detail sheet, opened from map markers, list rows, and Home cards. [onEdit]/
  *  [onDelete] are null for an OSM-sourced place; [MapScreen] passes non-null callbacks only when
  *  [item] is backed by a `custom_poi` row (issue #47) — the row below them is omitted entirely
- *  otherwise, rather than shown disabled. */
+ *  otherwise, rather than shown disabled. [onCheckIn] starts the app-wide check-in flow for any
+ *  place (#64); the caller closes the sheet once the check-in is confirmed. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaceDetailSheet(
@@ -60,6 +62,7 @@ fun PlaceDetailSheet(
     lastVisit: String? = null,
     onEdit: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onCheckIn: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val poi = item.poi
@@ -115,6 +118,10 @@ fun PlaceDetailSheet(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+            }
+
+            Button(onClick = onCheckIn, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.home_checkin))
             }
 
             item.distanceMeters?.let {

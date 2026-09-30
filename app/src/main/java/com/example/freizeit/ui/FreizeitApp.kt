@@ -40,7 +40,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.example.freizeit.R
-import com.example.freizeit.ui.checkin.CheckInCandidate
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.checkin.CheckInScreen
 import com.example.freizeit.ui.checkin.CheckInSearchScreen
@@ -67,6 +67,15 @@ enum class FreizeitDestination(
 
 private const val CHECKIN_ENTRY_ROUTE = "checkin/entry"
 private const val CHECKIN_SEARCH_ROUTE = "checkin/search"
+
+/** A place mid check-in via the app-wide [CheckInDateTimeFlow]. [placeName] is null for a
+ *  check-in search row (resolved via `displayName()` at the flow's call site); the detail sheet
+ *  (#64) passes its already-resolved name plus [onCheckedIn] to close itself on confirm. */
+private data class PendingCheckIn(
+    val poi: Poi,
+    val placeName: String? = null,
+    val onCheckedIn: () -> Unit = {}
+)
 
 /** True while the Map is shown pushed on top of the check-in history (#63) rather than as its own
  *  tab root: its previous back-stack entry then belongs to the Check-in graph. */
@@ -103,9 +112,13 @@ fun FreizeitApp(
 
     // Hoisted here (mirrors mapViewModel above) so the "Checked in to X" banner and Undo
     // snackbar, driven from a row tap on checkin/search, surface back on checkin/entry once the
-    // confirm flow auto-pops there (#39). CheckInCandidate isn't Parcelable, so plain remember.
+    // confirm flow auto-pops there (#39). Also started from the place detail sheet on Home/Map
+    // (#64). Poi isn't Parcelable, so plain remember.
     val checkInViewModel: CheckInViewModel = viewModel(factory = CheckInViewModel.Factory)
-    var pendingCheckIn by remember { mutableStateOf<CheckInCandidate?>(null) }
+    var pendingCheckIn by remember { mutableStateOf<PendingCheckIn?>(null) }
+    val startSheetCheckIn: (Poi, String, () -> Unit) -> Unit = { poi, placeName, onCheckedIn ->
+        pendingCheckIn = PendingCheckIn(poi, placeName, onCheckedIn)
+    }
     val checkInSnackbarHostState = remember { SnackbarHostState() }
 
     // Reset whenever a fresh targetPoiId arrives (MainActivity.onNewIntent), but otherwise
@@ -199,7 +212,8 @@ fun FreizeitApp(
                 composable(FreizeitDestination.HOME.route) {
                     HomeScreen(
                         targetPoiId = pendingTargetPoiId,
-                        onTargetPoiIdHandled = { pendingTargetPoiId = null }
+                        onTargetPoiIdHandled = { pendingTargetPoiId = null },
+                        onSheetCheckIn = startSheetCheckIn
                     )
                 }
                 composable(FreizeitDestination.MAP.route) {
@@ -208,7 +222,8 @@ fun FreizeitApp(
                         onOpenSearch = { preloadQuery ->
                             searchOverlayPreload = preloadQuery
                             searchOverlayOpen = true
-                        }
+                        },
+                        onSheetCheckIn = startSheetCheckIn
                     )
                 }
                 navigation(
@@ -226,7 +241,7 @@ fun FreizeitApp(
                         CheckInSearchScreen(
                             viewModel = checkInViewModel,
                             onBack = { navController.popBackStack() },
-                            onCandidateSelected = { candidate -> pendingCheckIn = candidate }
+                            onCandidateSelected = { candidate -> pendingCheckIn = PendingCheckIn(candidate.poi) }
                         )
                     }
                 }
@@ -244,14 +259,25 @@ fun FreizeitApp(
 
         // Hoisted here (not inside CheckInScreen/CheckInSearchScreen) so a single instance
         // shares pendingCheckIn/checkInSnackbarHostState across both routes, and so confirming
-        // can pop back to checkin/entry regardless of which route triggered it (#39).
+        // can pop back to checkin/entry regardless of which route triggered it (#39). From the
+        // detail sheet on Home/Map (#64) it closes the sheet and switches to the Check-in tab like
+        // a tab tap (so Back from the history goes Home, not into the sheet).
         CheckInDateTimeFlow(
             pendingPoi = pendingCheckIn?.poi,
-            placeName = pendingCheckIn?.poi?.displayName() ?: "",
+            placeName = pendingCheckIn?.let { it.placeName ?: it.poi.displayName() } ?: "",
             snackbarHostState = checkInSnackbarHostState,
             onDismiss = { pendingCheckIn = null },
             onConfirmed = { poi, visitedAt ->
+                val onCheckedIn = pendingCheckIn?.onCheckedIn
                 val visitId = checkInViewModel.checkIn(poi, visitedAt)
+                onCheckedIn?.invoke()
+                val inCheckInTab = navController.currentDestination?.hierarchy
+                    ?.any { it.route == FreizeitDestination.CHECKIN.route } == true
+                when {
+                    // A Map pushed over the history (#63) just goes back to it.
+                    isMapPushedOverCheckIn(navController) -> navController.popBackStack()
+                    !inCheckInTab -> navigateToDestination(FreizeitDestination.CHECKIN.route)
+                }
                 navController.popBackStack(CHECKIN_ENTRY_ROUTE, inclusive = false)
                 visitId
             },

@@ -62,6 +62,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.isCustomPoiId
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.util.LocationHelper
@@ -71,7 +72,9 @@ import com.example.freizeit.util.LocationHelper
 fun MapScreen(
     modifier: Modifier = Modifier,
     viewModel: MapViewModel,
-    onOpenSearch: (String) -> Unit
+    onOpenSearch: (String) -> Unit,
+    /** The detail sheet's Check-in button (#64) — see HomeScreen's `onSheetCheckIn`. */
+    onSheetCheckIn: (poi: Poi, placeName: String, onCheckedIn: () -> Unit) -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val selectedPoi by viewModel.selectedPoi.collectAsStateWithLifecycle()
@@ -297,6 +300,9 @@ fun MapScreen(
                 }
             } else {
                 null
+            },
+            onCheckIn = {
+                onSheetCheckIn(item.poi, displayName) { viewModel.selectPoi(null) }
             },
             onDismiss = { viewModel.selectPoi(null) }
         )
