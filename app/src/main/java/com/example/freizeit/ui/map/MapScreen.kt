@@ -73,7 +73,9 @@ fun MapScreen(
     modifier: Modifier = Modifier,
     viewModel: MapViewModel,
     onOpenSearch: (String) -> Unit,
-    /** The detail sheet's Check-in button (#64) — see HomeScreen's `onSheetCheckIn`. */
+    /** The detail sheet's Check-in button (#64): hands the place to FreizeitApp's app-wide
+     *  check-in flow, which calls `onCheckedIn` (closing the sheet) once the visit is saved and
+     *  then lands on the check-in history. */
     onSheetCheckIn: (poi: Poi, placeName: String, onCheckedIn: () -> Unit) -> Unit
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()

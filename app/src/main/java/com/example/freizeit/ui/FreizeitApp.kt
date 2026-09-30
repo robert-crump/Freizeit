@@ -86,16 +86,13 @@ private fun isMapPushedOverCheckIn(navController: NavHostController): Boolean =
 
 @Composable
 fun FreizeitApp(
-    /** A POI id to auto-open in Home's detail sheet on launch — MainActivity's deep-link intent
-     *  extra (#50). Held in [pendingTargetPoiId] below rather than read directly at each Home
-     *  composition, so it fires once per incoming value and not again on a later tab revisit. */
-    targetPoiId: String? = null,
     /** A [FreizeitDestination] route to navigate to on launch — the widget's empty-state hint
      *  rows' deep link (#53), MainActivity.EXTRA_TARGET_DESTINATION. Held in
-     *  [pendingTargetDestination] the same way [targetPoiId] is held in [pendingTargetPoiId]. */
+     *  [pendingTargetDestination] below rather than read directly at each composition, so it
+     *  fires once per incoming value and not again later. */
     targetDestination: String? = null,
     /** A POI id to open on the Map (#63) — MainActivity.EXTRA_OPEN_ON_MAP_POI_ID, for the
-     *  widget (#66). Held in [pendingOpenOnMapPoiId] the same way as [targetPoiId]. */
+     *  widget (#66). Held in [pendingOpenOnMapPoiId] the same way as [targetDestination]. */
     openOnMapPoiId: String? = null,
     /** MainActivity's onNewIntent counter: part of the pending values' reset keys below, so a
      *  repeat of the same extra (the same widget row tapped twice) fires again (#66). */
@@ -112,7 +109,7 @@ fun FreizeitApp(
 
     // Hoisted here (mirrors mapViewModel above) so the "Checked in to X" banner and Undo
     // snackbar, driven from a row tap on checkin/search, surface back on checkin/entry once the
-    // confirm flow auto-pops there (#39). Also started from the place detail sheet on Home/Map
+    // confirm flow auto-pops there (#39). Also started from the Map's place detail sheet
     // (#64). Poi isn't Parcelable, so plain remember.
     val checkInViewModel: CheckInViewModel = viewModel(factory = CheckInViewModel.Factory)
     var pendingCheckIn by remember { mutableStateOf<PendingCheckIn?>(null) }
@@ -121,13 +118,9 @@ fun FreizeitApp(
     }
     val checkInSnackbarHostState = remember { SnackbarHostState() }
 
-    // Reset whenever a fresh targetPoiId arrives (MainActivity.onNewIntent), but otherwise
-    // survives FreizeitApp recompositions untouched — cleared to null once HomeScreen has
-    // consumed it, so navigating away from and back to the Home tab doesn't reopen the sheet.
-    var pendingTargetPoiId by rememberSaveable(targetPoiId, relaunchCount) { mutableStateOf(targetPoiId) }
-
-    // Same reset-on-fresh-value/clear-once-consumed shape as pendingTargetPoiId above, for the
-    // widget's empty-state hint rows (#53) landing on a specific tab instead of a specific place.
+    // For the widget's empty-state hint rows (#53). Reset whenever a fresh targetDestination
+    // arrives (MainActivity.onNewIntent), but otherwise survives FreizeitApp recompositions
+    // untouched — cleared to null once consumed, so it doesn't fire again later.
     var pendingTargetDestination by rememberSaveable(targetDestination, relaunchCount) { mutableStateOf(targetDestination) }
 
     // Shared by the bottom-nav clicks below and the pendingTargetDestination effect further down,
@@ -210,11 +203,7 @@ fun FreizeitApp(
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable(FreizeitDestination.HOME.route) {
-                    HomeScreen(
-                        targetPoiId = pendingTargetPoiId,
-                        onTargetPoiIdHandled = { pendingTargetPoiId = null },
-                        onSheetCheckIn = startSheetCheckIn
-                    )
+                    HomeScreen()
                 }
                 composable(FreizeitDestination.MAP.route) {
                     MapScreen(

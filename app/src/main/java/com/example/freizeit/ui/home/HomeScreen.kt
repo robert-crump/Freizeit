@@ -61,14 +61,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
-import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.common.DurationBadge
-import com.example.freizeit.ui.map.PlaceDetailSheet
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -84,30 +82,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
-    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
-    /** A POI id to auto-open in the detail sheet on launch (#50) — set from MainActivity's
-     *  intent extra (widget taps go to the Map instead since #66). Consumed once via [onTargetPoiIdHandled]
-     *  so it doesn't reopen on a later recomposition/resume or a return trip to this tab. */
-    targetPoiId: String? = null,
-    onTargetPoiIdHandled: () -> Unit = {},
-    /** The detail sheet's Check-in button (#64): hands the place to FreizeitApp's app-wide
-     *  check-in flow, which calls `onCheckedIn` (closing the sheet) once the visit is saved and
-     *  then lands on the check-in history. */
-    onSheetCheckIn: (poi: Poi, placeName: String, onCheckedIn: () -> Unit) -> Unit = { _, _, _ -> }
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val targetPoi by viewModel.targetPoi.collectAsStateWithLifecycle()
-    val targetPoiLastVisit by viewModel.targetPoiLastVisit.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<Suggestion?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(targetPoiId) {
-        if (targetPoiId != null) {
-            viewModel.openTargetPoi(targetPoiId)
-            onTargetPoiIdHandled()
-        }
-    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -181,24 +161,6 @@ fun HomeScreen(
         onConfirmed = { poi, visitedAt -> viewModel.checkIn(poi, visitedAt) },
         onUndo = { visitId -> viewModel.undoCheckIn(visitId) }
     )
-
-    // Deep-link target (#50): reuses the same sheet Map opens from markers/rows, so a place
-    // opened here already has full verdict/rename support, not a stripped-down preview.
-    targetPoi?.let { item ->
-        val placeName = item.poi.displayName(state.customNames[item.poi.id])
-        PlaceDetailSheet(
-            item = item,
-            verdict = state.verdicts[item.poi.id]?.value,
-            onVerdictChange = { viewModel.setVerdict(item.poi, it) },
-            customName = state.customNames[item.poi.id],
-            onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
-            lastVisit = targetPoiLastVisit,
-            onCheckIn = {
-                onSheetCheckIn(item.poi, placeName) { viewModel.dismissTargetPoi() }
-            },
-            onDismiss = { viewModel.dismissTargetPoi() }
-        )
-    }
 }
 
 /** How much of each neighbor card is visible at the screen edge (MyQuotes' `pager_peek`). */

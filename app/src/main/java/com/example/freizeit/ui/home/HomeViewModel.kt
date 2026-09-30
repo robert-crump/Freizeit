@@ -13,22 +13,17 @@ import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.checkIn
-import com.example.freizeit.data.dao.lastVisitLabel
-import com.example.freizeit.data.dao.setCustomName
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.SettingsRepository
-import com.example.freizeit.data.repository.findPoiById
 import com.example.freizeit.data.repository.observeAllByVerdictValues
 import com.example.freizeit.data.weather.WeatherRepository
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.domain.weather.WeatherSnapshot
-import com.example.freizeit.ui.map.PoiWithDistance
-import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
@@ -145,44 +140,9 @@ class HomeViewModel(
         // that cold-restart was the visible 0.5-1s lag when returning from Map.
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
-    /** The place shown in Home's detail sheet — either opened via [openTargetPoi] (a deep link,
-     *  see #50; widget taps open the Map instead since #66). Mirrors [MapViewModel]'s
-     *  selectedPoi/selectedPoiLastVisit pair: a one-shot snapshot, not something that stays live
-     *  while the sheet sits open. */
-    private val _targetPoi = MutableStateFlow<PoiWithDistance?>(null)
-    val targetPoi: StateFlow<PoiWithDistance?> = _targetPoi
-
-    private val _targetPoiLastVisit = MutableStateFlow<String?>(null)
-    val targetPoiLastVisit: StateFlow<String?> = _targetPoiLastVisit
-
     init {
         viewModelScope.launch { weatherRepository.loadCache() }
         refreshLocation()
-    }
-
-    /** Resolves [poiId] (custom or OSM, via [findPoiById]) and opens it in the detail sheet —
-     *  driven by MainActivity's deep-link intent extra (#50). An id that no longer resolves
-     *  (deleted place, stale/bad extra) fails quietly: [targetPoi] stays null and Home is shown
-     *  normally, no crash. */
-    fun openTargetPoi(poiId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val poi = findPoiById(poiDao, customPoiDao, poiId) ?: return@launch
-            val loc = location.value
-            val distanceMeters = loc?.let {
-                GeoDistance.metersBetween(it.lat, it.lon, poi.lat, poi.lon)
-            }
-            _targetPoi.value = PoiWithDistance(poi, distanceMeters)
-            _targetPoiLastVisit.value = visitDao.lastVisitLabel(poiId)
-        }
-    }
-
-    fun dismissTargetPoi() {
-        _targetPoi.value = null
-        _targetPoiLastVisit.value = null
-    }
-
-    fun setCustomName(poiId: String, customName: String?) {
-        viewModelScope.launch(Dispatchers.IO) { poiCustomNameDao.setCustomName(poiId, customName) }
     }
 
     fun refreshLocation() {

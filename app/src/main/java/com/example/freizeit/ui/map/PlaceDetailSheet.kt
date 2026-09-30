@@ -46,7 +46,7 @@ import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.ui.theme.WantToGoBlue
 import com.example.freizeit.util.GeoDistance
 
-/** Shared place detail sheet, opened from map markers, list rows, and Home cards. [onEdit]/
+/** Shared place detail sheet, opened from map markers and list rows. [onEdit]/
  *  [onDelete] are null for an OSM-sourced place; [MapScreen] passes non-null callbacks only when
  *  [item] is backed by a `custom_poi` row (issue #47) — the row below them is omitted entirely
  *  otherwise, rather than shown disabled. [onCheckIn] starts the app-wide check-in flow for any
