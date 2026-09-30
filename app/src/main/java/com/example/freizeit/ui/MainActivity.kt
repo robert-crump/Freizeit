@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.freizeit.ui.theme.FreizeitTheme
@@ -24,8 +25,13 @@ class MainActivity : ComponentActivity() {
     private var targetDestination by mutableStateOf<String?>(null)
 
     /** A POI id to open on the Map (#63): tab switch, filters cleared, camera on the place, its
-     *  detail sheet open. Unlike [targetPoiId], which opens Home's own sheet. */
+     *  detail sheet open. Unlike [targetPoiId], which opens Home's own sheet. Widget suggestion
+     *  taps use this one (#66). */
     private var openOnMapPoiId by mutableStateOf<String?>(null)
+
+    /** Bumped on every [onNewIntent], so tapping the same widget row twice (same extra value)
+     *  still counts as a fresh request in [FreizeitApp] rather than being a no-op (#66). */
+    private var relaunchCount by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -38,13 +44,14 @@ class MainActivity : ComponentActivity() {
                 FreizeitApp(
                     targetPoiId = targetPoiId,
                     targetDestination = targetDestination,
-                    openOnMapPoiId = openOnMapPoiId
+                    openOnMapPoiId = openOnMapPoiId,
+                    relaunchCount = relaunchCount
                 )
             }
         }
     }
 
-    /** A relaunch while already running — e.g. a widget row tap (#52), which sets
+    /** A relaunch while already running — e.g. a widget row tap (#52/#66), which sets
      *  FLAG_ACTIVITY_SINGLE_TOP — is delivered here instead of a fresh onCreate; pick up its
      *  extra the same way, and keep it as the Activity's current intent. */
     override fun onNewIntent(intent: Intent) {
@@ -53,6 +60,7 @@ class MainActivity : ComponentActivity() {
         targetPoiId = intent.getStringExtra(EXTRA_TARGET_POI_ID)
         targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
         openOnMapPoiId = intent.getStringExtra(EXTRA_OPEN_ON_MAP_POI_ID)
+        relaunchCount++
     }
 
     companion object {

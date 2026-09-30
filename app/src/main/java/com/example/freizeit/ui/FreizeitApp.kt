@@ -87,7 +87,10 @@ fun FreizeitApp(
     targetDestination: String? = null,
     /** A POI id to open on the Map (#63) — MainActivity.EXTRA_OPEN_ON_MAP_POI_ID, for the
      *  widget (#66). Held in [pendingOpenOnMapPoiId] the same way as [targetPoiId]. */
-    openOnMapPoiId: String? = null
+    openOnMapPoiId: String? = null,
+    /** MainActivity's onNewIntent counter: part of the pending values' reset keys below, so a
+     *  repeat of the same extra (the same widget row tapped twice) fires again (#66). */
+    relaunchCount: Int = 0
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -108,11 +111,11 @@ fun FreizeitApp(
     // Reset whenever a fresh targetPoiId arrives (MainActivity.onNewIntent), but otherwise
     // survives FreizeitApp recompositions untouched — cleared to null once HomeScreen has
     // consumed it, so navigating away from and back to the Home tab doesn't reopen the sheet.
-    var pendingTargetPoiId by rememberSaveable(targetPoiId) { mutableStateOf(targetPoiId) }
+    var pendingTargetPoiId by rememberSaveable(targetPoiId, relaunchCount) { mutableStateOf(targetPoiId) }
 
     // Same reset-on-fresh-value/clear-once-consumed shape as pendingTargetPoiId above, for the
     // widget's empty-state hint rows (#53) landing on a specific tab instead of a specific place.
-    var pendingTargetDestination by rememberSaveable(targetDestination) { mutableStateOf(targetDestination) }
+    var pendingTargetDestination by rememberSaveable(targetDestination, relaunchCount) { mutableStateOf(targetDestination) }
 
     // Shared by the bottom-nav clicks below and the pendingTargetDestination effect further down,
     // so a widget-driven tab switch behaves identically to tapping that tab by hand (same
@@ -157,7 +160,7 @@ fun FreizeitApp(
         }
     }
 
-    var pendingOpenOnMapPoiId by rememberSaveable(openOnMapPoiId) { mutableStateOf(openOnMapPoiId) }
+    var pendingOpenOnMapPoiId by rememberSaveable(openOnMapPoiId, relaunchCount) { mutableStateOf(openOnMapPoiId) }
     LaunchedEffect(pendingOpenOnMapPoiId) {
         pendingOpenOnMapPoiId?.let { poiId ->
             openPlaceOnMap(poiId, overCheckIn = false)

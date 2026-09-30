@@ -146,7 +146,7 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
     /** The place shown in Home's detail sheet — either opened via [openTargetPoi] (a deep link,
-     *  see #50) or, in a later slice, a tap on a widget row. Mirrors [MapViewModel]'s
+     *  see #50; widget taps open the Map instead since #66). Mirrors [MapViewModel]'s
      *  selectedPoi/selectedPoiLastVisit pair: a one-shot snapshot, not something that stays live
      *  while the sheet sits open. */
     private val _targetPoi = MutableStateFlow<PoiWithDistance?>(null)

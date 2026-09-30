@@ -85,7 +85,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory),
     /** A POI id to auto-open in the detail sheet on launch (#50) — set from MainActivity's
-     *  intent extra, e.g. via a future widget row tap. Consumed once via [onTargetPoiIdHandled]
+     *  intent extra (widget taps go to the Map instead since #66). Consumed once via [onTargetPoiIdHandled]
      *  so it doesn't reopen on a later recomposition/resume or a return trip to this tab. */
     targetPoiId: String? = null,
     onTargetPoiIdHandled: () -> Unit = {}

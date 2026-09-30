@@ -120,10 +120,11 @@ class SuggestionWidget : GlanceAppWidget() {
 
         // Built here (plain Context, no ambiguity between actionStartActivity's Intent-based and
         // reified-type overloads) rather than inside the composable below — one PendingIntent per
-        // row (#52), each carrying that row's own place id via MainActivity.EXTRA_TARGET_POI_ID
-        // so the tap lands directly on its detail sheet rather than a generic "open Home". A
-        // vanished-by-tap-time place is MainActivity/HomeViewModel.openTargetPoi's problem, not
-        // this widget's — that path already fails quietly (#50).
+        // row (#52), each carrying that row's own place id via MainActivity.EXTRA_OPEN_ON_MAP_POI_ID
+        // so the tap lands on the Map, centered on that place with its detail sheet open and
+        // filters cleared (#66, reusing #63's "open place on Map"). A vanished-by-tap-time place
+        // is MapViewModel.openPlace's problem, not this widget's — the app then just opens on
+        // the Map.
         // FLAG_ACTIVITY_SINGLE_TOP so a tap while MainActivity is already running is delivered to
         // its existing instance via onNewIntent (recomposing with the new id) instead of stacking
         // a second instance on top — the issue's "not on the (possibly already-reshuffled) deck".
@@ -139,7 +140,7 @@ class SuggestionWidget : GlanceAppWidget() {
             when (widgetState) {
                 is SuggestionWidgetState.Rows -> {
                     val rowActions = widgetState.rows.map { row ->
-                        openAppAction(MainActivity.EXTRA_TARGET_POI_ID, row.poiId)
+                        openAppAction(MainActivity.EXTRA_OPEN_ON_MAP_POI_ID, row.poiId)
                     }
                     SuggestionWidgetBody(widgetState.rows.zip(rowActions), refreshContentDescription)
                 }
