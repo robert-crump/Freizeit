@@ -8,6 +8,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,8 +16,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.FreizeitApplication
+import com.example.freizeit.ui.common.LocalTravelLimits
 import com.example.freizeit.ui.theme.FreizeitTheme
 import com.example.freizeit.ui.theme.LocalDarkTheme
+import com.example.freizeit.util.TravelLimits
 
 class MainActivity : ComponentActivity() {
 
@@ -44,18 +47,21 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
         openOnMapPoiId = intent.getStringExtra(EXTRA_OPEN_ON_MAP_POI_ID)
-        val themeModes = (application as FreizeitApplication).container.settingsRepository.themeMode
+        val settingsRepository = (application as FreizeitApplication).container.settingsRepository
         setContent {
             // null until DataStore's first read, so a stored Dark never flashes Light first.
-            val themeMode by themeModes.collectAsStateWithLifecycle(initialValue = null)
+            val themeMode by settingsRepository.themeMode.collectAsStateWithLifecycle(initialValue = null)
+            val travelLimits by settingsRepository.travelLimits.collectAsStateWithLifecycle(initialValue = TravelLimits())
             themeMode?.let { mode ->
                 FreizeitTheme(themeMode = mode) {
                     SystemBarsFollowTheme()
-                    FreizeitApp(
-                        targetDestination = targetDestination,
-                        openOnMapPoiId = openOnMapPoiId,
-                        relaunchCount = relaunchCount
-                    )
+                    CompositionLocalProvider(LocalTravelLimits provides travelLimits) {
+                        FreizeitApp(
+                            targetDestination = targetDestination,
+                            openOnMapPoiId = openOnMapPoiId,
+                            relaunchCount = relaunchCount
+                        )
+                    }
                 }
             }
         }

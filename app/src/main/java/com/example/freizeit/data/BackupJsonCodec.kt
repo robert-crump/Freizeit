@@ -6,6 +6,9 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.Visit
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.data.repository.UserSettings
+import com.example.freizeit.util.BandLimits
+import com.example.freizeit.util.TravelLimits
+import com.example.freizeit.util.TravelMode
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -128,6 +131,21 @@ object BackupJsonCodec {
                 addProperty("notifyFavorites", data.settings.notifyFavorites)
                 addProperty("notifyWantToGo", data.settings.notifyWantToGo)
                 addProperty("themeMode", data.settings.themeMode.name)
+                add(
+                    "travelLimits",
+                    JsonObject().apply {
+                        TravelMode.entries.forEach { mode ->
+                            val limits = data.settings.travelLimits.of(mode)
+                            add(
+                                mode.name.lowercase(),
+                                JsonObject().apply {
+                                    addProperty("greenMax", limits.greenMax)
+                                    addProperty("orangeMax", limits.orangeMax)
+                                }
+                            )
+                        }
+                    }
+                )
             }
         )
         gson.toJson(root, writer)
@@ -212,8 +230,22 @@ object BackupJsonCodec {
             notifyFavorites = o.optBoolean("notifyFavorites") ?: defaults.notifyFavorites,
             notifyWantToGo = o.optBoolean("notifyWantToGo") ?: defaults.notifyWantToGo,
             themeMode = ThemeMode.entries.firstOrNull { it.name == o.optString("themeMode") }
-                ?: defaults.themeMode
+                ?: defaults.themeMode,
+            travelLimits = parseTravelLimits(o.get("travelLimits"), defaults.travelLimits)
         )
+    }
+
+    /** Per mode: both limits present, or that mode keeps its default. */
+    private fun parseTravelLimits(element: JsonElement?, defaults: TravelLimits): TravelLimits {
+        if (element == null || !element.isJsonObject) return defaults
+        val o = element.asJsonObject
+        return TravelMode.entries.fold(defaults) { limits, mode ->
+            val m = o.get(mode.name.lowercase())?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: return@fold limits
+            val green = m.optLong("greenMax")?.toInt() ?: return@fold limits
+            val orange = m.optLong("orangeMax")?.toInt() ?: return@fold limits
+            limits.with(mode, BandLimits(green, orange).sanitized())
+        }
     }
 
     private fun parseCustomName(element: JsonElement, index: Int): PoiOverride {

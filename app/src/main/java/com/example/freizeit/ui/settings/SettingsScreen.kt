@@ -35,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -59,11 +60,15 @@ import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.common.icon
+import com.example.freizeit.util.BandLimits
+import com.example.freizeit.util.TravelMode
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -77,6 +82,7 @@ fun SettingsScreen(
     val notifyFavorites by viewModel.notifyFavorites.collectAsStateWithLifecycle()
     val notifyWantToGo by viewModel.notifyWantToGo.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val travelLimits by viewModel.travelLimits.collectAsStateWithLifecycle()
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showPoiBreakdown by remember { mutableStateOf(false) }
@@ -189,6 +195,21 @@ fun SettingsScreen(
                     label = { stringResource(R.string.settings_radius_value, it) },
                     onSelect = viewModel::setSuggestionRadiusKm
                 )
+            }
+
+            SettingsCard(title = stringResource(R.string.settings_travel_colors_section)) {
+                Text(
+                    text = stringResource(R.string.settings_travel_colors_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TravelMode.entries.forEach { mode ->
+                    TravelLimitsRow(
+                        mode = mode,
+                        limits = travelLimits.of(mode),
+                        onChange = { viewModel.setTravelLimits(mode, it) }
+                    )
+                }
             }
 
             SettingsCard(title = stringResource(R.string.settings_notifications_section)) {
@@ -375,6 +396,46 @@ private fun <T> SingleChoiceRow(
                     Text(stringResource(R.string.settings_cancel))
                 }
             }
+        )
+    }
+}
+
+private val TravelMode.labelRes: Int
+    get() = when (this) {
+        TravelMode.WALK -> R.string.settings_travel_walk
+        TravelMode.BIKE -> R.string.settings_travel_bike
+        TravelMode.CAR -> R.string.settings_travel_car
+    }
+
+/** One mode's green/orange limits as a two-thumb slider in [BandLimits.STEP]-minute steps; the
+ *  summary follows the drag live, the setting is only written once the thumb is let go. */
+@Composable
+private fun TravelLimitsRow(mode: TravelMode, limits: BandLimits, onChange: (BandLimits) -> Unit) {
+    var dragged by remember(limits) { mutableStateOf<BandLimits?>(null) }
+    val shown = dragged ?: limits
+    Column {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = mode.icon(), contentDescription = null)
+            Column {
+                Text(text = stringResource(mode.labelRes))
+                Text(
+                    text = stringResource(R.string.settings_travel_limits_value, shown.greenMax, shown.orangeMax),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        RangeSlider(
+            value = shown.greenMax.toFloat()..shown.orangeMax.toFloat(),
+            onValueChange = { range ->
+                dragged = BandLimits(range.start.roundToInt(), range.endInclusive.roundToInt()).sanitized()
+            },
+            onValueChangeFinished = { dragged?.let(onChange) },
+            valueRange = BandLimits.MIN.toFloat()..BandLimits.MAX.toFloat(),
+            steps = (BandLimits.MAX - BandLimits.MIN) / BandLimits.STEP - 1
         )
     }
 }

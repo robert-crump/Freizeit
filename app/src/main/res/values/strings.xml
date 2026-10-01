@@ -147,6 +147,12 @@
     <string name="settings_suggestions_section">Suggestions</string>
     <string name="settings_radius">Suggestion radius</string>
     <string name="settings_radius_value">%1$d km</string>
+    <string name="settings_travel_colors_section">Travel time colors</string>
+    <string name="settings_travel_colors_description">Up to the first limit a travel time shows green, up to the second orange, beyond that red.</string>
+    <string name="settings_travel_walk">Walking</string>
+    <string name="settings_travel_bike">Cycling</string>
+    <string name="settings_travel_car">Car</string>
+    <string name="settings_travel_limits_value">green ≤ %1$d min · orange ≤ %2$d min</string>
     <!-- Settings: notifications (#74, auto check-in before) -->
     <string name="settings_notifications_section">Notifications</string>
     <string name="settings_notifications_description">Choose near which POIs you want to be notified so that you can check-in.</string>

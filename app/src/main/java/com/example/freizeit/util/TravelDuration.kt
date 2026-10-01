@@ -6,6 +6,52 @@ enum class TravelMode { WALK, BIKE, CAR }
 
 data class TravelEstimate(val mode: TravelMode, val minutes: Int)
 
+/** How a travel time reads for its mode: fine, a stretch, or too far. */
+enum class DurationBand { GREEN, ORANGE, RED }
+
+/** One mode's color limits, both inclusive: up to [greenMax] is green, up to [orangeMax] orange. */
+data class BandLimits(val greenMax: Int, val orangeMax: Int) {
+    fun bandOf(minutes: Int): DurationBand = when {
+        minutes <= greenMax -> DurationBand.GREEN
+        minutes <= orangeMax -> DurationBand.ORANGE
+        else -> DurationBand.RED
+    }
+
+    /** Snapped to [STEP]s within [MIN]..[MAX], orange never below green. */
+    fun sanitized(): BandLimits {
+        val green = snap(greenMax)
+        return BandLimits(green, snap(orangeMax).coerceAtLeast(green))
+    }
+
+    companion object {
+        const val MIN = 5
+        const val MAX = 90
+        const val STEP = 5
+        private fun snap(minutes: Int): Int = ((minutes + STEP / 2) / STEP * STEP).coerceIn(MIN, MAX)
+    }
+}
+
+/** The user's travel-time color limits per mode (Settings). */
+data class TravelLimits(
+    val walk: BandLimits = BandLimits(greenMax = 20, orangeMax = 30),
+    val bike: BandLimits = BandLimits(greenMax = 20, orangeMax = 30),
+    val car: BandLimits = BandLimits(greenMax = 20, orangeMax = 40)
+) {
+    fun of(mode: TravelMode): BandLimits = when (mode) {
+        TravelMode.WALK -> walk
+        TravelMode.BIKE -> bike
+        TravelMode.CAR -> car
+    }
+
+    fun with(mode: TravelMode, limits: BandLimits): TravelLimits = when (mode) {
+        TravelMode.WALK -> copy(walk = limits)
+        TravelMode.BIKE -> copy(bike = limits)
+        TravelMode.CAR -> copy(car = limits)
+    }
+
+    fun bandOf(estimate: TravelEstimate): DurationBand = of(estimate.mode).bandOf(estimate.minutes)
+}
+
 /**
  * Straight-line distance -> rough travel-time estimate. No routing engine (roads, traffic,
  * one-way streets are ignored) — same detour-factor fudge for every mode, just a different
@@ -30,12 +76,6 @@ object TravelDuration {
     private const val CAR_TOWN_METERS_PER_MINUTE = 30_000.0 / 60.0 // 30 km/h
     private const val CAR_OPEN_METERS_PER_MINUTE = 70_000.0 / 60.0 // 70 km/h
 
-    /** Mode bands (#75): walk shown up to this, bike alone below [BIKE_WITH_CAR_MINUTES],
-     *  bike + car up to [BIKE_MAX_MINUTES], car alone beyond. */
-    private const val WALK_MAX_MINUTES = 20
-    private const val BIKE_WITH_CAR_MINUTES = 25
-    private const val BIKE_MAX_MINUTES = 60
-
     fun walkMinutes(distanceMeters: Double): Int =
         minutes(distanceMeters * DETOUR_FACTOR / WALK_METERS_PER_MINUTE)
 
@@ -53,18 +93,12 @@ object TravelDuration {
         return minutes(town / CAR_TOWN_METERS_PER_MINUTE + open / CAR_OPEN_METERS_PER_MINUTE)
     }
 
-    /** The one or two chips to show for [distanceMeters], the most fitting mode first. */
-    fun estimates(distanceMeters: Double): List<TravelEstimate> {
-        val walk = TravelEstimate(TravelMode.WALK, walkMinutes(distanceMeters))
-        val bike = TravelEstimate(TravelMode.BIKE, bikeMinutes(distanceMeters))
-        val car = TravelEstimate(TravelMode.CAR, carMinutes(distanceMeters))
-        return when {
-            walk.minutes <= WALK_MAX_MINUTES -> listOf(walk, bike)
-            bike.minutes < BIKE_WITH_CAR_MINUTES -> listOf(bike)
-            bike.minutes <= BIKE_MAX_MINUTES -> listOf(bike, car)
-            else -> listOf(car)
-        }
-    }
+    /** Walk, bike and car, in that order — every mode is always shown, colored by [TravelLimits]. */
+    fun estimates(distanceMeters: Double): List<TravelEstimate> = listOf(
+        TravelEstimate(TravelMode.WALK, walkMinutes(distanceMeters)),
+        TravelEstimate(TravelMode.BIKE, bikeMinutes(distanceMeters)),
+        TravelEstimate(TravelMode.CAR, carMinutes(distanceMeters))
+    )
 
     private fun minutes(exact: Double): Int = exact.roundToInt().coerceAtLeast(1)
 }

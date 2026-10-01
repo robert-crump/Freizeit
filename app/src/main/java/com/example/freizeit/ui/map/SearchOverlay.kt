@@ -244,7 +244,7 @@ private fun SearchResultRow(
             }
         }
         item.distanceMeters?.let { distance ->
-            DurationBadge(distance)
+            DurationBadge(distance, showMinutes = false)
         }
     }
 }

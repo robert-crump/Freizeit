@@ -9,8 +9,6 @@ import org.junit.Test
 /** Straight-line distances below; every mode multiplies by the 1.3 detour first (#75). */
 class TravelDurationTest {
 
-    private fun modes(distanceMeters: Double) = TravelDuration.estimates(distanceMeters).map { it.mode }
-
     @Test
     fun `walk - 4 km per hour`() {
         assertEquals(18, TravelDuration.walkMinutes(900.0)) // 1170 m / 66.7 m/min = 17.6
@@ -55,32 +53,34 @@ class TravelDurationTest {
     }
 
     @Test
-    fun `walk up to 20 minutes - walk first, bike second`() {
-        assertEquals(listOf(WALK, BIKE), modes(1_000.0)) // walk 19.5
-    }
-
-    @Test
-    fun `walk over 20 minutes and bike under 25 - bike alone`() {
-        assertEquals(listOf(BIKE), modes(1_200.0)) // walk 23, bike 6
-        assertEquals(listOf(BIKE), modes(3_500.0)) // bike 24
-    }
-
-    @Test
-    fun `bike 25 to 60 minutes - bike first, car second`() {
-        assertEquals(listOf(BIKE, CAR), modes(5_000.0)) // bike 32
-        assertEquals(listOf(BIKE, CAR), modes(10_380.0)) // bike 60
-    }
-
-    @Test
-    fun `bike over 60 minutes - car alone`() {
-        assertEquals(listOf(CAR), modes(12_000.0)) // bike 68
-    }
-
-    @Test
-    fun `estimates carry each mode's own minutes`() {
+    fun `estimates - walk, bike and car with each mode's own minutes`() {
         assertEquals(
-            listOf(TravelEstimate(BIKE, 32), TravelEstimate(CAR, 13)),
+            listOf(TravelEstimate(WALK, 98), TravelEstimate(BIKE, 32), TravelEstimate(CAR, 13)),
             TravelDuration.estimates(5_000.0)
         )
+    }
+
+    @Test
+    fun `bands - upper limits are inclusive`() {
+        val limits = BandLimits(greenMax = 20, orangeMax = 30)
+        assertEquals(DurationBand.GREEN, limits.bandOf(20))
+        assertEquals(DurationBand.ORANGE, limits.bandOf(21))
+        assertEquals(DurationBand.ORANGE, limits.bandOf(30))
+        assertEquals(DurationBand.RED, limits.bandOf(31))
+    }
+
+    @Test
+    fun `default limits - car stays orange longer than walk and bike`() {
+        val limits = TravelLimits()
+        assertEquals(DurationBand.RED, limits.bandOf(TravelEstimate(WALK, 35)))
+        assertEquals(DurationBand.RED, limits.bandOf(TravelEstimate(BIKE, 35)))
+        assertEquals(DurationBand.ORANGE, limits.bandOf(TravelEstimate(CAR, 35)))
+    }
+
+    @Test
+    fun `sanitized limits - snapped to 5 minute steps within 5 to 90, orange never below green`() {
+        assertEquals(BandLimits(20, 30), BandLimits(19, 31).sanitized())
+        assertEquals(BandLimits(5, 90), BandLimits(0, 200).sanitized())
+        assertEquals(BandLimits(40, 40), BandLimits(40, 25).sanitized())
     }
 }

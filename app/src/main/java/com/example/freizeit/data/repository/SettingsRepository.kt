@@ -7,6 +7,9 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.util.BandLimits
+import com.example.freizeit.util.TravelLimits
+import com.example.freizeit.util.TravelMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -63,12 +66,30 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[THEME_MODE_KEY] = mode.name }
     }
 
+    /** Travel-time color limits per mode; a mode never set keeps its default. */
+    val travelLimits: Flow<TravelLimits> = dataStore.data.map { prefs ->
+        TravelMode.entries.fold(TravelLimits()) { limits, mode ->
+            val green = prefs[greenMaxKey(mode)] ?: return@fold limits
+            val orange = prefs[orangeMaxKey(mode)] ?: return@fold limits
+            limits.with(mode, BandLimits(green, orange).sanitized())
+        }
+    }
+
+    suspend fun setTravelLimits(mode: TravelMode, limits: BandLimits) {
+        val clean = limits.sanitized()
+        dataStore.edit {
+            it[greenMaxKey(mode)] = clean.greenMax
+            it[orangeMaxKey(mode)] = clean.orangeMax
+        }
+    }
+
     /** Every user setting at once, for the backup file (#74). */
     suspend fun snapshot(): UserSettings = UserSettings(
         suggestionRadiusKm = suggestionRadiusKm.first(),
         notifyFavorites = notifyFavorites.first(),
         notifyWantToGo = notifyWantToGo.first(),
-        themeMode = themeMode.first()
+        themeMode = themeMode.first(),
+        travelLimits = travelLimits.first()
     )
 
     /** Replaces every user setting with [settings] in one edit — a backup restore. */
@@ -78,6 +99,11 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             it[NOTIFY_FAVORITES_KEY] = settings.notifyFavorites
             it[NOTIFY_WANT_TO_GO_KEY] = settings.notifyWantToGo
             it[THEME_MODE_KEY] = settings.themeMode.name
+            TravelMode.entries.forEach { mode ->
+                val limits = settings.travelLimits.of(mode).sanitized()
+                it[greenMaxKey(mode)] = limits.greenMax
+                it[orangeMaxKey(mode)] = limits.orangeMax
+            }
             it.remove(AUTO_CHECKIN_ENABLED_KEY)
         }
     }
@@ -90,6 +116,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val NOTIFY_FAVORITES_KEY = booleanPreferencesKey("notify_favorites")
         private val NOTIFY_WANT_TO_GO_KEY = booleanPreferencesKey("notify_want_to_go")
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
+        private fun greenMaxKey(mode: TravelMode) = intPreferencesKey("travel_${mode.name.lowercase()}_green_max")
+        private fun orangeMaxKey(mode: TravelMode) = intPreferencesKey("travel_${mode.name.lowercase()}_orange_max")
     }
 }
 
@@ -110,5 +138,6 @@ data class UserSettings(
     val suggestionRadiusKm: Int = SettingsRepository.DEFAULT_RADIUS_KM,
     val notifyFavorites: Boolean = false,
     val notifyWantToGo: Boolean = false,
-    val themeMode: ThemeMode = ThemeMode.SYSTEM
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val travelLimits: TravelLimits = TravelLimits()
 )

@@ -6,6 +6,9 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.util.BandLimits
+import com.example.freizeit.util.TravelLimits
+import com.example.freizeit.util.TravelMode
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -102,7 +105,10 @@ class SettingsRepositoryTest {
     @Test
     fun `restore replaces every setting`() = runTest {
         repository.setSuggestionRadiusKm(75)
-        val restored = UserSettings(suggestionRadiusKm = 15, notifyFavorites = false, notifyWantToGo = true, themeMode = ThemeMode.DARK)
+        val restored = UserSettings(
+            suggestionRadiusKm = 15, notifyFavorites = false, notifyWantToGo = true, themeMode = ThemeMode.DARK,
+            travelLimits = TravelLimits(walk = BandLimits(greenMax = 10, orangeMax = 15))
+        )
 
         repository.restore(restored)
 
@@ -120,5 +126,22 @@ class SettingsRepositoryTest {
             repository.setThemeMode(mode)
             assertEquals(mode, repository.themeMode.first())
         }
+    }
+
+    @Test
+    fun `travel limits default to walk 20-30, bike 20-30, car 20-40`() = runTest {
+        assertEquals(
+            TravelLimits(BandLimits(20, 30), BandLimits(20, 30), BandLimits(20, 40)),
+            repository.travelLimits.first()
+        )
+    }
+
+    @Test
+    fun `travel limits are stored per mode, sanitized`() = runTest {
+        repository.setTravelLimits(TravelMode.BIKE, BandLimits(greenMax = 15, orangeMax = 10))
+
+        val limits = repository.travelLimits.first()
+        assertEquals(BandLimits(15, 15), limits.bike)
+        assertEquals(TravelLimits().walk, limits.walk)
     }
 }

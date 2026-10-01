@@ -341,6 +341,6 @@ private fun CheckInResultRow(
                 )
             }
         }
-        DurationBadge(candidate.distanceMeters)
+        DurationBadge(candidate.distanceMeters, showMinutes = false)
     }
 }

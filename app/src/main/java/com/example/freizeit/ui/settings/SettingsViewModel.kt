@@ -16,6 +16,9 @@ import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.util.BandLimits
+import com.example.freizeit.util.TravelLimits
+import com.example.freizeit.util.TravelMode
 import com.example.freizeit.util.MergeCandidate
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -102,6 +105,13 @@ class SettingsViewModel(
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
+    }
+
+    val travelLimits: StateFlow<TravelLimits> = settingsRepository.travelLimits
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TravelLimits())
+
+    fun setTravelLimits(mode: TravelMode, limits: BandLimits) {
+        viewModelScope.launch { settingsRepository.setTravelLimits(mode, limits) }
     }
 
     val summary: StateFlow<PoiSummary?> = combine(
