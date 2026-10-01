@@ -84,6 +84,7 @@ data class MapUiState(
     val allPois: List<Poi> = emptyList(),
     val categories: List<String> = emptyList(),
     val activeCategory: String? = null,
+    val allCategories: Boolean = false,
     val location: LatLon? = null,
     val verdicts: Map<String, Verdict> = emptyMap(),
     val favoritesOnly: Boolean = false,
@@ -92,13 +93,14 @@ data class MapUiState(
 )
 
 /**
- * The Map's filter state: the single-select category chip, the Favorites / Want to go rows and
- * the committed search. At most one is ever active — each setter below that turns one on starts
+ * The Map's filter state: the single-select category chip (or "All", #77), the Favorites / Want
+ * to go rows and the committed search. At most one is ever active — each setter below that turns one on starts
  * from a blank [MapFilters], turning one off only clears that one. Pulled out as a pure value so
  * the exclusivity rules and [MapViewModel.openPlace]'s reset (#63) are unit-testable.
  */
 data class MapFilters(
     val activeCategory: String? = null,
+    val allCategories: Boolean = false,
     val favoritesOnly: Boolean = false,
     val wantToGoOnly: Boolean = false,
     val searchQuery: String? = null
@@ -106,6 +108,10 @@ data class MapFilters(
     /** Tapping the already-active category clears it (shows nothing), a different one switches. */
     fun toggleCategory(category: String): MapFilters =
         if (activeCategory == category) copy(activeCategory = null) else MapFilters(activeCategory = category)
+
+    /** The "All" chip (#77): every category at once, in the same single-select group. */
+    fun toggleAllCategories(): MapFilters =
+        if (allCategories) copy(allCategories = false) else MapFilters(allCategories = true)
 
     fun toggleFavoritesOnly(): MapFilters =
         if (favoritesOnly) copy(favoritesOnly = false) else MapFilters(favoritesOnly = true)
@@ -170,7 +176,8 @@ private fun matchesSearch(name: String, query: String): Boolean {
  * [matchesSearch] (word-boundary prefix, not a plain substring) across all categories;
  * otherwise [verdictIds] (non-null) restricts to whichever single verdict bucket is active —
  * favorites-only or want-to-go-only, the caller decides which set to pass in, never both at
- * once (#31); otherwise a non-null [activeCategory] restricts to pois of that one category —
+ * once (#31); otherwise [allCategories] (the "All" chip, #77) keeps every place; otherwise a
+ * non-null [activeCategory] restricts to pois of that one category —
  * the chip row is single-select (replaces #33's multi-select "All POIs" mode); with none of
  * the above active, nothing matches. With a location, sorts nearest first, otherwise by name
  * (unnamed places last).
@@ -180,7 +187,8 @@ fun filterAndSort(
     activeCategory: String?,
     location: LatLon?,
     verdictIds: Set<String>? = null,
-    searchQuery: String? = null
+    searchQuery: String? = null,
+    allCategories: Boolean = false
 ): List<PoiWithDistance> {
     val filtered = pois.filter {
         when {
@@ -189,6 +197,7 @@ fun filterAndSort(
                 name != null && matchesSearch(name, searchQuery)
             }
             verdictIds != null -> it.id in verdictIds
+            allCategories -> true
             activeCategory != null -> it.category == activeCategory
             else -> false
         }
@@ -208,6 +217,14 @@ fun filterAndSort(
             .map { PoiWithDistance(it, null) }
     }
 }
+
+/** A fix at least this accurate ends follow-GPS (#77). */
+const val FINE_FIX_ACCURACY_METERS = 50f
+
+/** Whether centering on [location] ends follow-GPS (#77); a fix without an accuracy counts as
+ *  coarse, so the map keeps following until a fix proves it's fine. */
+fun isFineFix(location: LatLon): Boolean =
+    location.accuracyMeters?.let { it <= FINE_FIX_ACCURACY_METERS } ?: false
 
 class MapViewModel(
     private val locationRepository: LocationRepository,
@@ -237,6 +254,11 @@ class MapViewModel(
     val focusTarget: StateFlow<LatLon?> = _focusTarget
     private val _focusRequest = MutableStateFlow(0)
     val focusRequest: StateFlow<Int> = _focusRequest
+
+    // Follow GPS (#77): true from launch until the camera has centered on a fine fix (see
+    // isFineFix) or the user/app moved it elsewhere — see stopFollowingLocation's callers.
+    private val _followingLocation = MutableStateFlow(true)
+    val followingLocation: StateFlow<Boolean> = _followingLocation
 
     // Add-custom-POI flow (#45): NONE until the "+" FAB is tapped, PLACING_PIN while the map's
     // center crosshair tracks the pan, FORM once the location is confirmed.
@@ -296,7 +318,7 @@ class MapViewModel(
         locationRepository.location
     ) { poisAndVerdicts, filter, loc ->
         val (pois, verdictMap) = poisAndVerdicts
-        val (active, favOnly, wantToGo, query) = filter
+        val (active, all, favOnly, wantToGo, query) = filter
         val categories = visibleCategories(pois)
         val verdictIds = when {
             favOnly -> verdictMap.values.filter { it.value == Verdict.VALUE_FAVORITE }.map { it.placeId }.toSet()
@@ -304,10 +326,11 @@ class MapViewModel(
             else -> null
         }
         MapUiState(
-            pois = filterAndSort(pois, active, loc, verdictIds, query),
+            pois = filterAndSort(pois, active, loc, verdictIds, query, allCategories = all),
             allPois = pois,
             categories = categories,
             activeCategory = active,
+            allCategories = all,
             location = loc,
             verdicts = verdictMap,
             favoritesOnly = favOnly,
@@ -324,6 +347,10 @@ class MapViewModel(
 
     fun selectCategory(category: String) {
         filters.value = filters.value.toggleCategory(category)
+    }
+
+    fun toggleAllCategories() {
+        filters.value = filters.value.toggleAllCategories()
     }
 
     fun toggleFavoritesOnly() {
@@ -367,6 +394,7 @@ class MapViewModel(
     /** Jumps the map camera to [latLon] — bumps [focusRequest] so [PoiMap]'s LaunchedEffect
      *  re-fires even if the same POI is focused twice in a row. */
     fun focusOn(latLon: LatLon) {
+        stopFollowingLocation()
         _focusTarget.value = latLon
         _focusRequest.value += 1
     }
@@ -382,7 +410,14 @@ class MapViewModel(
 
     fun stopContinuousLocation() = locationRepository.stopContinuous()
 
+    /** Ends follow-GPS for this launch: the camera reached a fine fix, the user panned/zoomed,
+     *  or a place was opened or the pin drop started (#77). */
+    fun stopFollowingLocation() {
+        _followingLocation.value = false
+    }
+
     fun selectPoi(poi: PoiWithDistance?) {
+        if (poi != null) stopFollowingLocation()
         _selectedPoi.value = poi
         _selectedPoiLastVisit.value = null
         if (poi != null) {
@@ -401,6 +436,7 @@ class MapViewModel(
 
     /** Opens the add-POI flow's pin-drop step (the "+" FAB). */
     fun startAddPoi() {
+        stopFollowingLocation()
         _addPoiStep.value = AddPoiStep.PLACING_PIN
         _addPoiCenter.value = uiState.value.location
     }

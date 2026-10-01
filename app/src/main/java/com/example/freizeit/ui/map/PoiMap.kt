@@ -89,6 +89,10 @@ fun PoiMap(
     // (search bar/category chips) the caller has drawn across the top of the map — see
     // MapScreen's topOverlayHeightPx. 0 leaves it at the SDK's own top-edge default.
     compassTopMarginPx: Int = 0,
+    // Follow GPS (#77): while true, each new [location] re-centers the camera (animated, zoom
+    // kept). onStopFollowing fires once a fine fix was centered on, or the user pans/zooms.
+    followLocation: Boolean = false,
+    onStopFollowing: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -103,6 +107,7 @@ fun PoiMap(
     val (mapView, state) = remember(context) { MapViewHolder.obtain(context) }
     state.onPoiClick = onPoiClick
     state.onCameraIdle = onCameraIdle
+    state.onUserCameraMove = onStopFollowing
 
     DisposableEffect(mapView) {
         if (!MapViewHolder.configured) {
@@ -160,6 +165,11 @@ fun PoiMap(
                 map.addOnMapClickListener { latLng ->
                     handleMapClick(state, map, latLng)
                 }
+                map.addOnCameraMoveStartedListener { reason ->
+                    if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
+                        state.onUserCameraMove()
+                    }
+                }
                 map.addOnCameraIdleListener {
                     applyLocation(state, state.renderedLocation)
                     map.cameraPosition.target?.let { target ->
@@ -179,6 +189,14 @@ fun PoiMap(
             state.map?.cameraPosition?.target?.let {
                 onCameraIdle(LatLon(it.latitude, it.longitude))
             }
+        }
+    }
+
+    LaunchedEffect(followLocation, location) {
+        val map = state.map ?: return@LaunchedEffect
+        if (followLocation && location != null) {
+            map.animateCamera(CameraUpdateFactory.newLatLng(LatLng(location.lat, location.lon)))
+            if (isFineFix(location)) onStopFollowing()
         }
     }
 
@@ -257,6 +275,8 @@ private class PoiMapState {
     var poiById: Map<String, PoiWithDistance> = emptyMap()
     var onPoiClick: (PoiWithDistance) -> Unit = {}
     var onCameraIdle: (LatLon) -> Unit = {}
+    /** A pan/zoom by the user (gesture or cluster tap), see [PoiMap]'s onStopFollowing. */
+    var onUserCameraMove: () -> Unit = {}
     var handledFocusRequest: Int = 0
     /** A focus target waiting for [map] to be ready, see [applyPendingFocus]. */
     var pendingFocus: LatLon? = null
@@ -426,6 +446,7 @@ private fun handleMapClick(state: PoiMapState, map: MapLibreMap, latLng: LatLng)
     )
     val clusterPoint = clusterFeatures.firstOrNull()?.geometry() as? Point
     if (clusterPoint != null) {
+        state.onUserCameraMove()
         val zoom = (map.cameraPosition.zoom) + CLUSTER_TAP_ZOOM_STEP
         map.animateCamera(
             CameraUpdateFactory.newLatLngZoom(LatLng(clusterPoint.latitude(), clusterPoint.longitude()), zoom)

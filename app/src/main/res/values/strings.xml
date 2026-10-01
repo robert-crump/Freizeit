@@ -14,6 +14,9 @@
     <string name="home_unfavorite">Remove from favorites</string>
     <string name="home_remove_want_to_go">Remove from want to go</string>
     <string name="home_open_now">Open now</string>
+    <!-- Shared search bar (#77): Map oval, Map search overlay, check-in search -->
+    <string name="search_bar_placeholder">Search here</string>
+    <string name="search_bar_clear">Clear search</string>
     <!-- Map -->
     <string name="map_empty">No places yet. Import a POI file in Settings.</string>
     <string name="map_locate_me">Locate me</string>
@@ -21,9 +24,7 @@
     <string name="map_favorites_filter">Favorites</string>
     <string name="map_want_to_go_filter">Want to go</string>
     <string name="map_search_icon">Search</string>
-    <string name="map_search_clear">Clear search</string>
-    <string name="map_search_placeholder">Search places by name</string>
-    <string name="map_search_oval_placeholder">Search here</string>
+    <string name="map_all_filter">All</string>
     <string name="map_search_back">Back</string>
     <string name="map_search_no_results">No results found</string>
     <string name="map_add_poi_button">Add place</string>
@@ -75,9 +76,6 @@
     <string name="checkin_history_empty">No check-ins yet — tap + to check in somewhere.</string>
     <string name="checkin_history_unnamed_place">Unnamed place</string>
     <string name="checkin_history_place_gone">Place no longer exists</string>
-    <string name="checkin_search_icon">Search</string>
-    <string name="checkin_search_clear">Clear search</string>
-    <string name="checkin_search_placeholder">Search places by name</string>
     <string name="checkin_search_waiting_location">Waiting for your location to search nearby places.</string>
     <string name="checkin_search_empty">No matches.</string>
     <string name="checkin_search_more_results">More results</string>

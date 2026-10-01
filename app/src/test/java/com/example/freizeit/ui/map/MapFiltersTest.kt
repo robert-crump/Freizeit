@@ -23,6 +23,21 @@ class MapFiltersTest {
     }
 
     @Test
+    fun `All is in the same single-select group as the category and verdict chips`() {
+        val all = MapFilters(allCategories = true)
+        assertEquals(all, MapFilters(activeCategory = "park").toggleAllCategories())
+        assertEquals(all, MapFilters(favoritesOnly = true).toggleAllCategories())
+        assertEquals(all, MapFilters(searchQuery = "caf").toggleAllCategories())
+        assertEquals(MapFilters(activeCategory = "park"), all.toggleCategory("park"))
+        assertEquals(MapFilters(wantToGoOnly = true), all.toggleWantToGoOnly())
+    }
+
+    @Test
+    fun `tapping All again clears it`() {
+        assertEquals(none, MapFilters(allCategories = true).toggleAllCategories())
+    }
+
+    @Test
     fun `favorites only clears category, want to go and search`() {
         val before = MapFilters(activeCategory = "park")
         assertEquals(MapFilters(favoritesOnly = true), before.toggleFavoritesOnly())
@@ -54,6 +69,7 @@ class MapFiltersTest {
     @Test
     fun `a fresh MapFilters has nothing active, which is what opening a place resets to`() {
         assertEquals(null, none.activeCategory)
+        assertEquals(false, none.allCategories)
         assertEquals(false, none.favoritesOnly)
         assertEquals(false, none.wantToGoOnly)
         assertEquals(null, none.searchQuery)

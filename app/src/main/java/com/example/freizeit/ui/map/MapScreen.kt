@@ -3,25 +3,21 @@ package com.example.freizeit.ui.map
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocationAlt
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Search
@@ -35,7 +31,6 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -49,9 +44,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -68,6 +63,7 @@ import com.example.freizeit.data.entity.buildPoiOverride
 import com.example.freizeit.data.entity.isCustomPoiId
 import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.domain.geocoding.GeocodeResult
+import com.example.freizeit.ui.common.SearchOvalBar
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.LatLon
@@ -95,6 +91,7 @@ fun MapScreen(
     val addressSearchState by viewModel.addressSearchState.collectAsStateWithLifecycle()
     val pendingAddressPrefill by viewModel.pendingAddressPrefill.collectAsStateWithLifecycle()
     val pendingRemovalId by viewModel.pendingRemovalId.collectAsStateWithLifecycle()
+    val followingLocation by viewModel.followingLocation.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     // Delete/hide-with-undo (#47, #73): the marker/sheet vanish the instant requestRemovePlace
@@ -198,6 +195,8 @@ fun MapScreen(
             } else {
                 topOverlayHeightPx + with(density) { COMPASS_TOP_GAP.roundToPx() }
             },
+            followLocation = followingLocation,
+            onStopFollowing = viewModel::stopFollowingLocation,
             modifier = Modifier.fillMaxSize()
         )
 
@@ -227,16 +226,23 @@ fun MapScreen(
                     .align(Alignment.TopCenter)
                     .onGloballyPositioned { topOverlayHeightPx = it.size.height }
             ) {
-                SearchOval(
-                    committedQuery = state.committedSearchQuery,
-                    onOvalClick = { onOpenSearch(state.committedSearchQuery ?: "") },
-                    onClear = viewModel::clearSearch
+                // Tapping the oval body (not the ✕) opens the full-screen SearchOverlay with the
+                // committed query preloaded; the overlay draws this same bar in the same spot.
+                SearchOvalBar(
+                    query = state.committedSearchQuery.orEmpty(),
+                    leadingIcon = Icons.Filled.Search,
+                    leadingContentDescription = stringResource(R.string.map_search_icon),
+                    onClear = viewModel::clearSearch,
+                    onBarClick = { onOpenSearch(state.committedSearchQuery.orEmpty()) }
                 )
                 PoiCategoryChipRow(
                     categories = state.categories,
                     activeCategory = state.activeCategory,
-                    onSelectCategory = viewModel::selectCategory
+                    allCategories = state.allCategories,
+                    onSelectCategory = viewModel::selectCategory,
+                    onToggleAll = viewModel::toggleAllCategories
                 )
+                Spacer(modifier = Modifier.height(CHIP_ROW_GAP))
                 VerdictFilterChipRow(
                     favoritesOnly = state.favoritesOnly,
                     wantToGoOnly = state.wantToGoOnly,
@@ -399,90 +405,60 @@ private fun PlaceFormValues.toCustomPoi(initial: CustomPoi?, center: LatLon): Cu
         city = city.ifBlank { null }
     )
 
-/** Matches FilterChipDefaults' own default outlined-chip border width. */
-private val SEARCH_OVAL_BORDER_WIDTH = 1.dp
+/** Visible gap between the chip rows (#77), the same as between the search bar and the first
+ *  row (the bar's own bottom padding) and between two chips. */
+private val CHIP_ROW_GAP = 8.dp
+
+/** A chip's 48 dp touch target is 8 dp taller than the visible 32 dp chip at top and bottom. */
+private val CHIP_TOUCH_TARGET_INSET = 8.dp
+
+/** LazyRow key of the "All" chip; categories never contain a space. */
+private const val ALL_CHIP_KEY = "all categories"
+
+/**
+ * Lays a chip row out [CHIP_TOUCH_TARGET_INSET] shorter at top and bottom, so neighbours sit
+ * against the visible chips while the full 48 dp touch targets stay, overlapping the gaps (#77).
+ */
+private fun Modifier.trimChipTouchTargetInset(): Modifier = layout { measurable, constraints ->
+    val inset = CHIP_TOUCH_TARGET_INSET.roundToPx()
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, (placeable.height - 2 * inset).coerceAtLeast(0)) {
+        placeable.place(0, -inset)
+    }
+}
 
 /** Gap between the search bar/category chip row and the map's native compass below them. */
 private val COMPASS_TOP_GAP = 8.dp
 
 /**
- * Floats inside the map's own [Box] (top-aligned), same convention as [PoiCategoryChipRow] below
- * it. Placeholder "Search here" when no search is committed; once one is (via the overlay's
- * keyboard Search action or a row tap), shows the query text + a trailing clear X instead.
- * Tapping the oval body (not the X) reopens the full-screen overlay with that query preloaded.
- */
-@Composable
-private fun SearchOval(
-    committedQuery: String?,
-    onOvalClick: () -> Unit,
-    onClear: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val darkTheme = LocalDarkTheme.current
-    val ovalShape = RoundedCornerShape(percent = 50)
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            // Same border treatment as PoiCategoryChipRow's chips — without it, a dark oval on
-            // the dark map style can be hard to make out against the tiles behind it.
-            .border(SEARCH_OVAL_BORDER_WIDTH, markerForegroundColor(darkTheme), ovalShape)
-            .clickable(onClick = onOvalClick),
-        shape = ovalShape,
-        shadowElevation = 4.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.map_search_icon))
-            Text(
-                text = committedQuery ?: stringResource(R.string.map_search_oval_placeholder),
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (committedQuery != null) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.weight(1f)
-            )
-            if (committedQuery != null) {
-                // A plain icon-sized tap target rather than an IconButton: IconButton's 48dp
-                // minimum made the oval visibly taller whenever a query was committed (#59).
-                Icon(
-                    Icons.Filled.Close,
-                    contentDescription = stringResource(R.string.map_search_clear),
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onClear)
-                )
-            }
-        }
-    }
-}
-
-/**
  * Single-select category chip row, floated over the map's top edge, below the search oval — now
  * always visible (no longer hidden while a search dropdown shows; that dropdown no longer lives
- * on this screen at all, see [SearchOverlay]). Chip styling lives in [MapFilterChip], matching
- * Velometrics' chip row.
+ * on this screen at all, see [SearchOverlay]). Starts with "All" (#77), every category in the DB,
+ * then the curated [categories]. Chip styling lives in [MapFilterChip], matching Velometrics'
+ * chip row.
  */
 @Composable
 private fun PoiCategoryChipRow(
     categories: List<String>,
     activeCategory: String?,
+    allCategories: Boolean,
     onSelectCategory: (String) -> Unit,
+    onToggleAll: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyRow(
-        modifier = modifier.padding(vertical = 8.dp),
+        modifier = modifier.trimChipTouchTargetInset(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(horizontal = 12.dp)
     ) {
+        item(key = ALL_CHIP_KEY) {
+            MapFilterChip(
+                selected = allCategories,
+                onClick = onToggleAll,
+                label = stringResource(R.string.map_all_filter),
+                icon = Icons.Filled.Apps
+            )
+        }
         items(categories, key = { it }) { category ->
             MapFilterChip(
                 selected = category == activeCategory,
@@ -508,7 +484,9 @@ private fun VerdictFilterChipRow(
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+        modifier = modifier
+            .trimChipTouchTargetInset()
+            .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         MapFilterChip(

@@ -29,6 +29,13 @@ class FilterAndSortTest {
     }
 
     @Test
+    fun `the All chip shows every category, including ones without a chip of their own`() {
+        val result = filterAndSort(pois, activeCategory = null, location = null, allCategories = true)
+        assertEquals(setOf("node/1", "node/2", "node/3", "node/4", "node/5"), result.map { it.poi.id }.toSet())
+        assertTrue(result.any { it.poi.category == "shop" })
+    }
+
+    @Test
     fun `null active category shows nothing`() {
         assertEquals(0, filterAndSort(pois, activeCategory = null, location = null).size)
     }

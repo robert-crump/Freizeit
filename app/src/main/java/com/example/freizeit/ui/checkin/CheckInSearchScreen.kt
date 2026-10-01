@@ -26,13 +26,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -48,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -64,6 +60,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.common.SearchOvalBar
 import com.example.freizeit.ui.map.categoryIcon
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.map.markerBackgroundColor
@@ -165,42 +162,23 @@ fun CheckInSearchScreen(
     // innerPadding — an extra statusBarsPadding() here would double it up.
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = ::handleBack) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.checkin_history_back)
-                    )
-                }
-                OutlinedTextField(
-                    value = searchText,
-                    onValueChange = {
-                        searchText = it
-                        viewModel.setSearchQuery(it)
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester),
-                    placeholder = { Text(stringResource(R.string.checkin_search_placeholder)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    trailingIcon = if (searchText.isNotEmpty()) {
-                        {
-                            IconButton(onClick = {
-                                searchText = ""
-                                viewModel.clearSearch()
-                            }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.checkin_search_clear))
-                            }
-                        }
-                    } else null
-                )
-            }
+            // The Map's search bar (#77), so both search screens look and sit the same.
+            SearchOvalBar(
+                query = searchText,
+                leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                leadingContentDescription = stringResource(R.string.checkin_history_back),
+                onLeadingClick = ::handleBack,
+                onQueryChange = {
+                    searchText = it
+                    viewModel.setSearchQuery(it)
+                },
+                onClear = {
+                    searchText = ""
+                    viewModel.clearSearch()
+                },
+                focusRequester = focusRequester,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+            )
 
             // Manual fallback (#40) alongside the automatic ON_RESUME refresh above — e.g. no GPS
             // fix yet indoors, user steps outside without leaving this screen.

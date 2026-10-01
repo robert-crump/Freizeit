@@ -22,13 +22,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,7 +38,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.common.SearchOvalBar
 import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
@@ -76,7 +72,6 @@ private val ROW_DIVIDER_INSET = ROW_HORIZONTAL_PADDING + ROW_LEADING_WIDTH + ROW
  * `FreizeitApp` (sibling to the NavHost, not a NavHost/Dialog route) — shares [viewModel] with
  * the Map screen so a row tap here can drive its camera jump and detail sheet directly (#37).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchOverlay(
     viewModel: MapViewModel,
@@ -125,37 +120,22 @@ fun SearchOverlay(
     // directly so the back button/search field row doesn't render under the notification bar.
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.map_search_back))
-                }
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    modifier = Modifier
-                        .weight(1f)
-                        .focusRequester(focusRequester),
-                    placeholder = { Text(stringResource(R.string.map_search_placeholder)) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.Sentences,
-                        imeAction = ImeAction.Search
-                    ),
-                    keyboardActions = KeyboardActions(onSearch = { commit(query) }),
-                    trailingIcon = if (query.isNotEmpty()) {
-                        {
-                            IconButton(onClick = { query = "" }) {
-                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.map_search_clear))
-                            }
-                        }
-                    } else null
-                )
-            }
+            // The same bar as the Map's oval, at the same spot (this Surface's status-bar inset
+            // equals the Scaffold's top inner padding there), so only 🔍 → ← changes (#77).
+            SearchOvalBar(
+                query = query,
+                leadingIcon = Icons.AutoMirrored.Filled.ArrowBack,
+                leadingContentDescription = stringResource(R.string.map_search_back),
+                onLeadingClick = onDismiss,
+                onQueryChange = { query = it },
+                onClear = { query = "" },
+                focusRequester = focusRequester,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Search
+                ),
+                keyboardActions = KeyboardActions(onSearch = { commit(query) })
+            )
 
             when {
                 query.trim().length < SEARCH_MIN_LENGTH -> Unit // blank until 2+ characters
