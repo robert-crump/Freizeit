@@ -30,8 +30,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Favorites within this range get top billing over everything else. */
-const val CHECKIN_FAVORITE_RADIUS_METERS = 200.0
+/** Favorites within this range get top billing over everything else, and are the only ones
+ *  listed under "Favorites nearby" (#78). */
+const val CHECKIN_FAVORITE_RADIUS_METERS = 500.0
 
 private const val SEARCH_DEBOUNCE_MS = 250L
 
@@ -67,8 +68,20 @@ fun rankNearbyForCheckIn(
     return topBilled.sortedBy { it.distanceMeters } + rest.sortedBy { it.distanceMeters }
 }
 
+/** The "Favorites nearby" quick picks: favorites within [CHECKIN_FAVORITE_RADIUS_METERS],
+ *  nearest first (#78). */
+fun favoritesNearby(ranked: List<CheckInCandidate>): List<CheckInCandidate> =
+    ranked.filter { it.isFavorite && it.distanceMeters <= CHECKIN_FAVORITE_RADIUS_METERS }
+        .sortedBy { it.distanceMeters }
+
+/** Candidates whose effective name (override, else OSM — already applied to [CheckInCandidate.poi]
+ *  by `observeAllPlaces`, #73) contains [query]. */
+fun matchCheckInSearch(ranked: List<CheckInCandidate>, query: String): List<CheckInCandidate> =
+    ranked.filter { it.poi.name?.contains(query, ignoreCase = true) == true }
+
 data class CheckInUiState(
-    /** All favorites, nearest first — the quick-pick list shown before a search is typed. */
+    /** Favorites within [CHECKIN_FAVORITE_RADIUS_METERS], nearest first — the quick-pick list
+     *  shown before a search is typed. */
     val favoritesNearby: List<CheckInCandidate> = emptyList(),
     val searchQuery: String = "",
     /**
@@ -123,10 +136,10 @@ class CheckInViewModel(
         val matches = if (trimmedQuery.length < SEARCH_MIN_LENGTH) {
             emptyList()
         } else {
-            nearby.filter { it.poi.name?.contains(trimmedQuery, ignoreCase = true) == true }
+            matchCheckInSearch(nearby, trimmedQuery)
         }
         CheckInUiState(
-            favoritesNearby = nearby.filter { it.isFavorite }.sortedBy { it.distanceMeters },
+            favoritesNearby = favoritesNearby(nearby),
             searchQuery = search.query,
             searchResults = if (search.showAll) matches else matches.take(CHECKIN_SEARCH_RESULTS_LIMIT),
             hasMoreSearchResults = !search.showAll && matches.size > CHECKIN_SEARCH_RESULTS_LIMIT,

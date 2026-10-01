@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.checkin
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -25,6 +27,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -35,34 +38,41 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
+import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.util.bucketVisits
-import com.example.freizeit.util.formatVisitTimeOnly
 import com.example.freizeit.util.formatVisitDateAndTime
+import com.example.freizeit.util.formatVisitTimeOnly
 
 /**
  * Check-in tab root: the check-in history list, with a "+" FAB that opens [CheckInSearchScreen]
  * to record a new one (#39). [checkInSnackbarHostState] is hoisted at `FreizeitApp` level
  * (shared with the search screen and [CheckInDateTimeFlow]) so the "Checked into X" Undo
- * snackbar surfaces here, after auto-popping back from search on confirm — [CheckInHistoryViewModel]'s own selection/delete/undo stays local to this
- * route, unrelated to check-in creation. A row tap outside selection mode calls [onOpenPlace]
+ * snackbar surfaces here, after auto-popping back from search on confirm. The delete Undo
+ * snackbar shares that host (#78). A row tap outside selection mode calls [onOpenPlace]
  * with the visit's place id (#63); a place that's gone is reported on that same snackbar host.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -77,7 +87,6 @@ fun CheckInScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val sections = remember(state.visits) { bucketVisits(state.visits) }
     var showDeleteConfirm by rememberSaveable { mutableStateOf(false) }
-    val deleteSnackbarHostState = remember { SnackbarHostState() }
     val lazyListState = rememberLazyListState()
     var previousVisitCount by remember { mutableStateOf(0) }
 
@@ -102,7 +111,7 @@ fun CheckInScreen(
 
     LaunchedEffect(undoMessage) {
         if (undoMessage != null) {
-            val result = deleteSnackbarHostState.showSnackbar(
+            val result = checkInSnackbarHostState.showSnackbar(
                 message = undoMessage,
                 actionLabel = undoActionLabel,
                 // Material3 defaults duration to Indefinite whenever actionLabel is non-null —
@@ -119,23 +128,29 @@ fun CheckInScreen(
 
     BackHandler(enabled = state.isSelecting) { viewModel.clearSelection() }
 
+    // Height of the visible snackbar (0 when none); the FAB rides above it (#78).
+    var snackbarHeightPx by remember { mutableIntStateOf(0) }
+    val fabLift by animateDpAsState(
+        targetValue = with(LocalDensity.current) { snackbarHeightPx.toDp() },
+        label = "fabLift"
+    )
+
     Scaffold(
         modifier = modifier,
-        snackbarHost = { SnackbarHost(hostState = deleteSnackbarHostState) },
         topBar = {
+            // Same padding as Settings' title, which sits in a 16 dp padded column (#78).
+            val barModifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)
             if (state.isSelecting) {
                 SelectionTopBar(
                     selectedCount = state.selectedIds.size,
                     onDeleteClick = { showDeleteConfirm = true },
-                    onCancelClick = viewModel::clearSelection
+                    onCancelClick = viewModel::clearSelection,
+                    modifier = barModifier
                 )
             } else {
-                Text(
-                    text = stringResource(R.string.checkin_history_title),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    style = MaterialTheme.typography.titleLarge
+                ScreenTitleBar(
+                    title = stringResource(R.string.checkin_history_title),
+                    modifier = barModifier
                 )
             }
         }
@@ -196,12 +211,21 @@ fun CheckInScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(16.dp)
+                        .offset(y = -fabLift)
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.checkin_search_button))
                 }
             }
 
-            SnackbarHost(hostState = checkInSnackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
+            // The one snackbar host for this tab: check-in confirmations, "place no longer
+            // exists" and the delete Undo all queue here, so they never stack (#78). Its height
+            // stays until the exit fade ends, then the FAB slides back down.
+            SnackbarHost(
+                hostState = checkInSnackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onSizeChanged { snackbarHeightPx = it.height }
+            )
         }
     }
 
@@ -238,17 +262,12 @@ private fun SelectionTopBar(
     onCancelClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    // Same bar and height as the title it replaces, so entering select mode moves nothing (#78).
+    ScreenTitleBar(
+        title = stringResource(R.string.checkin_history_selected_count, selectedCount),
+        titleStyle = MaterialTheme.typography.titleMedium,
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = stringResource(R.string.checkin_history_selected_count, selectedCount),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.weight(1f)
-        )
         IconButton(onClick = onDeleteClick) {
             Icon(
                 imageVector = Icons.Filled.Delete,
@@ -323,16 +342,21 @@ private fun VisitRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (isSelecting) {
-                Checkbox(checked = isSelected, onCheckedChange = { onClick() })
+                // The row is the tap target, so the Checkbox drops its 48 dp minimum and the row
+                // keeps its height in select mode (#78).
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                    Checkbox(checked = isSelected, onCheckedChange = null)
+                }
             }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = place?.displayName()
-                        ?: visit.snapshotName
-                        ?: stringResource(R.string.checkin_history_unnamed_place),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
+            Text(
+                text = place?.displayName()
+                    ?: visit.snapshotName
+                    ?: stringResource(R.string.checkin_history_unnamed_place),
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
             Text(
                 text = timestampText,
                 style = MaterialTheme.typography.bodySmall,

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.common.categoryDisplayName
 import java.time.Instant
 import java.time.LocalDate
@@ -122,15 +123,7 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.tab_settings),
-                    style = MaterialTheme.typography.headlineMedium
-                )
+            ScreenTitleBar(title = stringResource(R.string.tab_settings)) {
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(
