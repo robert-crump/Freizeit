@@ -10,7 +10,7 @@ import java.util.UUID
  * vocabulary — [com.example.freizeit.ui.common.CATEGORY_ORDER] — same optional address/opening-
  * hours shape) but is deliberately a separate table, not a row in `poi`: a reimport wholesale
  * REPLACEs `poi` (see [com.example.freizeit.data.dao.PoiDao.upsertAll]), which would silently
- * wipe user-authored data — same rationale as [PoiCustomName].
+ * wipe user-authored data — same rationale as [PoiOverride].
  *
  * [id] uses its own `custom/<uuid>` scheme (see [newCustomPoiId]), independent of and never
  * colliding with OSM's `node/`, `way/`, `relation/` ids, so a [toPoi] projection can be merged

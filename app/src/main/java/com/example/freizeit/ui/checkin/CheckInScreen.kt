@@ -50,7 +50,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
+import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.util.bucketVisits
 import com.example.freizeit.util.formatVisitTimeOnly
 import com.example.freizeit.util.formatVisitWeekdayAndTime
@@ -163,6 +165,7 @@ fun CheckInScreen(
                             itemsIndexed(section.visits, key = { _, visit -> visit.id }) { index, visit ->
                                 VisitRow(
                                     visit = visit,
+                                    place = state.places[visit.placeId],
                                     isFirstInGroup = index == 0,
                                     isLastInGroup = index == section.visits.lastIndex,
                                     timestampText = if (section.label == "Today") {
@@ -286,6 +289,8 @@ private val GroupRowGap = 2.dp
 @Composable
 private fun VisitRow(
     visit: Visit,
+    /** The place as it is now, null once it no longer exists (#73). */
+    place: Poi?,
     isFirstInGroup: Boolean,
     isLastInGroup: Boolean,
     timestampText: String,
@@ -322,7 +327,9 @@ private fun VisitRow(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = visit.snapshotName ?: stringResource(R.string.checkin_history_unnamed_place),
+                    text = place?.displayName()
+                        ?: visit.snapshotName
+                        ?: stringResource(R.string.checkin_history_unnamed_place),
                     style = MaterialTheme.typography.bodyLarge
                 )
             }

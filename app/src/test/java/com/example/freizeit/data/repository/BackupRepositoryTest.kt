@@ -7,7 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.freizeit.data.BackupParseException
 import com.example.freizeit.data.FreizeitDatabase
 import com.example.freizeit.data.entity.CustomPoi
-import com.example.freizeit.data.entity.PoiCustomName
+import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import java.io.File
 import kotlinx.coroutines.test.runTest
@@ -65,7 +65,7 @@ class BackupRepositoryTest {
         snapshotCategory = "cafe"
     )
 
-    private fun customName(placeId: String, name: String) = PoiCustomName(placeId = placeId, customName = name)
+    private fun nameOverride(placeId: String, name: String) = PoiOverride(placeId = placeId, name = name)
 
     private fun customPoi(id: String, name: String = "Our Place", category: String = "cafe") = CustomPoi(
         id = id,
@@ -80,11 +80,13 @@ class BackupRepositoryTest {
     )
 
     @Test
-    fun `round trip preserves verdicts and custom names, including cooldown-relevant fields`() = runTest {
+    fun `round trip preserves verdicts and overrides, including cooldown-relevant fields`() = runTest {
         db.verdictDao().upsert(verdict("node/1", value = Verdict.VALUE_FAVORITE, verdictedAt = 12_345L))
         db.verdictDao().upsert(verdict("node/2", value = "other", verdictedAt = 67_890L))
-        db.poiCustomNameDao().upsert(customName("node/3", "Home playground"))
-        db.poiCustomNameDao().upsert(customName("node/4", "Oma's park"))
+        db.poiOverrideDao().upsert(nameOverride("node/3", "Home playground"))
+        db.poiOverrideDao().upsert(
+            PoiOverride("node/4", name = "Oma's park", category = "playground", city = "Würselen", hidden = true)
+        )
 
         val uri = newFileUri()
         val exported = repository.exportTo(uri)
@@ -105,8 +107,12 @@ class BackupRepositoryTest {
         assertEquals(12_345L, verdicts["node/1"]?.verdictedAt)
         assertEquals("other", verdicts["node/2"]?.value)
 
-        val customNames = db.poiCustomNameDao().getAll()
-        assertEquals(setOf("Home playground", "Oma's park"), customNames.map { it.customName }.toSet())
+        val overrides = db.poiOverrideDao().getAll().associateBy { it.placeId }
+        assertEquals(nameOverride("node/3", "Home playground"), overrides["node/3"])
+        assertEquals(
+            PoiOverride("node/4", name = "Oma's park", category = "playground", city = "Würselen", hidden = true),
+            overrides["node/4"]
+        )
     }
 
     @Test
@@ -138,9 +144,9 @@ class BackupRepositoryTest {
     }
 
     @Test
-    fun `import replaces existing verdicts and custom names wholesale`() = runTest {
+    fun `import replaces existing verdicts and overrides wholesale, reading old custom names as name overrides`() = runTest {
         db.verdictDao().upsert(verdict("node/stale"))
-        db.poiCustomNameDao().upsert(customName("node/stale", "Stale"))
+        db.poiOverrideDao().upsert(nameOverride("node/stale", "Stale"))
 
         val uri = fileWith(
             """
@@ -160,7 +166,7 @@ class BackupRepositoryTest {
         repository.importFrom(uri)
 
         assertEquals(listOf("node/1"), db.verdictDao().getAll().map { it.placeId })
-        assertEquals(listOf("Home"), db.poiCustomNameDao().getAll().map { it.customName })
+        assertEquals(listOf(nameOverride("node/2", "Home")), db.poiOverrideDao().getAll())
     }
 
     @Test
@@ -216,13 +222,13 @@ class BackupRepositoryTest {
 
     @Test
     fun `file that is not JSON throws and leaves the database untouched`() = runTest {
-        db.poiCustomNameDao().upsert(customName("node/1", "Home"))
+        db.poiOverrideDao().upsert(nameOverride("node/1", "Home"))
         val uri = fileWith("definitely not json")
 
         assertThrows(BackupParseException::class.java) {
             kotlinx.coroutines.runBlocking { repository.importFrom(uri) }
         }
 
-        assertEquals(listOf("Home"), db.poiCustomNameDao().getAll().map { it.customName })
+        assertEquals(listOf("Home"), db.poiOverrideDao().getAll().map { it.name })
     }
 }

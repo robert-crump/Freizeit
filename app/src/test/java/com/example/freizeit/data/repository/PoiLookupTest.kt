@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.freizeit.data.FreizeitDatabase
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -60,7 +61,7 @@ class PoiLookupTest {
     fun `findPoiById resolves an OSM poi`() = runTest {
         db.poiDao().upsertAll(listOf(osmPoi))
 
-        val found = findPoiById(db.poiDao(), db.customPoiDao(), "node/1")
+        val found = findPoiById(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), "node/1")
 
         assertEquals("OSM Café", found?.name)
     }
@@ -69,15 +70,15 @@ class PoiLookupTest {
     fun `findPoiById resolves a custom poi`() = runTest {
         db.customPoiDao().upsert(customPoi)
 
-        val found = findPoiById(db.poiDao(), db.customPoiDao(), "custom/1")
+        val found = findPoiById(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), "custom/1")
 
         assertEquals("Our Café", found?.name)
     }
 
     @Test
     fun `findPoiById returns null for an unknown id in either table`() = runTest {
-        assertNull(findPoiById(db.poiDao(), db.customPoiDao(), "node/missing"))
-        assertNull(findPoiById(db.poiDao(), db.customPoiDao(), "custom/missing"))
+        assertNull(findPoiById(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), "node/missing"))
+        assertNull(findPoiById(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), "custom/missing"))
     }
 
     @Test
@@ -87,7 +88,7 @@ class PoiLookupTest {
         db.verdictDao().upsert(favorite("node/1"))
         db.verdictDao().upsert(favorite("custom/1"))
 
-        val favorites = observeAllFavorites(db.poiDao(), db.customPoiDao()).first()
+        val favorites = observeAllFavorites(db.poiDao(), db.customPoiDao(), db.poiOverrideDao()).first()
 
         assertEquals(setOf("node/1", "custom/1"), favorites.map { it.id }.toSet())
     }
@@ -96,7 +97,7 @@ class PoiLookupTest {
     fun `observeAllFavorites excludes un-favorited custom pois`() = runTest {
         db.customPoiDao().upsert(customPoi)
 
-        val favorites = observeAllFavorites(db.poiDao(), db.customPoiDao()).first()
+        val favorites = observeAllFavorites(db.poiDao(), db.customPoiDao(), db.poiOverrideDao()).first()
 
         assertEquals(emptyList<Poi>(), favorites)
     }
@@ -115,7 +116,7 @@ class PoiLookupTest {
         db.verdictDao().upsert(favorite("custom/1"))
         db.verdictDao().upsert(verdict("custom/2", Verdict.VALUE_WANT_TO_GO))
 
-        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), deckValues).first()
+        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), deckValues).first()
 
         assertEquals(setOf("node/1", "custom/1", "custom/2"), pool.map { it.id }.toSet())
     }
@@ -126,7 +127,7 @@ class PoiLookupTest {
         db.customPoiDao().upsert(customPoi.copy(id = "custom/2"))
         db.verdictDao().upsert(verdict("custom/2", "SKIPPED"))
 
-        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), deckValues).first()
+        val pool = observeAllByVerdictValues(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), deckValues).first()
 
         assertEquals(emptyList<Poi>(), pool)
     }
@@ -136,8 +137,23 @@ class PoiLookupTest {
         db.customPoiDao().upsert(customPoi)
         db.verdictDao().upsert(favorite("custom/1"))
 
-        val favorites = allFavoritesOnce(db.poiDao(), db.customPoiDao())
+        val favorites = allFavoritesOnce(db.poiDao(), db.customPoiDao(), db.poiOverrideDao())
 
         assertEquals(listOf("custom/1"), favorites.map { it.id })
+    }
+
+    @Test
+    fun `favorites carry their overrides and leave hidden places out`() = runTest {
+        db.poiDao().upsertAll(listOf(osmPoi, osmPoi.copy(id = "node/2")))
+        db.verdictDao().upsert(favorite("node/1"))
+        db.verdictDao().upsert(favorite("node/2"))
+        db.poiOverrideDao().upsert(PoiOverride("node/1", name = "Renamed", category = "playground"))
+        db.poiOverrideDao().upsert(PoiOverride("node/2", hidden = true))
+
+        val favorites = allFavoritesOnce(db.poiDao(), db.customPoiDao(), db.poiOverrideDao())
+
+        assertEquals(listOf("node/1"), favorites.map { it.id })
+        assertEquals("Renamed", favorites[0].name)
+        assertEquals("playground", favorites[0].category)
     }
 }

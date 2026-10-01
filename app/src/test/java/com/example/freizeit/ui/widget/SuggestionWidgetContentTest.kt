@@ -34,9 +34,9 @@ class SuggestionWidgetContentTest {
         verdictValue = Verdict.VALUE_FAVORITE
     )
 
-    private fun rows(deck: List<Suggestion>, customNames: Map<String, String> = emptyMap(), maxRows: Int = 5) =
+    private fun rows(deck: List<Suggestion>, maxRows: Int = 5) =
         SuggestionWidgetContent.rows(
-            deck, customNames, maxRows,
+            deck, maxRows,
             unnamedLabel = { category -> "Unnamed $category" },
             distanceLabel = { "${it.toInt()} m" },
             travelLabel = { "$it min" }
@@ -47,7 +47,6 @@ class SuggestionWidgetContentTest {
             deck = deck,
             hasVerdictedPlaces = hasVerdictedPlaces,
             hasVerdictedPlacesWithinRadius = withinRadius,
-            customNames = emptyMap(),
             noFavoritesHint = "No favorites yet", noSuggestionsWithinRadiusHint = "Nothing within 5 km",
             unnamedLabel = { category -> "Unnamed $category" },
             distanceLabel = { "${it.toInt()} m" },
@@ -95,10 +94,10 @@ class SuggestionWidgetContentTest {
     }
 
     @Test
-    fun `custom name wins over poi name, falls back to unnamed label, category is kept`() {
+    fun `poi name is shown, falls back to unnamed label, category is kept`() {
         val deck = listOf(suggestion("a", name = "OSM Name"), suggestion("b", name = null, category = "playground"))
-        val rows = rows(deck, customNames = mapOf("a" to "My Name"))
-        assertEquals("My Name", rows[0].name)
+        val rows = rows(deck)
+        assertEquals("OSM Name", rows[0].name)
         assertEquals("Unnamed playground", rows[1].name)
         assertEquals("playground", rows[1].category)
     }

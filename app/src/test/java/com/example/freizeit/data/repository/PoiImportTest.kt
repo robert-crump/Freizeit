@@ -8,6 +8,7 @@ import com.example.freizeit.data.FreizeitDatabase
 import com.example.freizeit.data.PoiParseException
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.Visit
 import java.io.File
@@ -282,5 +283,23 @@ class PoiImportTest {
         repository.mergeCustomPoiInto("custom/1", "node/1")
 
         assertNull(db.customPoiDao().getById("custom/1"))
+    }
+
+    @Test
+    fun `overrides survive a re-import, and a hidden place stays hidden`() = runTest {
+        repository.importFrom(fileWith(poiJson(poi("node/1", "park", "OSM Park"), poi("node/2", "cafe", "OSM Cafe"))))
+        db.poiOverrideDao().upsert(PoiOverride("node/1", name = "Our Park", category = "playground"))
+        db.poiOverrideDao().upsert(PoiOverride("node/2", hidden = true))
+
+        repository.importFrom(
+            fileWith(poiJson(poi("node/1", "park", "OSM Park renamed"), poi("node/2", "cafe", "OSM Cafe")))
+        )
+
+        val places = observeAllPlaces(db.poiDao(), db.customPoiDao(), db.poiOverrideDao()).first()
+        assertEquals(listOf("node/1"), places.map { it.id })
+        assertEquals("Our Park", places[0].name)
+        assertEquals("playground", places[0].category)
+        assertNull(findPoiById(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), "node/2"))
+        assertEquals("OSM Park renamed", findRawPoiById(db.poiDao(), db.customPoiDao(), "node/1")?.name)
     }
 }

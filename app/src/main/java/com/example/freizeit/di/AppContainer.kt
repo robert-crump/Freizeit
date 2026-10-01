@@ -55,14 +55,16 @@ class AppContainer(private val context: Context) {
     }
 
     val geofenceSyncManager: GeofenceSyncManager by lazy {
-        GeofenceSyncManager(context, geofenceStateRepository, database.poiDao(), database.customPoiDao())
+        GeofenceSyncManager(
+            context, geofenceStateRepository, database.poiDao(), database.customPoiDao(), database.poiOverrideDao()
+        )
     }
 
     /** Drives [GeofenceSyncManager.rerank] on significant location change (issue #29). */
     val geofenceLocationMonitor: GeofenceLocationMonitor by lazy {
         GeofenceLocationMonitor(context) { location ->
             val enabled = settingsRepository.autoCheckInEnabled.first()
-            val favorites = allFavoritesOnce(database.poiDao(), database.customPoiDao())
+            val favorites = allFavoritesOnce(database.poiDao(), database.customPoiDao(), database.poiOverrideDao())
             geofenceSyncManager.rerank(enabled, favorites, location)
         }
     }

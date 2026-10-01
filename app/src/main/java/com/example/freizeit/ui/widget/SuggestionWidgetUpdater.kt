@@ -63,11 +63,11 @@ object SuggestionWidgetUpdater {
         val candidatePois = observeAllByVerdictValues(
             database.poiDao(),
             database.customPoiDao(),
+            database.poiOverrideDao(),
             listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)
         ).first()
         val verdicts = database.verdictDao().getAll().associateBy { it.placeId }
         val visits = database.visitDao().getAll().groupBy({ it.placeId }, { it.visitedAt })
-        val customNames = database.poiCustomNameDao().getAll().associate { it.placeId to it.customName }
         val radiusKm = container.settingsRepository.suggestionRadiusKm.first()
 
         val candidatesInRange = SuggestionEngine.withinRadius(candidatePois, location, radiusKm * 1000.0)
@@ -90,7 +90,6 @@ object SuggestionWidgetUpdater {
             deck = deck,
             hasVerdictedPlaces = hasVerdictedPlaces,
             hasVerdictedPlacesWithinRadius = hasVerdictedPlacesWithinRadius,
-            customNames = customNames,
             noFavoritesHint = context.getString(R.string.widget_no_favorites_hint),
             noSuggestionsWithinRadiusHint =
                 context.getString(R.string.widget_no_suggestions_within_radius_hint, radiusKm),

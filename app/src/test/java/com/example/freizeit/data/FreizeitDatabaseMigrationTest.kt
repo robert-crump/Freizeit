@@ -70,4 +70,53 @@ class FreizeitDatabaseMigrationTest {
             context.deleteDatabase(dbName)
         }
     }
+
+    @Test
+    fun `MIGRATION_7_8 turns custom names into name-only overrides and drops poi_custom_name`() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        val dbName = "migration-7-8-test.db"
+        context.deleteDatabase(dbName)
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(dbName)
+                .callback(object : SupportSQLiteOpenHelper.Callback(7) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE poi_custom_name (placeId TEXT PRIMARY KEY NOT NULL, customName TEXT NOT NULL)"
+                        )
+                        db.execSQL("INSERT INTO poi_custom_name VALUES ('node/1', 'Our Playground')")
+                        db.execSQL("INSERT INTO poi_custom_name VALUES ('node/2', 'Grandma Park')")
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {
+                        // Not exercised here — the version-7 schema above is created fresh each run.
+                    }
+                })
+                .build()
+        )
+
+        try {
+            val db = helper.writableDatabase
+
+            FreizeitDatabase.MIGRATION_7_8.migrate(db)
+
+            db.query("SELECT placeId, name, category, street, openingHours, hidden FROM poi_override ORDER BY placeId")
+                .use { cursor ->
+                    assertEquals(2, cursor.count)
+                    cursor.moveToFirst()
+                    assertEquals("node/1", cursor.getString(0))
+                    assertEquals("Our Playground", cursor.getString(1))
+                    assertTrue(cursor.isNull(2) && cursor.isNull(3) && cursor.isNull(4))
+                    assertEquals(0, cursor.getInt(5))
+                    cursor.moveToNext()
+                    assertEquals("Grandma Park", cursor.getString(1))
+                }
+            db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'poi_custom_name'").use { cursor ->
+                assertEquals(0, cursor.count)
+            }
+        } finally {
+            helper.close()
+            context.deleteDatabase(dbName)
+        }
+    }
 }

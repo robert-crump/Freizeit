@@ -12,6 +12,7 @@ import com.google.android.gms.location.LocationServices
 import com.example.freizeit.BuildConfig
 import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiDao
+import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.findPoiById
@@ -50,7 +51,8 @@ class GeofenceSyncManager(
     private val context: Context,
     private val geofenceState: GeofenceStateRepository,
     private val poiDao: PoiDao,
-    private val customPoiDao: CustomPoiDao
+    private val customPoiDao: CustomPoiDao,
+    private val overrideDao: PoiOverrideDao
 ) {
 
     private val geofencingClient = LocationServices.getGeofencingClient(context)
@@ -132,7 +134,7 @@ class GeofenceSyncManager(
     private suspend fun replaySelection(currentFavorites: List<Poi>): List<Poi> {
         val selectedIds = geofenceState.getSelectedFavoriteIds()
         if (selectedIds.isEmpty()) return currentFavorites.take(MAX_GEOFENCES)
-        return selectedIds.mapNotNull { findPoiById(poiDao, customPoiDao, it) }
+        return selectedIds.mapNotNull { findPoiById(poiDao, customPoiDao, overrideDao, it) }
     }
 
     /**

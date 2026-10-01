@@ -6,6 +6,7 @@ import com.example.freizeit.domain.suggestion.SuggestionFixture.favoriteAll
 import com.example.freizeit.domain.suggestion.SuggestionFixture.kiosk
 import com.example.freizeit.domain.suggestion.SuggestionFixture.saturdayAt
 import com.example.freizeit.domain.suggestion.SuggestionFixture.sunny
+import com.example.freizeit.util.LastVisit
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -42,7 +43,7 @@ class SuggestionVisitFrequencyTest {
 
         val cafeSuggestion = ranked.first { it.poi.id == cafe.id }
         val kioskSuggestion = ranked.first { it.poi.id == kiosk.id }
-        assertEquals("5 days ago", cafeSuggestion.lastVisit)
+        assertEquals(LastVisit.format(nowMillis - 5 * dayMillis, now), cafeSuggestion.lastVisit)
         assertTrue(cafeSuggestion.score > kioskSuggestion.score)
         assertTrue(cafeSuggestion.score > baselineScore())
     }

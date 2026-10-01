@@ -8,8 +8,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.dao.CustomPoiDao
-import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
+import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.checkIn
@@ -56,7 +56,6 @@ data class HomeUiState(
     /** The configured suggestion radius, for the "no suggestions within X km" hint. */
     val radiusKm: Int = SettingsRepository.DEFAULT_RADIUS_KM,
     val verdicts: Map<String, Verdict> = emptyMap(),
-    val customNames: Map<String, String> = emptyMap(),
     /** True until the first Room/weather emission lands — drives the loading spinner. */
     val isLoading: Boolean = true
 )
@@ -66,7 +65,7 @@ class HomeViewModel(
     private val poiDao: PoiDao,
     private val verdictDao: VerdictDao,
     private val weatherRepository: WeatherRepository,
-    private val poiCustomNameDao: PoiCustomNameDao,
+    private val poiOverrideDao: PoiOverrideDao,
     private val visitDao: VisitDao,
     private val settingsRepository: SettingsRepository,
     private val customPoiDao: CustomPoiDao
@@ -87,28 +86,27 @@ class HomeViewModel(
         val candidatePois: List<Poi>,
         val hasPois: Boolean,
         val verdicts: Map<String, Verdict>,
-        val customNames: Map<String, String>,
         val visits: Map<String, List<Long>>
     )
 
-    private val poisVerdictsAndNames = combine(
-        observeAllByVerdictValues(poiDao, customPoiDao, listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)),
+    private val poisAndVerdicts = combine(
+        observeAllByVerdictValues(
+            poiDao, customPoiDao, poiOverrideDao, listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO)
+        ),
         poiDao.observeCount(),
         verdictDao.observeAll(),
-        poiCustomNameDao.observeAll(),
         visitDao.observeAll()
-    ) { candidatePois, poiCount, verdicts, customNames, visits ->
+    ) { candidatePois, poiCount, verdicts, visits ->
         PoiSlice(
             candidatePois = candidatePois,
             hasPois = poiCount > 0,
             verdicts = verdicts.associateBy { it.placeId },
-            customNames = customNames.associate { it.placeId to it.customName },
             visits = visits.groupBy({ it.placeId }, { it.visitedAt })
         )
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
-        poisVerdictsAndNames,
+        poisAndVerdicts,
         weatherRepository.snapshot,
         location,
         settingsRepository.suggestionRadiusKm
@@ -130,7 +128,6 @@ class HomeViewModel(
             hasVerdictedPlacesWithinRadius = slice.candidatePois.isEmpty() || candidatesInRange.isNotEmpty(),
             radiusKm = radiusKm,
             verdicts = slice.verdicts,
-            customNames = slice.customNames,
             isLoading = false
         )
     }
@@ -185,7 +182,7 @@ class HomeViewModel(
                     app.container.database.poiDao(),
                     app.container.database.verdictDao(),
                     app.container.weatherRepository,
-                    app.container.database.poiCustomNameDao(),
+                    app.container.database.poiOverrideDao(),
                     app.container.database.visitDao(),
                     app.container.settingsRepository,
                     app.container.database.customPoiDao()

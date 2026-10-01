@@ -42,14 +42,13 @@ object SuggestionWidgetContent {
     /** Dots and larger text only from 2 cells tall — at 1 cell the two text lines fill it. */
     fun isTall(size: DpSize): Boolean = size.height >= TALL_SIZE.height
 
-    /** The deck's top [maxRows] as display-ready cards. [customNames] and the formatters mirror
+    /** The deck's top [maxRows] as display-ready cards. The formatters mirror
      *  how Home itself resolves a display name ([com.example.freizeit.ui.map.displayName]),
      *  distance ([com.example.freizeit.util.GeoDistance.format]) and travel time
      *  ([com.example.freizeit.ui.common.DurationBadge]) — plain functions here since those
      *  call-sites are `@Composable`. */
     fun rows(
         deck: List<Suggestion>,
-        customNames: Map<String, String>,
         maxRows: Int,
         unnamedLabel: (category: String) -> String,
         distanceLabel: (meters: Double) -> String,
@@ -59,7 +58,7 @@ object SuggestionWidgetContent {
             val poi = suggestion.poi
             SuggestionWidgetRow(
                 poiId = poi.id,
-                name = customNames[poi.id] ?: poi.name ?: unnamedLabel(poi.category),
+                name = poi.name ?: unnamedLabel(poi.category),
                 category = poi.category,
                 detailLabel = detailLabel(suggestion, distanceLabel, travelLabel)
             )
@@ -84,7 +83,6 @@ object SuggestionWidgetContent {
         deck: List<Suggestion>,
         hasVerdictedPlaces: Boolean,
         hasVerdictedPlacesWithinRadius: Boolean,
-        customNames: Map<String, String>,
         noFavoritesHint: String,
         noSuggestionsWithinRadiusHint: String,
         unnamedLabel: (category: String) -> String,
@@ -95,7 +93,7 @@ object SuggestionWidgetContent {
         !hasVerdictedPlacesWithinRadius ->
             SuggestionWidgetState.Hint(noSuggestionsWithinRadiusHint, HintDestination.SETTINGS)
         else -> SuggestionWidgetState.Rows(
-            rows(deck, customNames, CAROUSEL_SIZE, unnamedLabel, distanceLabel, travelLabel)
+            rows(deck, CAROUSEL_SIZE, unnamedLabel, distanceLabel, travelLabel)
         )
     }
 

@@ -23,7 +23,7 @@ class GeofenceReregisterWorker(context: Context, params: WorkerParameters) : Cor
         val container = (applicationContext as FreizeitApplication).container
         container.geofenceSyncManager.forceReregister(
             container.settingsRepository.autoCheckInEnabled.first(),
-            allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao())
+            allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
         )
         return Result.success()
     }

@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,10 +62,15 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
+import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.buildPoiOverride
 import com.example.freizeit.data.entity.isCustomPoiId
+import com.example.freizeit.data.entity.toPoi
+import com.example.freizeit.domain.geocoding.GeocodeResult
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.theme.LocalDarkTheme
+import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,41 +91,43 @@ fun MapScreen(
     val focusRequest by viewModel.focusRequest.collectAsStateWithLifecycle()
     val addPoiStep by viewModel.addPoiStep.collectAsStateWithLifecycle()
     val addPoiCenter by viewModel.addPoiCenter.collectAsStateWithLifecycle()
-    val editingCustomPoi by viewModel.editingCustomPoi.collectAsStateWithLifecycle()
+    val editTarget by viewModel.editTarget.collectAsStateWithLifecycle()
     val addressSearchState by viewModel.addressSearchState.collectAsStateWithLifecycle()
     val pendingAddressPrefill by viewModel.pendingAddressPrefill.collectAsStateWithLifecycle()
-    val pendingDeleteCustomPoiId by viewModel.pendingDeleteCustomPoiId.collectAsStateWithLifecycle()
+    val pendingRemovalId by viewModel.pendingRemovalId.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Delete-with-undo (#47): the marker/sheet vanish the instant requestDeleteCustomPoi runs
-    // (see poisVerdictsAndNames' pending-delete filter), but the actual row commit waits on this
+    // Delete/hide-with-undo (#47, #73): the marker/sheet vanish the instant requestRemovePlace
+    // runs (see poisAndVerdicts' pending-removal filter), but the actual write waits on this
     // Snackbar — timing out or being swiped away commits it, tapping Undo just clears the pending
-    // id back on the ViewModel. pendingDeleteName is captured at request time (the sheet/state
-    // that named it is already gone by the time the Snackbar result comes back).
+    // id back on the ViewModel. pendingRemovalName is captured at request time (the form that
+    // named it is already gone by the time the Snackbar result comes back).
     val deleteSnackbarHostState = remember { SnackbarHostState() }
-    var pendingDeleteName by remember { mutableStateOf("") }
+    var pendingRemovalName by remember { mutableStateOf("") }
     val deletedTemplate = stringResource(R.string.detail_custom_poi_deleted_snackbar)
+    val hiddenTemplate = stringResource(R.string.detail_place_hidden_snackbar)
     val undoLabel = stringResource(R.string.detail_custom_poi_undo)
-    LaunchedEffect(pendingDeleteCustomPoiId) {
-        if (pendingDeleteCustomPoiId == null) return@LaunchedEffect
+    LaunchedEffect(pendingRemovalId) {
+        val removalId = pendingRemovalId ?: return@LaunchedEffect
+        val template = if (isCustomPoiId(removalId)) deletedTemplate else hiddenTemplate
         val result = deleteSnackbarHostState.showSnackbar(
-            message = String.format(deletedTemplate, pendingDeleteName),
+            message = String.format(template, pendingRemovalName),
             actionLabel = undoLabel,
             // Material3 defaults duration to Indefinite whenever actionLabel is non-null — without
             // this, "timing out" (per the comment above) would never actually happen on its own.
             duration = SnackbarDuration.Long
         )
         if (result == SnackbarResult.ActionPerformed) {
-            viewModel.undoDeleteCustomPoi()
+            viewModel.undoRemovePlace()
         } else {
-            viewModel.commitPendingDelete()
+            viewModel.commitPendingRemoval()
         }
     }
     // Covers "navigates away" from #47's spec — if the user leaves Map entirely (another bottom
     // nav tab) before the Snackbar above resolves on its own, commit whatever's still pending
     // rather than leaving it in limbo indefinitely. No-op if nothing is pending.
     DisposableEffect(Unit) {
-        onDispose { viewModel.commitPendingDelete() }
+        onDispose { viewModel.commitPendingRemoval() }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -178,7 +186,6 @@ fun MapScreen(
             pois = state.pois,
             location = state.location,
             onPoiClick = viewModel::selectPoi,
-            customNames = state.customNames,
             recenterRequest = recenterRequest,
             focusTarget = focusTarget,
             focusRequest = focusRequest,
@@ -265,51 +272,132 @@ fun MapScreen(
     if (addPoiStep == AddPoiStep.FORM) {
         val center = addPoiCenter
         if (center != null) {
-            AddPoiForm(
-                centerLatLon = center,
-                findNearbyDuplicate = { lat, lon, cat ->
-                    viewModel.findNearbyDuplicate(lat, lon, cat, excludeId = editingCustomPoi?.id)
-                },
-                onDismiss = viewModel::cancelAddPoi,
-                onSave = viewModel::saveCustomPoi,
-                initial = editingCustomPoi,
-                prefillAddress = pendingAddressPrefill
+            PlaceFormHost(
+                target = editTarget,
+                center = center,
+                prefillAddress = pendingAddressPrefill,
+                viewModel = viewModel,
+                onRemove = { id, name ->
+                    pendingRemovalName = name
+                    viewModel.requestRemovePlace(id)
+                }
             )
         }
     }
 
-    selectedPoi?.let { item ->
-        val isCustomPoi = isCustomPoiId(item.poi.id)
-        // Computed here (composable scope) rather than inside onDelete's click lambda: displayName
-        // falls back to a stringResource, which can't be called outside composition.
-        val displayName = item.poi.displayName(state.customNames[item.poi.id])
+    selectedPoi?.let { selected ->
+        // The live entry, so values saved in the edit form a moment ago show up (#73). Falls
+        // back to the selection itself until a just-added place reaches the list.
+        val poi = state.allPois.firstOrNull { it.id == selected.poi.id } ?: selected.poi
+        val item = selected.copy(poi = poi)
+        // Computed here (composable scope) rather than inside onCheckIn's click lambda:
+        // displayName falls back to a stringResource, which can't be called outside composition.
+        val displayName = poi.displayName()
         PlaceDetailSheet(
             item = item,
-            verdict = state.verdicts[item.poi.id]?.value,
-            onVerdictChange = { viewModel.setVerdict(item.poi, it) },
-            customName = state.customNames[item.poi.id],
-            onCustomNameChange = { viewModel.setCustomName(item.poi.id, it) },
+            verdict = state.verdicts[poi.id]?.value,
+            onVerdictChange = { viewModel.setVerdict(poi, it) },
             lastVisit = selectedPoiLastVisit,
-            onEdit = if (isCustomPoi) {
-                { viewModel.startEditCustomPoi(item.poi) }
-            } else {
-                null
-            },
-            onDelete = if (isCustomPoi) {
-                {
-                    pendingDeleteName = displayName
-                    viewModel.requestDeleteCustomPoi(item.poi.id)
-                }
-            } else {
-                null
-            },
+            onEdit = { viewModel.startEditPlace(poi) },
             onCheckIn = {
-                onSheetCheckIn(item.poi, displayName) { viewModel.selectPoi(null) }
+                onSheetCheckIn(poi, displayName) { viewModel.selectPoi(null) }
             },
             onDismiss = { viewModel.selectPoi(null) }
         )
     }
 }
+
+/**
+ * Hosts [PlaceEditForm] for whichever place [target] is (#73): null adds a new custom place at
+ * [center] (seeded from the address search's [prefillAddress], #46), a custom place rewrites its
+ * row, an OSM place saves its differences from OSM as an override. Keyed by the place id, so one
+ * place's unsaved form state never carries over into another's.
+ */
+@Composable
+private fun PlaceFormHost(
+    target: PlaceEditTarget?,
+    center: LatLon,
+    prefillAddress: GeocodeResult?,
+    viewModel: MapViewModel,
+    onRemove: (id: String, name: String) -> Unit
+) {
+    key(target?.id) {
+        when (target) {
+            null -> PlaceEditForm(
+                isNew = true,
+                initial = PlaceFormValues(
+                    street = prefillAddress?.street.orEmpty(),
+                    housenumber = prefillAddress?.housenumber.orEmpty(),
+                    postcode = prefillAddress?.postcode.orEmpty(),
+                    city = prefillAddress?.city.orEmpty()
+                ),
+                centerLatLon = center,
+                onClose = viewModel::closePlaceForm,
+                onSave = { viewModel.saveCustomPoi(it.toCustomPoi(initial = null, center)) },
+                findNearbyDuplicate = { category -> viewModel.findNearbyDuplicate(center.lat, center.lon, category) }
+            )
+            is PlaceEditTarget.Custom -> {
+                val name = target.place.toPoi().displayName()
+                PlaceEditForm(
+                    isNew = false,
+                    initial = target.place.toFormValues(),
+                    centerLatLon = center,
+                    onClose = viewModel::closePlaceForm,
+                    onSave = { viewModel.saveCustomPoi(it.toCustomPoi(initial = target.place, center)) },
+                    removal = PlaceRemoval.DELETE,
+                    placeName = name,
+                    onRemove = { onRemove(target.id, name) },
+                    findNearbyDuplicate = { category ->
+                        viewModel.findNearbyDuplicate(center.lat, center.lon, category, excludeId = target.id)
+                    }
+                )
+            }
+            is PlaceEditTarget.Osm -> {
+                val name = target.effective.displayName()
+                PlaceEditForm(
+                    isNew = false,
+                    initial = target.effective.toFormValues(),
+                    centerLatLon = center,
+                    onClose = viewModel::closePlaceForm,
+                    onSave = { values ->
+                        viewModel.saveOverride(
+                            target.id,
+                            buildPoiOverride(
+                                osm = target.osm,
+                                name = values.name,
+                                category = values.category ?: target.osm.category,
+                                street = values.street,
+                                housenumber = values.housenumber,
+                                postcode = values.postcode,
+                                city = values.city,
+                                openingHours = values.openingHours
+                            )
+                        )
+                    },
+                    osmValues = target.osm.toFormValues(),
+                    removal = PlaceRemoval.HIDE,
+                    placeName = name,
+                    onRemove = { onRemove(target.id, name) }
+                )
+            }
+        }
+    }
+}
+
+/** The custom place a form save resolves to; [initial] keeps an edited place's id (#47). */
+private fun PlaceFormValues.toCustomPoi(initial: CustomPoi?, center: LatLon): CustomPoi =
+    buildCustomPoiCandidate(
+        initial = initial,
+        category = category ?: initial?.category.orEmpty(),
+        lat = center.lat,
+        lon = center.lon,
+        name = name,
+        openingHours = openingHours.ifBlank { null },
+        street = street.ifBlank { null },
+        housenumber = housenumber.ifBlank { null },
+        postcode = postcode.ifBlank { null },
+        city = city.ifBlank { null }
+    )
 
 /** Matches FilterChipDefaults' own default outlined-chip border width. */
 private val SEARCH_OVAL_BORDER_WIDTH = 1.dp

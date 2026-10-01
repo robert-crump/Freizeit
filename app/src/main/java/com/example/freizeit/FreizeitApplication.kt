@@ -53,7 +53,7 @@ class FreizeitApplication : Application() {
         applicationScope.launch(Dispatchers.IO) {
             combine(
                 container.settingsRepository.autoCheckInEnabled,
-                observeAllFavorites(container.database.poiDao(), container.database.customPoiDao())
+                observeAllFavorites(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
             ) { enabled, favorites -> enabled to favorites }
                 .distinctUntilChanged()
                 .collect { (enabled, favorites) ->

@@ -3,7 +3,7 @@ package com.example.freizeit.domain.geocoding
 /**
  * One Nominatim search hit (issue #46's address search), already reduced to what the add-POI
  * flow needs: a location to drop the pin at, plus the structured address fields
- * [com.example.freizeit.ui.map.AddPoiForm] autofills from — never the full Nominatim response
+ * [com.example.freizeit.ui.map.PlaceEditForm] autofills from — never the full Nominatim response
  * shape, so nothing outside [com.example.freizeit.data.geocoding.NominatimClient] needs to know
  * about it.
  */

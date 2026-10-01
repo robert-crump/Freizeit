@@ -34,7 +34,7 @@ class GeofenceBootReceiver : BroadcastReceiver() {
                 val container = app.container
                 container.geofenceSyncManager.sync(
                     container.settingsRepository.autoCheckInEnabled.first(),
-                    allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao())
+                    allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
                 )
             } finally {
                 pendingResult.finish()

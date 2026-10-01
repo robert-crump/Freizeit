@@ -1,9 +1,12 @@
 package com.example.freizeit.ui.map
 
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.PoiOverride
+import com.example.freizeit.data.entity.applyOverrides
 import com.example.freizeit.util.LatLon
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FilterAndSortTest {
@@ -99,12 +102,33 @@ class FilterAndSortTest {
     }
 
     @Test
-    fun `search matches a custom name even when the OSM name differs`() {
-        val result = filterAndSort(
-            pois, activeCategory = null, location = null, searchQuery = "hidden gem",
-            customNames = mapOf("node/3" to "Our Hidden Gem")
-        )
-        assertEquals(listOf("node/3"), result.map { it.poi.id })
+    fun `search matches a renamed place by its new name, not its OSM name`() {
+        val renamed = applyOverrides(pois, mapOf("node/1" to PoiOverride("node/1", name = "Our Hidden Gem")))
+
+        val byNewName = filterAndSort(renamed, activeCategory = null, location = null, searchQuery = "hidden gem")
+        val byOsmName = filterAndSort(renamed, activeCategory = null, location = null, searchQuery = "Bravo")
+
+        assertEquals(listOf("node/1"), byNewName.map { it.poi.id })
+        assertEquals(0, byOsmName.size)
+    }
+
+    @Test
+    fun `a recategorized place moves to its new category chip`() {
+        val original = pois.first { it.id == "node/3" }
+        val newCategory = if (original.category == "cafe") "park" else "cafe"
+        val recategorized = applyOverrides(pois, mapOf("node/3" to PoiOverride("node/3", category = newCategory)))
+
+        assertTrue(filterAndSort(recategorized, newCategory, location = null).any { it.poi.id == "node/3" })
+        assertTrue(filterAndSort(recategorized, original.category, location = null).none { it.poi.id == "node/3" })
+    }
+
+    @Test
+    fun `a hidden place is gone from search and chips`() {
+        val hidden = applyOverrides(pois, mapOf("node/3" to PoiOverride("node/3", hidden = true)))
+        val original = pois.first { it.id == "node/3" }
+
+        assertTrue(filterAndSort(hidden, original.category, location = null).none { it.poi.id == "node/3" })
+        assertTrue(hidden.none { it.id == "node/3" })
     }
 
     @Test

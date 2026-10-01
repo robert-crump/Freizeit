@@ -3,15 +3,17 @@ package com.example.freizeit.util
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
- * Formats a place's most recent check-in as a human-readable recency label, coarsening
- * precision the further back the visit was: exact day counts for the first week, then
- * week buckets, then calendar months, then calendar years. Day/week/month/year boundaries
- * are calendar-based (local date), not elapsed-hours math.
+ * Formats a place's most recent check-in (#73): "Today", "Yesterday", otherwise the date as
+ * `d. MMM yyyy` ("29. Sep 2026"). Day boundaries are calendar-based (local date), not
+ * elapsed-hours math. English month names, matching the app's English UI.
  */
 object LastVisit {
+
+    private val dateFormat = DateTimeFormatter.ofPattern("d. MMM yyyy", Locale.ENGLISH)
 
     /** Null input (never visited) returns null rather than a label. */
     fun format(
@@ -22,19 +24,10 @@ object LastVisit {
         if (lastVisitedAt == null) return null
         val visitDate = Instant.ofEpochMilli(lastVisitedAt).atZone(zone).toLocalDate()
         val today = now.toLocalDate()
-
-        val totalMonths = ChronoUnit.MONTHS.between(visitDate, today)
-        val totalDays = ChronoUnit.DAYS.between(visitDate, today)
-
         return when {
-            totalDays <= 0 -> "Today"
-            totalMonths < 1 && totalDays <= 7 -> "${plural(totalDays, "day")} ago"
-            totalMonths < 1 -> ">${plural(totalDays / 7, "week")} ago"
-            totalMonths < 12 -> "${plural(totalMonths, "month")} ago"
-            else -> ">${plural(ChronoUnit.YEARS.between(visitDate, today), "year")} ago"
+            !visitDate.isBefore(today) -> "Today"
+            visitDate == today.minusDays(1) -> "Yesterday"
+            else -> visitDate.format(dateFormat)
         }
     }
-
-    private fun plural(count: Long, unit: String): String =
-        if (count == 1L) "1 $unit" else "$count ${unit}s"
 }

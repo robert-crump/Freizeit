@@ -52,9 +52,19 @@
     <string name="add_poi_osm_attribution">© OpenStreetMap contributors</string>
     <!-- Edit/delete custom POI (issue #47) -->
     <string name="add_poi_edit_title">Edit place</string>
-    <string name="detail_custom_poi_edit">Edit place</string>
-    <string name="detail_custom_poi_delete">Delete</string>
+    <string name="detail_edit_place">Edit place</string>
     <string name="detail_custom_poi_deleted_snackbar">%1$s deleted</string>
+    <string name="detail_place_hidden_snackbar">%1$s hidden</string>
+    <string name="place_edit_reset_to_osm">Reset to OpenStreetMap</string>
+    <string name="place_edit_delete">Delete place</string>
+    <string name="place_edit_hide">Hide place</string>
+    <string name="place_edit_delete_confirm">Delete “%1$s”?</string>
+    <string name="place_edit_hide_confirm">Hide “%1$s”?</string>
+    <string name="place_edit_delete_action">Delete</string>
+    <string name="place_edit_hide_action">Hide</string>
+    <string name="place_edit_discard_title">Discard changes?</string>
+    <string name="place_edit_discard">Discard</string>
+    <string name="place_edit_keep_editing">Keep editing</string>
     <string name="detail_custom_poi_undo">Undo</string>
     <!-- Check-in -->
     <string name="checkin_empty_no_location">Waiting for your location to find nearby places.</string>
@@ -101,11 +111,6 @@
     <string name="duration_minutes">%1$d min</string>
     <string name="detail_verdict_favorite">Favorite</string>
     <string name="detail_verdict_want_to_go">Want to go</string>
-    <string name="detail_edit_name">Edit name</string>
-    <string name="detail_custom_name_title">Custom name</string>
-    <string name="detail_custom_name_label">Name</string>
-    <string name="detail_custom_name_save">Save</string>
-    <string name="detail_custom_name_cancel">Cancel</string>
     <!-- Settings: overflow menu -->
     <string name="settings_menu_description">More options</string>
     <string name="settings_menu_poi_breakdown">Place data breakdown</string>

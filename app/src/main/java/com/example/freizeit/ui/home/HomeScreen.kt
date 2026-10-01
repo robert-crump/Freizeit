@@ -139,7 +139,6 @@ fun HomeScreen(
                 )
                 else -> SuggestionPager(
                     deck = state.deck,
-                    customNames = state.customNames,
                     location = state.location,
                     onCheckIn = { suggestion -> pendingCheckIn = suggestion },
                     onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
@@ -155,7 +154,7 @@ fun HomeScreen(
 
     CheckInDateTimeFlow(
         pendingPoi = pendingCheckIn?.poi,
-        placeName = pendingCheckIn?.let { it.poi.displayName(state.customNames[it.poi.id]) } ?: "",
+        placeName = pendingCheckIn?.let { it.poi.displayName() } ?: "",
         snackbarHostState = snackbarHostState,
         onDismiss = { pendingCheckIn = null },
         onConfirmed = { poi, visitedAt -> viewModel.checkIn(poi, visitedAt) },
@@ -195,7 +194,6 @@ private class DeckAnchor {
 @Composable
 private fun SuggestionPager(
     deck: List<Suggestion>,
-    customNames: Map<String, String>,
     location: LatLon?,
     onCheckIn: (Suggestion) -> Unit,
     onRemoveVerdict: (Suggestion) -> Unit,
@@ -270,7 +268,6 @@ private fun SuggestionPager(
         ) {
             SuggestionCard(
                 suggestion = entry,
-                customName = customNames[entry.poi.id],
                 location = location,
                 // A peeking neighbor's partly visible buttons do nothing; swipe it in first.
                 onCheckIn = { if (isCurrent) onCheckIn(entry) },
@@ -361,7 +358,6 @@ private const val HEART_ICON_END_NUDGE_DP = 12
 @Composable
 private fun SuggestionCard(
     suggestion: Suggestion,
-    customName: String?,
     location: LatLon?,
     onCheckIn: () -> Unit,
     onRemoveVerdict: () -> Unit,
@@ -383,7 +379,7 @@ private fun SuggestionCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = poi.displayName(customName),
+                        text = poi.displayName(),
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.weight(1f)
                     )

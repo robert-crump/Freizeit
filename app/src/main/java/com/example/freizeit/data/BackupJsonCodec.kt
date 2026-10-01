@@ -1,7 +1,7 @@
 package com.example.freizeit.data
 
 import com.example.freizeit.data.entity.CustomPoi
-import com.example.freizeit.data.entity.PoiCustomName
+import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
@@ -17,13 +17,15 @@ class BackupParseException(message: String, cause: Throwable? = null) : Exceptio
 data class BackupData(
     val exportedAt: Long,
     val verdicts: List<Verdict>,
-    val customNames: List<PoiCustomName>,
+    val overrides: List<PoiOverride>,
     val customPois: List<CustomPoi> = emptyList()
 )
 
 /**
  * The app's own backup format for the only irreplaceable data: verdicts
- * (favorites among them), custom POI names, and user-added custom places
+ * (favorites among them), the user's edits to places (`poiOverrides`, #73; files
+ * written before #73 carry name-only `customNames` instead, read as name
+ * overrides), and user-added custom places
  * (issue #45) — unlike OSM `poi` rows, `custom_poi` has no other source of
  * truth to regenerate from, so it's backed up here rather than excluded.
  * Parsed defensively like [PoiJsonParser] since the file can be hand-edited
@@ -55,13 +57,20 @@ object BackupJsonCodec {
             }
         )
         root.add(
-            "customNames",
+            "poiOverrides",
             JsonArray().apply {
-                data.customNames.forEach { c ->
+                data.overrides.forEach { o ->
                     add(
                         JsonObject().apply {
-                            addProperty("placeId", c.placeId)
-                            addProperty("customName", c.customName)
+                            addProperty("placeId", o.placeId)
+                            addProperty("name", o.name)
+                            addProperty("category", o.category)
+                            addProperty("street", o.street)
+                            addProperty("housenumber", o.housenumber)
+                            addProperty("postcode", o.postcode)
+                            addProperty("city", o.city)
+                            addProperty("openingHours", o.openingHours)
+                            addProperty("hidden", o.hidden)
                         }
                     )
                 }
@@ -110,7 +119,12 @@ object BackupJsonCodec {
         return BackupData(
             exportedAt = exportedAt,
             verdicts = obj.array("verdicts").mapIndexed { i, el -> parseVerdict(el, i) },
-            customNames = obj.array("customNames").mapIndexed { i, el -> parseCustomName(el, i) },
+            // A pre-#73 file's custom names become name-only overrides; an override for the
+            // same place wins.
+            overrides = (
+                obj.array("customNames").mapIndexed { i, el -> parseCustomName(el, i) } +
+                    obj.array("poiOverrides").mapIndexed { i, el -> parseOverride(el, i) }
+                ).associateBy { it.placeId }.values.toList(),
             customPois = obj.array("customPois").mapIndexed { i, el -> parseCustomPoi(el, i) }
         )
     }
@@ -135,12 +149,29 @@ object BackupJsonCodec {
         )
     }
 
-    private fun parseCustomName(element: JsonElement, index: Int): PoiCustomName {
+    private fun parseCustomName(element: JsonElement, index: Int): PoiOverride {
         if (!element.isJsonObject) throw BackupParseException("customNames[$index] is not an object")
         val o = element.asJsonObject
-        return PoiCustomName(
+        return PoiOverride(
             placeId = o.requiredString("placeId", "customNames", index),
-            customName = o.requiredString("customName", "customNames", index)
+            name = o.requiredString("customName", "customNames", index)
+        )
+    }
+
+    private fun parseOverride(element: JsonElement, index: Int): PoiOverride {
+        if (!element.isJsonObject) throw BackupParseException("poiOverrides[$index] is not an object")
+        val o = element.asJsonObject
+        val hidden = o.get("hidden")
+        return PoiOverride(
+            placeId = o.requiredString("placeId", "poiOverrides", index),
+            name = o.optString("name"),
+            category = o.optString("category"),
+            street = o.optString("street"),
+            housenumber = o.optString("housenumber"),
+            postcode = o.optString("postcode"),
+            city = o.optString("city"),
+            openingHours = o.optString("openingHours"),
+            hidden = hidden != null && hidden.isJsonPrimitive && hidden.asJsonPrimitive.isBoolean && hidden.asBoolean
         )
     }
 

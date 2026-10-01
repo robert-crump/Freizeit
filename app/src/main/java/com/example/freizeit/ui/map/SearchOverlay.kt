@@ -100,15 +100,14 @@ fun SearchOverlay(
 
     // Cheap in-memory filter over all POIs (ignores whatever layer filter was active before
     // opening search) — no debounce, since the map isn't redrawing off this list.
-    val results = remember(query, state.allPois, state.location, state.customNames) {
+    val results = remember(query, state.allPois, state.location) {
         if (query.trim().length >= SEARCH_MIN_LENGTH) {
             filterAndSort(
                 pois = state.allPois,
                 activeCategory = null,
                 location = state.location,
                 verdictIds = null,
-                searchQuery = query,
-                customNames = state.customNames
+                searchQuery = query
             )
         } else {
             emptyList()
@@ -176,7 +175,6 @@ fun SearchOverlay(
                         itemsIndexed(results, key = { _, item -> item.poi.id }) { index, item ->
                             SearchResultRow(
                                 item = item,
-                                customNames = state.customNames,
                                 onClick = {
                                     viewModel.focusOn(LatLon(item.poi.lat, item.poi.lon))
                                     viewModel.selectPoi(item)
@@ -204,7 +202,6 @@ fun SearchOverlay(
 @Composable
 private fun SearchResultRow(
     item: PoiWithDistance,
-    customNames: Map<String, String>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -250,7 +247,7 @@ private fun SearchResultRow(
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = item.poi.displayName(customNames[item.poi.id]),
+                text = item.poi.displayName(),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,

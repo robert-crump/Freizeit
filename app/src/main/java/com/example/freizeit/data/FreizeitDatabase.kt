@@ -8,23 +8,23 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.ImportInfoDao
-import com.example.freizeit.data.dao.PoiCustomNameDao
 import com.example.freizeit.data.dao.PoiDao
+import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.entity.Poi
-import com.example.freizeit.data.entity.PoiCustomName
+import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.Visit
 
 @Database(
     entities = [
-        Poi::class, Verdict::class, ImportInfo::class, PoiCustomName::class,
+        Poi::class, Verdict::class, ImportInfo::class, PoiOverride::class,
         Visit::class, CustomPoi::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class FreizeitDatabase : RoomDatabase() {
@@ -32,7 +32,7 @@ abstract class FreizeitDatabase : RoomDatabase() {
     abstract fun poiDao(): PoiDao
     abstract fun verdictDao(): VerdictDao
     abstract fun importInfoDao(): ImportInfoDao
-    abstract fun poiCustomNameDao(): PoiCustomNameDao
+    abstract fun poiOverrideDao(): PoiOverrideDao
     abstract fun visitDao(): VisitDao
     abstract fun customPoiDao(): CustomPoiDao
 
@@ -148,6 +148,33 @@ abstract class FreizeitDatabase : RoomDatabase() {
             }
         }
 
+        /** Generalizes poi_custom_name into poi_override (#73): every custom name carries over as a
+         *  name-only override, then the old table is dropped. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `poi_override` (
+                        `placeId` TEXT NOT NULL,
+                        `name` TEXT,
+                        `category` TEXT,
+                        `street` TEXT,
+                        `housenumber` TEXT,
+                        `postcode` TEXT,
+                        `city` TEXT,
+                        `openingHours` TEXT,
+                        `hidden` INTEGER NOT NULL,
+                        PRIMARY KEY(`placeId`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "INSERT INTO poi_override (placeId, name, hidden) SELECT placeId, customName, 0 FROM poi_custom_name"
+                )
+                db.execSQL("DROP TABLE IF EXISTS `poi_custom_name`")
+            }
+        }
+
         fun build(context: Context): FreizeitDatabase =
             Room.databaseBuilder(
                 context.applicationContext,
@@ -156,7 +183,7 @@ abstract class FreizeitDatabase : RoomDatabase() {
             )
                 .addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
-                    MIGRATION_6_7
+                    MIGRATION_6_7, MIGRATION_7_8
                 )
                 .build()
     }

@@ -91,8 +91,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
     private suspend fun handleCheckIn(app: FreizeitApplication, intent: Intent) {
         val placeId = intent.getStringExtra(EXTRA_PLACE_ID) ?: return
-        val poi = findPoiById(app.container.database.poiDao(), app.container.database.customPoiDao(), placeId)
-            ?: return
+        val poi = findPoiById(
+            app.container.database.poiDao(),
+            app.container.database.customPoiDao(),
+            app.container.database.poiOverrideDao(),
+            placeId
+        ) ?: return
         app.container.database.visitDao().checkIn(poi, source = Visit.SOURCE_NOTIFICATION)
         cancelNotification(app)
     }
@@ -109,11 +113,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         }
         val poiDao = app.container.database.poiDao()
         val customPoiDao = app.container.database.customPoiDao()
+        val overrideDao = app.container.database.poiOverrideDao()
         val visitDao = app.container.database.visitDao()
         val now = System.currentTimeMillis()
 
         val candidates = dwellingPlaceIds.mapNotNull { placeId ->
-            findPoiById(poiDao, customPoiDao, placeId)?.let { poi -> GeofenceCandidate(poi.id, poi.lat, poi.lon) }
+            findPoiById(poiDao, customPoiDao, overrideDao, placeId)?.let { poi -> GeofenceCandidate(poi.id, poi.lat, poi.lon) }
         }
         val coolingDown = candidates
             .filter { isCoolingDown(visitDao.lastVisitedAt(it.placeId), now) }
@@ -130,7 +135,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             cancelNotification(app)
             return
         }
-        val poi = findPoiById(poiDao, customPoiDao, closest.placeId) ?: return
+        val poi = findPoiById(poiDao, customPoiDao, overrideDao, closest.placeId) ?: return
 
         // Play Services can deliver a DWELL broadcast well after the fact under Doze/standby
         // batching (issue #42) — by the time it arrives the device may already be elsewhere, so

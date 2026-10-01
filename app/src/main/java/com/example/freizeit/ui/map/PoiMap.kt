@@ -77,7 +77,6 @@ fun PoiMap(
     pois: List<PoiWithDistance>,
     location: LatLon?,
     onPoiClick: (PoiWithDistance) -> Unit,
-    customNames: Map<String, String> = emptyMap(),
     recenterRequest: Int = 0,
     focusTarget: LatLon? = null,
     focusRequest: Int = 0,

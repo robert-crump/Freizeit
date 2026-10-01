@@ -9,13 +9,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiDao
+import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
 import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
-import com.example.freizeit.data.entity.toPoi
 import com.example.freizeit.data.repository.LocationRepository
+import com.example.freizeit.data.repository.observeAllPlaces
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +89,7 @@ class CheckInViewModel(
     private val locationRepository: LocationRepository,
     poiDao: PoiDao,
     customPoiDao: CustomPoiDao,
+    poiOverrideDao: PoiOverrideDao,
     verdictDao: VerdictDao,
     private val visitDao: VisitDao
 ) : ViewModel() {
@@ -99,12 +101,9 @@ class CheckInViewModel(
     private val searchQuery = MutableStateFlow("")
     private val showAllSearchResults = MutableStateFlow(false)
 
-    // custom_poi rows are folded in here (projected via toPoi()) so favoritesNearby and search
-    // give custom POIs the same treatment as OSM ones (#48) — mirrors MapViewModel's identical
-    // merge for the Map screen's own POI list.
-    private val allPois = combine(poiDao.observeAll(), customPoiDao.observeAll()) { pois, customPois ->
-        pois + customPois.map { it.toPoi() }
-    }
+    // OSM and custom places with the user's edits applied (#48, #73), so favoritesNearby and
+    // search match the same effective names the Map shows.
+    private val allPois = observeAllPlaces(poiDao, customPoiDao, poiOverrideDao)
 
     val uiState: StateFlow<CheckInUiState> = combine(
         allPois,
@@ -179,6 +178,7 @@ class CheckInViewModel(
                     app.container.locationRepository,
                     app.container.database.poiDao(),
                     app.container.database.customPoiDao(),
+                    app.container.database.poiOverrideDao(),
                     app.container.database.verdictDao(),
                     app.container.database.visitDao()
                 )
