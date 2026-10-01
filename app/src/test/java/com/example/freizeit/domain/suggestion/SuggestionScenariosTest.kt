@@ -215,8 +215,8 @@ class SuggestionScenariosTest {
     @Test
     fun `travel minutes carries the bike estimate for the actual distance`() {
         val ranked = SuggestionEngine.rankAll(allPois, ctx(saturdayAt(10), sunny(saturdayAt(10))))
-        // ~800 m x 1.3 detour / 250 m per min ≈ 4 min
-        assertEquals(4, ranked.travelMinutesOf(cafe))
+        // ~800 m x 1.3 detour / 166.7 m per min (10 km/h for short rides) ≈ 6 min
+        assertEquals(6, ranked.travelMinutesOf(cafe))
     }
 
     @Test

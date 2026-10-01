@@ -17,7 +17,13 @@ object TravelDuration {
     private const val DETOUR_FACTOR = 1.3
 
     private const val WALK_METERS_PER_MINUTE = 4_000.0 / 60.0 // 4 km/h: walking with kids
-    private const val BIKE_METERS_PER_MINUTE = 250.0 // ~15 km/h family biking pace
+
+    /** Bike: a slow start for the first [BIKE_SLOW_METERS] of road (setting off, junctions, short
+     *  hops rarely reach cruising pace), family cruising pace after — gradual, so a longer ride
+     *  never estimates shorter than a nearer one. */
+    private const val BIKE_SLOW_METERS = 3_000.0
+    private const val BIKE_SLOW_METERS_PER_MINUTE = 10_000.0 / 60.0 // 10 km/h
+    private const val BIKE_CRUISE_METERS_PER_MINUTE = 250.0 // 15 km/h family biking pace
 
     /** Car: town traffic for the first [CAR_TOWN_METERS] of road, country road/autobahn after. */
     private const val CAR_TOWN_METERS = 10_000.0
@@ -33,8 +39,12 @@ object TravelDuration {
     fun walkMinutes(distanceMeters: Double): Int =
         minutes(distanceMeters * DETOUR_FACTOR / WALK_METERS_PER_MINUTE)
 
-    fun bikeMinutes(distanceMeters: Double): Int =
-        minutes(distanceMeters * DETOUR_FACTOR / BIKE_METERS_PER_MINUTE)
+    fun bikeMinutes(distanceMeters: Double): Int {
+        val road = distanceMeters * DETOUR_FACTOR
+        val slow = road.coerceAtMost(BIKE_SLOW_METERS)
+        val cruise = (road - BIKE_SLOW_METERS).coerceAtLeast(0.0)
+        return minutes(slow / BIKE_SLOW_METERS_PER_MINUTE + cruise / BIKE_CRUISE_METERS_PER_MINUTE)
+    }
 
     fun carMinutes(distanceMeters: Double): Int {
         val road = distanceMeters * DETOUR_FACTOR

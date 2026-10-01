@@ -18,8 +18,21 @@ class TravelDurationTest {
     }
 
     @Test
-    fun `bike - 15 km per hour`() {
-        assertEquals(26, TravelDuration.bikeMinutes(5_000.0)) // 6500 m / 250 m/min
+    fun `bike - 10 km per hour within the first 3 km of road`() {
+        assertEquals(9, TravelDuration.bikeMinutes(1_200.0)) // 1560 m / 166.7 m/min = 9.4
+        assertEquals(18, TravelDuration.bikeMinutes(3_000.0 / 1.3)) // exactly 3 km of road
+    }
+
+    @Test
+    fun `bike - 15 km per hour for the road beyond 3 km`() {
+        // 6.5 km of road: 3 km at 10 km/h (18 min) + 3.5 km at 15 km/h (14 min)
+        assertEquals(32, TravelDuration.bikeMinutes(5_000.0))
+    }
+
+    @Test
+    fun `bike - a longer ride never estimates shorter`() {
+        val minutes = (0..200).map { TravelDuration.bikeMinutes(it * 50.0) }
+        assertEquals(minutes.sorted(), minutes)
     }
 
     @Test
@@ -49,24 +62,24 @@ class TravelDurationTest {
     @Test
     fun `walk over 20 minutes and bike under 25 - bike alone`() {
         assertEquals(listOf(BIKE), modes(1_200.0)) // walk 23, bike 6
-        assertEquals(listOf(BIKE), modes(4_600.0)) // bike 24
+        assertEquals(listOf(BIKE), modes(3_500.0)) // bike 24
     }
 
     @Test
     fun `bike 25 to 60 minutes - bike first, car second`() {
-        assertEquals(listOf(BIKE, CAR), modes(5_000.0)) // bike 26
-        assertEquals(listOf(BIKE, CAR), modes(11_500.0)) // bike 60
+        assertEquals(listOf(BIKE, CAR), modes(5_000.0)) // bike 32
+        assertEquals(listOf(BIKE, CAR), modes(10_380.0)) // bike 60
     }
 
     @Test
     fun `bike over 60 minutes - car alone`() {
-        assertEquals(listOf(CAR), modes(12_000.0)) // bike 62
+        assertEquals(listOf(CAR), modes(12_000.0)) // bike 68
     }
 
     @Test
     fun `estimates carry each mode's own minutes`() {
         assertEquals(
-            listOf(TravelEstimate(BIKE, 26), TravelEstimate(CAR, 13)),
+            listOf(TravelEstimate(BIKE, 32), TravelEstimate(CAR, 13)),
             TravelDuration.estimates(5_000.0)
         )
     }
