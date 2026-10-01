@@ -28,6 +28,9 @@ android {
 
     buildTypes {
         release {
+            // Sideloaded, not on Play: signed with the standard debug keystore so the release build
+            // installs over a debug install (same applicationId and certificate, data kept).
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

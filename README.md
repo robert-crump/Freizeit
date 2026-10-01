@@ -28,6 +28,12 @@ map data © OpenStreetMap contributors, map style © CARTO. Regenerate with `./g
 Android 8+ (API 26), Android Studio, JDK 17–21 (Android Studio's bundled JBR works; newer JDKs break Gradle 8.5).
 Clone, open, run.
 
+For everyday use install the release build: `./gradlew installRelease` (or `assembleRelease`, then
+`adb install -r app/build/outputs/apk/release/app-release.apk`). It is signed with the same debug keystore
+and uses the same app id as the debug build, so it installs over a debug install and keeps your places,
+check-ins, settings, geofences and widget. Only the release build uses the real 15-minute dwell before a
+check-in notification (the debug build fires after 30 s). Export a backup in Settings first as a safety net.
+
 The app starts empty. Generate a `pois.json` with [`tools/poi_extraction`](tools/poi_extraction) from any
 OpenStreetMap `.osm.pbf` extract (for example from [Geofabrik](https://download.geofabrik.de/)), then import it in Settings.
 
