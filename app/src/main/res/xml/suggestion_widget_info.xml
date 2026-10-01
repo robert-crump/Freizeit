@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  One-at-a-time carousel of the top 3 suggestions (issue #67). Defaults to 4x1, resizable from
+  One-at-a-time carousel of the top 3 suggestions (issue #67). Defaults to 3x1, resizable from
   3x1 to 5x2; more room only adds breathing room / larger text and, from 2 cells tall, the
   position dots (SuggestionWidgetContent.WIDGET_SIZES/isTall) — never more suggestions.
   Cell sizes per the "70dp * cells - 30dp" formula; minWidth is the pre-Android-12 default size.
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp"
+    android:minWidth="180dp"
     android:minHeight="40dp"
     android:minResizeWidth="180dp"
     android:minResizeHeight="40dp"
     android:maxResizeWidth="320dp"
     android:maxResizeHeight="110dp"
-    android:targetCellWidth="4"
+    android:targetCellWidth="3"
     android:targetCellHeight="1"
     android:resizeMode="vertical|horizontal"
     android:widgetCategory="home_screen"

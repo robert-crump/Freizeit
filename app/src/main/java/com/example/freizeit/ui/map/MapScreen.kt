@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -225,6 +226,9 @@ fun MapScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .onGloballyPositioned { topOverlayHeightPx = it.size.height }
+                    // The map runs under the transparent status bar; its controls don't. Measured
+                    // above this padding, so the compass also clears the status bar.
+                    .statusBarsPadding()
             ) {
                 // Tapping the oval body (not the ✕) opens the full-screen SearchOverlay with the
                 // committed query preloaded; the overlay draws this same bar in the same spot.

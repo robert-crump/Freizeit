@@ -72,8 +72,8 @@ private val MarkerForeground = ColorProvider(day = markerForegroundColor(false),
  * can't take a horizontal swipe, so ‹ / › arrows cycle through the cards ([CarouselStepAction]).
  *
  * Renders purely from the per-widget Glance state: content is computed on a widget's first
- * render here, and afterwards only by [SuggestionWidgetUpdater.refreshAndPush] (manual refresh,
- * scheduled and event-driven updates), which also resets the carousel to #1.
+ * render here, and afterwards only by [SuggestionWidgetUpdater.refreshAndPush] (scheduled and
+ * event-driven updates), which also resets the carousel to #1.
  */
 class SuggestionWidget : GlanceAppWidget() {
 
@@ -139,8 +139,8 @@ class SuggestionWidget : GlanceAppWidget() {
         }
     }
 
-    /** `‹ (icon) name / "distance · duration"  ⟳ ›`, plus position dots from 2 cells tall. The
-     *  whole widget opens the card's place, except the arrows and refresh, which have their own
+    /** `‹ (icon) name / "distance · duration" ›`, plus position dots from 2 cells tall. The
+     *  whole widget opens the card's place, except the arrows, which have their own
      *  click targets. A single-card deck shows no arrows or dots. */
     @Composable
     private fun SuggestionCarousel(row: SuggestionWidgetRow, index: Int, count: Int, openAction: Action) {
@@ -186,9 +186,6 @@ class SuggestionWidget : GlanceAppWidget() {
                             )
                         }
                     }
-                    Column(modifier = GlanceModifier.fillMaxHeight()) {
-                        RefreshButton()
-                    }
                     if (showArrows) {
                         ArrowButton(R.drawable.ic_widget_chevron_right, R.string.widget_next_content_description, 1)
                     } else {
@@ -230,9 +227,6 @@ class SuggestionWidget : GlanceAppWidget() {
                         .let { if (action != null) it.clickable(action) else it },
                     style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant)
                 )
-                Column(modifier = GlanceModifier.fillMaxHeight()) {
-                    RefreshButton()
-                }
             }
         }
     }
@@ -245,21 +239,6 @@ class SuggestionWidget : GlanceAppWidget() {
             SuggestionWidgetColors
         }
         GlanceTheme(colors = colors, content = content)
-    }
-
-    /** Small top-right icon (issue #54) forcing the shared recompute-and-push routine instead of
-     *  waiting for a schedule. */
-    @Composable
-    private fun RefreshButton() {
-        Image(
-            provider = ImageProvider(R.drawable.ic_widget_refresh),
-            contentDescription = LocalContext.current.getString(R.string.widget_refresh_content_description),
-            colorFilter = ColorFilter.tint(GlanceTheme.colors.onSurfaceVariant),
-            modifier = GlanceModifier
-                .size(26.dp)
-                .padding(4.dp)
-                .clickable(actionRunCallback<RefreshWidgetAction>())
-        )
     }
 
     @Composable

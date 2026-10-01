@@ -17,10 +17,9 @@ import java.time.LocalDateTime
 import kotlinx.coroutines.flow.first
 
 /**
- * Single shared "recompute and push" entry point for [SuggestionWidget] (issue #54). The manual
- * refresh button ([RefreshWidgetAction]), the scheduled (#55) and the event-driven (#56) refresh
- * triggers all call [refreshAndPush] instead of each reimplementing the fetch-rank-render
- * sequence.
+ * Single shared "recompute and push" entry point for [SuggestionWidget] (issue #54). The scheduled
+ * (#55) and the event-driven (#56) refresh triggers both call [refreshAndPush] instead of each
+ * reimplementing the fetch-rank-render sequence.
  *
  * The computed content is stored in each widget's own Glance state (#67), and the widget renders
  * from that state only, so a carousel arrow tap re-renders without reshuffling the deck, and every

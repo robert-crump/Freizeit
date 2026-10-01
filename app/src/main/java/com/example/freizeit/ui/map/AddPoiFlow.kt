@@ -6,10 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -86,11 +90,10 @@ fun AddPoiPinOverlay(
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onCancel)
-    Column(modifier = modifier.fillMaxSize()) {
-        // No statusBarsPadding here: this overlay sits inside MapScreen's Box, which is already
-        // inset by Scaffold's own top padding (passed down as innerPadding) — adding it again
-        // doubled the top gap, sitting this row visibly lower than SearchOval right below it in
-        // the normal (non-pin-placing) state, which relies on that same single inset.
+    // The map underneath runs under the transparent status bar while this overlay starts below
+    // it, so the map's center sits half a status bar higher than this overlay's.
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    Column(modifier = modifier.fillMaxSize().statusBarsPadding()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -120,8 +123,9 @@ fun AddPoiPinOverlay(
                 imageVector = Icons.Filled.AddLocationAlt,
                 contentDescription = stringResource(R.string.add_poi_pin_description),
                 // Offsets the icon's visual center up slightly so its pin-tip (not its square
-                // bounding box) points at the map's actual center underneath it.
-                modifier = Modifier.padding(bottom = 24.dp).size(48.dp),
+                // bounding box) points at the map's actual center underneath it; the extra
+                // status-bar height lifts it by the half status bar the map's center is higher.
+                modifier = Modifier.padding(bottom = 24.dp + statusBarHeight).size(48.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
         }

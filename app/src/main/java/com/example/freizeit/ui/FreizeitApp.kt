@@ -206,16 +206,22 @@ fun FreizeitApp(
                 }
             }
         ) { innerPadding ->
+            // Only the bottom inset applies to the whole NavHost: the Map draws under the
+            // transparent status bar and insets its own controls, every other screen gets the
+            // top inset via belowStatusBar.
+            val belowStatusBar = Modifier.padding(top = innerPadding.calculateTopPadding())
             NavHost(
                 navController = navController,
                 startDestination = FreizeitDestination.HOME.route,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier.padding(bottom = innerPadding.calculateBottomPadding())
             ) {
                 composable(FreizeitDestination.HOME.route) {
-                    HomeScreen(
-                        onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.HOME) },
-                        snackbarHostState = homeSnackbarHostState
-                    )
+                    Box(belowStatusBar) {
+                        HomeScreen(
+                            onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.HOME) },
+                            snackbarHostState = homeSnackbarHostState
+                        )
+                    }
                 }
                 composable(FreizeitDestination.MAP.route) {
                     MapScreen(
@@ -232,21 +238,25 @@ fun FreizeitApp(
                     route = FreizeitDestination.CHECKIN.route
                 ) {
                     composable(CHECKIN_ENTRY_ROUTE) {
-                        CheckInScreen(
-                            onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
-                            onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.CHECK_IN_HISTORY) },
-                            checkInSnackbarHostState = checkInSnackbarHostState
-                        )
+                        Box(belowStatusBar) {
+                            CheckInScreen(
+                                onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
+                                onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.CHECK_IN_HISTORY) },
+                                checkInSnackbarHostState = checkInSnackbarHostState
+                            )
+                        }
                     }
                     composable(CHECKIN_SEARCH_ROUTE) {
-                        CheckInSearchScreen(
-                            viewModel = checkInViewModel,
-                            onBack = { navController.popBackStack() },
-                            onCandidateSelected = { candidate -> pendingCheckIn = PendingCheckIn(candidate.poi) }
-                        )
+                        Box(belowStatusBar) {
+                            CheckInSearchScreen(
+                                viewModel = checkInViewModel,
+                                onBack = { navController.popBackStack() },
+                                onCandidateSelected = { candidate -> pendingCheckIn = PendingCheckIn(candidate.poi) }
+                            )
+                        }
                     }
                 }
-                composable(FreizeitDestination.SETTINGS.route) { SettingsScreen() }
+                composable(FreizeitDestination.SETTINGS.route) { Box(belowStatusBar) { SettingsScreen() } }
             }
         }
 

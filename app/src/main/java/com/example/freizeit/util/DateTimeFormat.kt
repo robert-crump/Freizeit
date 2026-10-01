@@ -19,10 +19,14 @@ fun formatVisitTimeOnly(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()
         .withZone(zone)
         .format(Instant.ofEpochMilli(epochMillis))
 
-/** Weekday + time, e.g. "Tue, 3:45 PM" — for check-in history rows outside the "Today" section,
- *  where the section header carries the week/month but not the specific day. */
-fun formatVisitWeekdayAndTime(epochMillis: Long, zone: ZoneId = ZoneId.systemDefault()): String {
+/** Short date + time, e.g. "29 Sep, 3:45 PM" — for check-in history rows outside the "Today"
+ *  section, where the section header carries the week/month but not the specific day. */
+fun formatVisitDateAndTime(
+    epochMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
+    locale: Locale = Locale.getDefault()
+): String {
     val instant = Instant.ofEpochMilli(epochMillis)
-    val weekday = DateTimeFormatter.ofPattern("EEE", Locale.getDefault()).withZone(zone).format(instant)
-    return "$weekday, ${formatVisitTimeOnly(epochMillis, zone)}"
+    val date = DateTimeFormatter.ofPattern("d MMM", locale).withZone(zone).format(instant)
+    return "$date, ${formatVisitTimeOnly(epochMillis, zone)}"
 }

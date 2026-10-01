@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -168,9 +169,9 @@ fun PlaceEditForm(
     BackHandler(onBack = ::attemptClose)
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
-        // No statusBarsPadding: this form is hosted inside MapScreen's content, which the
-        // Scaffold has already inset.
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Hosted in the Map's content, which runs under the status bar: the Surface fills it,
+        // the form itself starts below it.
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically

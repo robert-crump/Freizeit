@@ -55,7 +55,7 @@ import com.example.freizeit.data.entity.Visit
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.util.bucketVisits
 import com.example.freizeit.util.formatVisitTimeOnly
-import com.example.freizeit.util.formatVisitWeekdayAndTime
+import com.example.freizeit.util.formatVisitDateAndTime
 
 /**
  * Check-in tab root: the check-in history list, with a "+" FAB that opens [CheckInSearchScreen]
@@ -171,7 +171,7 @@ fun CheckInScreen(
                                     timestampText = if (section.label == "Today") {
                                         formatVisitTimeOnly(visit.visitedAt)
                                     } else {
-                                        formatVisitWeekdayAndTime(visit.visitedAt)
+                                        formatVisitDateAndTime(visit.visitedAt)
                                     },
                                     isSelecting = state.isSelecting,
                                     isSelected = visit.id in state.selectedIds,
