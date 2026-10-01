@@ -50,6 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -82,12 +83,15 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     modifier: Modifier = Modifier,
+    /** Opens a card's place on the Map (#76), by POI id. */
+    onOpenPlace: (String) -> Unit = {},
+    /** Hoisted by FreizeitApp so a "place no longer exists" from [onOpenPlace] shows here too. */
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingCheckIn by remember { mutableStateOf<Suggestion?>(null) }
-    val snackbarHostState = remember { SnackbarHostState() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -141,6 +145,7 @@ fun HomeScreen(
                     deck = state.deck,
                     location = state.location,
                     onCheckIn = { suggestion -> pendingCheckIn = suggestion },
+                    onOpen = { suggestion -> onOpenPlace(suggestion.poi.id) },
                     onRemoveVerdict = { suggestion -> viewModel.setVerdict(suggestion.poi, null) },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -196,6 +201,7 @@ private fun SuggestionPager(
     deck: List<Suggestion>,
     location: LatLon?,
     onCheckIn: (Suggestion) -> Unit,
+    onOpen: (Suggestion) -> Unit,
     onRemoveVerdict: (Suggestion) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -271,6 +277,7 @@ private fun SuggestionPager(
                 location = location,
                 // A peeking neighbor's partly visible buttons do nothing; swipe it in first.
                 onCheckIn = { if (isCurrent) onCheckIn(entry) },
+                onOpen = { if (isCurrent && !pagerState.isScrollInProgress) onOpen(entry) },
                 onRemoveVerdict = remove@{
                     if (!isCurrent || pagerState.isScrollInProgress) return@remove
                     if (size <= 1) {
@@ -360,12 +367,14 @@ private fun SuggestionCard(
     suggestion: Suggestion,
     location: LatLon?,
     onCheckIn: () -> Unit,
+    onOpen: () -> Unit,
     onRemoveVerdict: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val poi = suggestion.poi
     // Natural (wrap-content) height; the pager page around it scrolls a card taller than the screen.
-    Card(modifier = modifier) {
+    // The whole card opens the place on the Map (#76); heart and Check in keep their own clicks.
+    Card(onClick = onOpen, modifier = modifier) {
         Column(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -408,16 +417,32 @@ private fun SuggestionCard(
                 }
             }
 
-            SuggestionsMiniMap(
-                pois = listOf(poi),
-                selectedPoiId = poi.id,
-                location = location,
-                onPoiClick = {},
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
                     .clip(RoundedCornerShape(12.dp))
-            )
+            ) {
+                SuggestionsMiniMap(
+                    pois = listOf(poi),
+                    selectedPoiId = poi.id,
+                    location = location,
+                    onPoiClick = {},
+                    modifier = Modifier.fillMaxSize()
+                )
+                // The MapView would take every touch on it; this sibling on top wins the hit test
+                // instead, and since it consumes nothing, a tap reaches the Card's onClick (ripple
+                // and all) and a swipe still reaches the pager.
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) awaitPointerEvent()
+                            }
+                        }
+                )
+            }
 
             poi.openingHours?.let { hours ->
                 Row(

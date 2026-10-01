@@ -77,6 +77,10 @@ private data class PendingCheckIn(
     val onCheckedIn: () -> Unit = {}
 )
 
+/** Where "open place on Map" was triggered from; decides navigation and where a "place gone"
+ *  snackbar shows. */
+private enum class PlaceOrigin { CHECK_IN_HISTORY, HOME, OUTSIDE }
+
 /** True while the Map is shown pushed on top of the check-in history (#63) rather than as its own
  *  tab root: its previous back-stack entry then belongs to the Check-in graph. */
 private fun isMapPushedOverCheckIn(navController: NavHostController): Boolean =
@@ -148,19 +152,24 @@ fun FreizeitApp(
         }
     }
 
-    // "Open place on Map" (#63). From the check-in history ([overCheckIn]) the Map is pushed on
-    // top of it, so Back returns to the history at its scroll position; a place that's gone
-    // stays on the history with a snackbar. From outside (MainActivity's extra, the widget) it's
+    // "Open place on Map" (#63). From the check-in history ([PlaceOrigin.CHECK_IN_HISTORY]) the
+    // Map is pushed on top of it, so Back returns to the history at its scroll position. From a
+    // Home suggestion card (#76) it's the Map tab over Home, which stays at the bottom of the back
+    // stack, so Back returns to Home with its pager still on the same card. From either, a place
+    // that's gone stays put with a snackbar. From outside (MainActivity's extra, the widget) it's
     // a normal tab switch, and a vanished place just lands on the Map.
     val placeGoneMessage = stringResource(R.string.checkin_history_place_gone)
     val scope = rememberCoroutineScope()
-    fun openPlaceOnMap(poiId: String, overCheckIn: Boolean) {
+    val homeSnackbarHostState = remember { SnackbarHostState() }
+    fun openPlaceOnMap(poiId: String, origin: PlaceOrigin) {
         scope.launch {
             val found = mapViewModel.openPlace(poiId)
             searchOverlayOpen = false
             when {
-                overCheckIn && found -> navController.navigate(FreizeitDestination.MAP.route)
-                overCheckIn -> checkInSnackbarHostState.showSnackbar(placeGoneMessage)
+                origin == PlaceOrigin.CHECK_IN_HISTORY && found ->
+                    navController.navigate(FreizeitDestination.MAP.route)
+                origin == PlaceOrigin.CHECK_IN_HISTORY -> checkInSnackbarHostState.showSnackbar(placeGoneMessage)
+                origin == PlaceOrigin.HOME && !found -> homeSnackbarHostState.showSnackbar(placeGoneMessage)
                 else -> navigateToDestination(FreizeitDestination.MAP.route)
             }
         }
@@ -169,7 +178,7 @@ fun FreizeitApp(
     var pendingOpenOnMapPoiId by rememberSaveable(openOnMapPoiId, relaunchCount) { mutableStateOf(openOnMapPoiId) }
     LaunchedEffect(pendingOpenOnMapPoiId) {
         pendingOpenOnMapPoiId?.let { poiId ->
-            openPlaceOnMap(poiId, overCheckIn = false)
+            openPlaceOnMap(poiId, PlaceOrigin.OUTSIDE)
             pendingOpenOnMapPoiId = null
         }
     }
@@ -203,7 +212,10 @@ fun FreizeitApp(
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable(FreizeitDestination.HOME.route) {
-                    HomeScreen()
+                    HomeScreen(
+                        onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.HOME) },
+                        snackbarHostState = homeSnackbarHostState
+                    )
                 }
                 composable(FreizeitDestination.MAP.route) {
                     MapScreen(
@@ -222,7 +234,7 @@ fun FreizeitApp(
                     composable(CHECKIN_ENTRY_ROUTE) {
                         CheckInScreen(
                             onOpenSearch = { navController.navigate(CHECKIN_SEARCH_ROUTE) },
-                            onOpenPlace = { placeId -> openPlaceOnMap(placeId, overCheckIn = true) },
+                            onOpenPlace = { placeId -> openPlaceOnMap(placeId, PlaceOrigin.CHECK_IN_HISTORY) },
                             checkInSnackbarHostState = checkInSnackbarHostState
                         )
                     }
