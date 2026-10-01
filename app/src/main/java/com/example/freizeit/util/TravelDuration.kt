@@ -25,7 +25,7 @@ data class BandLimits(val greenMax: Int, val orangeMax: Int) {
 
     companion object {
         const val MIN = 5
-        const val MAX = 90
+        const val MAX = 60
         const val STEP = 5
         private fun snap(minutes: Int): Int = ((minutes + STEP / 2) / STEP * STEP).coerceIn(MIN, MAX)
     }

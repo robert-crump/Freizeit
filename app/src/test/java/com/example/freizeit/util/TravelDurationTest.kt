@@ -78,9 +78,9 @@ class TravelDurationTest {
     }
 
     @Test
-    fun `sanitized limits - snapped to 5 minute steps within 5 to 90, orange never below green`() {
+    fun `sanitized limits - snapped to 5 minute steps within 5 to 60, orange never below green`() {
         assertEquals(BandLimits(20, 30), BandLimits(19, 31).sanitized())
-        assertEquals(BandLimits(5, 90), BandLimits(0, 200).sanitized())
+        assertEquals(BandLimits(5, 60), BandLimits(0, 200).sanitized())
         assertEquals(BandLimits(40, 40), BandLimits(40, 25).sanitized())
     }
 }
