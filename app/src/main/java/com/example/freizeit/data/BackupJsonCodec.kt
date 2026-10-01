@@ -6,9 +6,7 @@ import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.Visit
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.data.repository.UserSettings
-import com.example.freizeit.util.BandLimits
 import com.example.freizeit.util.TravelLimits
-import com.example.freizeit.util.TravelMode
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -134,16 +132,8 @@ object BackupJsonCodec {
                 add(
                     "travelLimits",
                     JsonObject().apply {
-                        TravelMode.entries.forEach { mode ->
-                            val limits = data.settings.travelLimits.of(mode)
-                            add(
-                                mode.name.lowercase(),
-                                JsonObject().apply {
-                                    addProperty("greenMax", limits.greenMax)
-                                    addProperty("orangeMax", limits.orangeMax)
-                                }
-                            )
-                        }
+                        addProperty("greenMax", data.settings.travelLimits.greenMax)
+                        addProperty("orangeMax", data.settings.travelLimits.orangeMax)
                     }
                 )
             }
@@ -235,17 +225,13 @@ object BackupJsonCodec {
         )
     }
 
-    /** Per mode: both limits present, or that mode keeps its default. */
+    /** Both limits present, or the defaults. */
     private fun parseTravelLimits(element: JsonElement?, defaults: TravelLimits): TravelLimits {
         if (element == null || !element.isJsonObject) return defaults
         val o = element.asJsonObject
-        return TravelMode.entries.fold(defaults) { limits, mode ->
-            val m = o.get(mode.name.lowercase())?.takeIf { it.isJsonObject }?.asJsonObject
-                ?: return@fold limits
-            val green = m.optLong("greenMax")?.toInt() ?: return@fold limits
-            val orange = m.optLong("orangeMax")?.toInt() ?: return@fold limits
-            limits.with(mode, BandLimits(green, orange).sanitized())
-        }
+        val green = o.optLong("greenMax")?.toInt() ?: return defaults
+        val orange = o.optLong("orangeMax")?.toInt() ?: return defaults
+        return TravelLimits(green, orange).sanitized()
     }
 
     private fun parseCustomName(element: JsonElement, index: Int): PoiOverride {

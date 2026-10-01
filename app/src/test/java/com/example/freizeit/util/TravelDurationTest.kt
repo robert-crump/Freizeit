@@ -62,7 +62,7 @@ class TravelDurationTest {
 
     @Test
     fun `bands - upper limits are inclusive`() {
-        val limits = BandLimits(greenMax = 20, orangeMax = 30)
+        val limits = TravelLimits(greenMax = 20, orangeMax = 30)
         assertEquals(DurationBand.GREEN, limits.bandOf(20))
         assertEquals(DurationBand.ORANGE, limits.bandOf(21))
         assertEquals(DurationBand.ORANGE, limits.bandOf(30))
@@ -70,17 +70,26 @@ class TravelDurationTest {
     }
 
     @Test
-    fun `default limits - car stays orange longer than walk and bike`() {
-        val limits = TravelLimits()
-        assertEquals(DurationBand.RED, limits.bandOf(TravelEstimate(WALK, 35)))
-        assertEquals(DurationBand.RED, limits.bandOf(TravelEstimate(BIKE, 35)))
-        assertEquals(DurationBand.ORANGE, limits.bandOf(TravelEstimate(CAR, 35)))
+    fun `default limits - short up to 20, still OK up to 30`() {
+        assertEquals(TravelLimits(greenMax = 20, orangeMax = 30), TravelLimits())
     }
 
     @Test
     fun `sanitized limits - snapped to 5 minute steps within 5 to 60, orange never below green`() {
-        assertEquals(BandLimits(20, 30), BandLimits(19, 31).sanitized())
-        assertEquals(BandLimits(5, 60), BandLimits(0, 200).sanitized())
-        assertEquals(BandLimits(40, 40), BandLimits(40, 25).sanitized())
+        assertEquals(TravelLimits(20, 30), TravelLimits(19, 31).sanitized())
+        assertEquals(TravelLimits(5, 60), TravelLimits(0, 200).sanitized())
+        assertEquals(TravelLimits(40, 40), TravelLimits(40, 25).sanitized())
+    }
+
+    @Test
+    fun `raising short past still OK pushes still OK along`() {
+        assertEquals(TravelLimits(35, 35), TravelLimits(30, 30).withGreenMax(35))
+        assertEquals(TravelLimits(25, 30), TravelLimits(20, 30).withGreenMax(25))
+    }
+
+    @Test
+    fun `lowering still OK below short pushes short along`() {
+        assertEquals(TravelLimits(15, 15), TravelLimits(20, 20).withOrangeMax(15))
+        assertEquals(TravelLimits(20, 25), TravelLimits(20, 30).withOrangeMax(25))
     }
 }

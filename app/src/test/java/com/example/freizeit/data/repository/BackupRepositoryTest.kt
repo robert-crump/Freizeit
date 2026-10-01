@@ -11,9 +11,7 @@ import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.entity.Visit
-import com.example.freizeit.util.BandLimits
 import com.example.freizeit.util.TravelLimits
-import com.example.freizeit.util.TravelMode
 import kotlinx.coroutines.flow.first
 import java.io.File
 import kotlinx.coroutines.test.runTest
@@ -172,7 +170,7 @@ class BackupRepositoryTest {
         settings.setNotifyFavorites(true)
         settings.setNotifyWantToGo(true)
         settings.setThemeMode(ThemeMode.DARK)
-        settings.setTravelLimits(TravelMode.CAR, BandLimits(greenMax = 30, orangeMax = 60))
+        settings.setTravelLimits(TravelLimits(greenMax = 15, orangeMax = 45))
 
         val uri = newFileUri()
         assertEquals(5, repository.exportTo(uri))
@@ -191,7 +189,7 @@ class BackupRepositoryTest {
         assertEquals(
             UserSettings(
                 suggestionRadiusKm = 25, notifyFavorites = true, notifyWantToGo = true, themeMode = ThemeMode.DARK,
-                travelLimits = TravelLimits(car = BandLimits(greenMax = 30, orangeMax = 60))
+                travelLimits = TravelLimits(greenMax = 15, orangeMax = 45)
             ),
             settings.snapshot()
         )
@@ -249,7 +247,7 @@ class BackupRepositoryTest {
             {
               "exportedAt": 1,
               "settings": {"suggestionRadiusKm": 0, "notifyFavorites": "yes", "themeMode": "SEPIA",
-                           "notifyWantToGo": true, "travelLimits": {"walk": {"greenMax": "x"}, "bike": 3}}
+                           "notifyWantToGo": true, "travelLimits": {"greenMax": "x", "orangeMax": 40}}
             }
             """.trimIndent()
         )

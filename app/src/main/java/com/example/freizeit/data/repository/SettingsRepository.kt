@@ -7,9 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.freizeit.data.entity.Verdict
-import com.example.freizeit.util.BandLimits
 import com.example.freizeit.util.TravelLimits
-import com.example.freizeit.util.TravelMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -66,20 +64,18 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[THEME_MODE_KEY] = mode.name }
     }
 
-    /** Travel-time color limits per mode; a mode never set keeps its default. */
+    /** Travel-time color limits, shared by every mode; defaults until first set. */
     val travelLimits: Flow<TravelLimits> = dataStore.data.map { prefs ->
-        TravelMode.entries.fold(TravelLimits()) { limits, mode ->
-            val green = prefs[greenMaxKey(mode)] ?: return@fold limits
-            val orange = prefs[orangeMaxKey(mode)] ?: return@fold limits
-            limits.with(mode, BandLimits(green, orange).sanitized())
-        }
+        val green = prefs[TRAVEL_GREEN_MAX_KEY]
+        val orange = prefs[TRAVEL_ORANGE_MAX_KEY]
+        if (green == null || orange == null) TravelLimits() else TravelLimits(green, orange).sanitized()
     }
 
-    suspend fun setTravelLimits(mode: TravelMode, limits: BandLimits) {
+    suspend fun setTravelLimits(limits: TravelLimits) {
         val clean = limits.sanitized()
         dataStore.edit {
-            it[greenMaxKey(mode)] = clean.greenMax
-            it[orangeMaxKey(mode)] = clean.orangeMax
+            it[TRAVEL_GREEN_MAX_KEY] = clean.greenMax
+            it[TRAVEL_ORANGE_MAX_KEY] = clean.orangeMax
         }
     }
 
@@ -99,11 +95,9 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             it[NOTIFY_FAVORITES_KEY] = settings.notifyFavorites
             it[NOTIFY_WANT_TO_GO_KEY] = settings.notifyWantToGo
             it[THEME_MODE_KEY] = settings.themeMode.name
-            TravelMode.entries.forEach { mode ->
-                val limits = settings.travelLimits.of(mode).sanitized()
-                it[greenMaxKey(mode)] = limits.greenMax
-                it[orangeMaxKey(mode)] = limits.orangeMax
-            }
+            val limits = settings.travelLimits.sanitized()
+            it[TRAVEL_GREEN_MAX_KEY] = limits.greenMax
+            it[TRAVEL_ORANGE_MAX_KEY] = limits.orangeMax
             it.remove(AUTO_CHECKIN_ENABLED_KEY)
         }
     }
@@ -116,8 +110,8 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val NOTIFY_FAVORITES_KEY = booleanPreferencesKey("notify_favorites")
         private val NOTIFY_WANT_TO_GO_KEY = booleanPreferencesKey("notify_want_to_go")
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
-        private fun greenMaxKey(mode: TravelMode) = intPreferencesKey("travel_${mode.name.lowercase()}_green_max")
-        private fun orangeMaxKey(mode: TravelMode) = intPreferencesKey("travel_${mode.name.lowercase()}_orange_max")
+        private val TRAVEL_GREEN_MAX_KEY = intPreferencesKey("travel_green_max")
+        private val TRAVEL_ORANGE_MAX_KEY = intPreferencesKey("travel_orange_max")
     }
 }
 

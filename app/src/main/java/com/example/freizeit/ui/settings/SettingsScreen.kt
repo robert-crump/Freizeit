@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,14 +15,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Palette
@@ -35,7 +40,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -53,6 +57,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -60,15 +65,14 @@ import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.common.categoryDisplayName
-import com.example.freizeit.ui.common.icon
-import com.example.freizeit.util.BandLimits
-import com.example.freizeit.util.TravelMode
+import com.example.freizeit.ui.common.colors
+import com.example.freizeit.util.DurationBand
+import com.example.freizeit.util.TravelLimits
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
-import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -203,11 +207,27 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                TravelMode.entries.forEach { mode ->
-                    TravelLimitsRow(
-                        mode = mode,
-                        limits = travelLimits.of(mode),
-                        onChange = { viewModel.setTravelLimits(mode, it) }
+                TravelLimitStepper(
+                    band = DurationBand.GREEN,
+                    question = stringResource(R.string.settings_travel_short_question),
+                    minutes = travelLimits.greenMax,
+                    onChange = { viewModel.setTravelLimits(travelLimits.withGreenMax(it)) }
+                )
+                TravelLimitStepper(
+                    band = DurationBand.ORANGE,
+                    question = stringResource(R.string.settings_travel_ok_question),
+                    minutes = travelLimits.orangeMax,
+                    onChange = { viewModel.setTravelLimits(travelLimits.withOrangeMax(it)) }
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BandDot(DurationBand.RED)
+                    Text(
+                        text = stringResource(R.string.settings_travel_too_far),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -400,43 +420,51 @@ private fun <T> SingleChoiceRow(
     }
 }
 
-private val TravelMode.labelRes: Int
-    get() = when (this) {
-        TravelMode.WALK -> R.string.settings_travel_walk
-        TravelMode.BIKE -> R.string.settings_travel_bike
-        TravelMode.CAR -> R.string.settings_travel_car
-    }
-
-/** One mode's green/orange limits as a two-thumb slider in [BandLimits.STEP]-minute steps; the
- *  summary follows the drag live, the setting is only written once the thumb is let go. */
+/** The color a travel-time question sets, as a small dot in the chips' own colors. */
 @Composable
-private fun TravelLimitsRow(mode: TravelMode, limits: BandLimits, onChange: (BandLimits) -> Unit) {
-    var dragged by remember(limits) { mutableStateOf<BandLimits?>(null) }
-    val shown = dragged ?: limits
-    Column {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(imageVector = mode.icon(), contentDescription = null)
-            Column {
-                Text(text = stringResource(mode.labelRes))
+private fun BandDot(band: DurationBand) {
+    val (font, background) = band.colors()
+    Box(
+        modifier = Modifier
+            .size(24.dp)
+            .background(background, CircleShape)
+            .padding(7.dp)
+            .background(font, CircleShape)
+    )
+}
+
+/** One travel-time question (shared by walk, bike and car) with a − / + stepper in
+ *  [TravelLimits.STEP]-minute steps — no track, so no color range looks bigger than another. */
+@Composable
+private fun TravelLimitStepper(band: DurationBand, question: String, minutes: Int, onChange: (Int) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BandDot(band)
+        Column {
+            Text(text = question)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { onChange(minutes - TravelLimits.STEP) },
+                    enabled = minutes > TravelLimits.MIN
+                ) {
+                    Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.settings_travel_decrease))
+                }
                 Text(
-                    text = stringResource(R.string.settings_travel_limits_value, shown.greenMax, shown.orangeMax),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = stringResource(R.string.duration_minutes, minutes),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.width(72.dp)
                 )
+                IconButton(
+                    onClick = { onChange(minutes + TravelLimits.STEP) },
+                    enabled = minutes < TravelLimits.MAX
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.settings_travel_increase))
+                }
             }
         }
-        RangeSlider(
-            value = shown.greenMax.toFloat()..shown.orangeMax.toFloat(),
-            onValueChange = { range ->
-                dragged = BandLimits(range.start.roundToInt(), range.endInclusive.roundToInt()).sanitized()
-            },
-            onValueChangeFinished = { dragged?.let(onChange) },
-            valueRange = BandLimits.MIN.toFloat()..BandLimits.MAX.toFloat(),
-            steps = (BandLimits.MAX - BandLimits.MIN) / BandLimits.STEP - 1
-        )
     }
 }
 

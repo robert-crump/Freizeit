@@ -41,7 +41,7 @@ private val DurationRedBackground = Color(0xFF511D12)
 
 /**
  * Walk, bike and car chips side by side ([TravelDuration.estimates]), each colored by its own
- * band from [LocalTravelLimits]. With [showMinutes] false (search results) the chips carry only
+ * minutes against [LocalTravelLimits]. With [showMinutes] false (search results) the chips carry only
  * the mode icon. Fixed colors regardless of light/dark theme, same pattern as
  * [com.example.freizeit.ui.theme.FavoriteRed]/[com.example.freizeit.ui.theme.WantToGoBlue].
  */
@@ -50,11 +50,7 @@ fun DurationBadge(distanceMeters: Double, modifier: Modifier = Modifier, showMin
     val limits = LocalTravelLimits.current
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(if (showMinutes) 8.dp else 4.dp)) {
         TravelDuration.estimates(distanceMeters).forEach { estimate ->
-            val (font, background) = when (limits.bandOf(estimate)) {
-                DurationBand.GREEN -> DurationGreenFont to DurationGreenBackground
-                DurationBand.ORANGE -> DurationOrangeFont to DurationOrangeBackground
-                DurationBand.RED -> DurationRedFont to DurationRedBackground
-            }
+            val (font, background) = limits.bandOf(estimate.minutes).colors()
             if (showMinutes) {
                 DurationChip(estimate.mode.icon(), estimate.minutes, font, background)
             } else {
@@ -62,6 +58,13 @@ fun DurationBadge(distanceMeters: Double, modifier: Modifier = Modifier, showMin
             }
         }
     }
+}
+
+/** Font (icon/text) and background color of a chip in this band. */
+fun DurationBand.colors(): Pair<Color, Color> = when (this) {
+    DurationBand.GREEN -> DurationGreenFont to DurationGreenBackground
+    DurationBand.ORANGE -> DurationOrangeFont to DurationOrangeBackground
+    DurationBand.RED -> DurationRedFont to DurationRedBackground
 }
 
 fun TravelMode.icon(): ImageVector = when (this) {

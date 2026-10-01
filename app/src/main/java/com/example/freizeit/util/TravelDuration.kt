@@ -9,8 +9,11 @@ data class TravelEstimate(val mode: TravelMode, val minutes: Int)
 /** How a travel time reads for its mode: fine, a stretch, or too far. */
 enum class DurationBand { GREEN, ORANGE, RED }
 
-/** One mode's color limits, both inclusive: up to [greenMax] is green, up to [orangeMax] orange. */
-data class BandLimits(val greenMax: Int, val orangeMax: Int) {
+/**
+ * The user's travel-time color limits (Settings), shared by walk, bike and car, both inclusive:
+ * up to [greenMax] ("feels short") is green, up to [orangeMax] ("still OK") orange, beyond red.
+ */
+data class TravelLimits(val greenMax: Int = 20, val orangeMax: Int = 30) {
     fun bandOf(minutes: Int): DurationBand = when {
         minutes <= greenMax -> DurationBand.GREEN
         minutes <= orangeMax -> DurationBand.ORANGE
@@ -18,9 +21,21 @@ data class BandLimits(val greenMax: Int, val orangeMax: Int) {
     }
 
     /** Snapped to [STEP]s within [MIN]..[MAX], orange never below green. */
-    fun sanitized(): BandLimits {
+    fun sanitized(): TravelLimits {
         val green = snap(greenMax)
-        return BandLimits(green, snap(orangeMax).coerceAtLeast(green))
+        return TravelLimits(green, snap(orangeMax).coerceAtLeast(green))
+    }
+
+    /** A new "feels short" value; pushes "still OK" up along rather than crossing it. */
+    fun withGreenMax(minutes: Int): TravelLimits {
+        val green = snap(minutes)
+        return TravelLimits(green, orangeMax.coerceAtLeast(green))
+    }
+
+    /** A new "still OK" value; pushes "feels short" down along rather than crossing it. */
+    fun withOrangeMax(minutes: Int): TravelLimits {
+        val orange = snap(minutes)
+        return TravelLimits(greenMax.coerceAtMost(orange), orange)
     }
 
     companion object {
@@ -29,27 +44,6 @@ data class BandLimits(val greenMax: Int, val orangeMax: Int) {
         const val STEP = 5
         private fun snap(minutes: Int): Int = ((minutes + STEP / 2) / STEP * STEP).coerceIn(MIN, MAX)
     }
-}
-
-/** The user's travel-time color limits per mode (Settings). */
-data class TravelLimits(
-    val walk: BandLimits = BandLimits(greenMax = 20, orangeMax = 30),
-    val bike: BandLimits = BandLimits(greenMax = 20, orangeMax = 30),
-    val car: BandLimits = BandLimits(greenMax = 20, orangeMax = 40)
-) {
-    fun of(mode: TravelMode): BandLimits = when (mode) {
-        TravelMode.WALK -> walk
-        TravelMode.BIKE -> bike
-        TravelMode.CAR -> car
-    }
-
-    fun with(mode: TravelMode, limits: BandLimits): TravelLimits = when (mode) {
-        TravelMode.WALK -> copy(walk = limits)
-        TravelMode.BIKE -> copy(bike = limits)
-        TravelMode.CAR -> copy(car = limits)
-    }
-
-    fun bandOf(estimate: TravelEstimate): DurationBand = of(estimate.mode).bandOf(estimate.minutes)
 }
 
 /**
