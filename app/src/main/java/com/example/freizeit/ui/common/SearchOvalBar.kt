@@ -21,6 +21,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +33,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.freizeit.R
@@ -48,7 +54,8 @@ private val ICON_SIZE = 24.dp
  *
  * With [onQueryChange] null the bar is read-only (the Map's oval): it shows [query] or the hint,
  * and a tap anywhere but the ✕ calls [onBarClick]. Otherwise [query] is edited in a
- * [BasicTextField] (no outline of its own), focused through [focusRequester]. The trailing ✕
+ * [BasicTextField] (no outline of its own), focused through [focusRequester], with the cursor
+ * starting after the last character of an already-typed [query]. The trailing ✕
  * shows whenever [query] isn't empty and calls [onClear].
  */
 @Composable
@@ -114,9 +121,16 @@ fun SearchOvalBar(
                         Text(text = query, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 } else {
+                    // Cursor/selection live here; [query] stays the source of truth for the text,
+                    // so a change from outside (✕, a restored query) lands with the cursor at its end.
+                    var fieldValue by remember { mutableStateOf(TextFieldValue(query, TextRange(query.length))) }
+                    val value = if (fieldValue.text == query) fieldValue else TextFieldValue(query, TextRange(query.length))
                     BasicTextField(
-                        value = query,
-                        onValueChange = onQueryChange,
+                        value = value,
+                        onValueChange = {
+                            fieldValue = it
+                            if (it.text != query) onQueryChange(it.text)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
