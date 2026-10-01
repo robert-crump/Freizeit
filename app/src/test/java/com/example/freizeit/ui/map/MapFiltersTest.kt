@@ -1,5 +1,7 @@
 package com.example.freizeit.ui.map
 
+import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.data.entity.Verdict
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -67,11 +69,35 @@ class MapFiltersTest {
     }
 
     @Test
-    fun `a fresh MapFilters has nothing active, which is what opening a place resets to`() {
+    fun `a fresh MapFilters has nothing active`() {
         assertEquals(null, none.activeCategory)
         assertEquals(false, none.allCategories)
         assertEquals(false, none.favoritesOnly)
         assertEquals(false, none.wantToGoOnly)
         assertEquals(null, none.searchQuery)
+    }
+
+    private val cafe = Poi(id = "c", category = "cafe", lat = 50.9, lon = 6.9, name = "Café Leni")
+
+    @Test
+    fun `opening a sheet keeps filters that already show the place`() {
+        val category = MapFilters(activeCategory = "cafe")
+        assertEquals(category, category.revealing(cafe, null))
+        val search = MapFilters(searchQuery = "Leni")
+        assertEquals(search, search.revealing(cafe, null))
+        val favorites = MapFilters(favoritesOnly = true)
+        assertEquals(favorites, favorites.revealing(cafe, Verdict.VALUE_FAVORITE))
+        val all = MapFilters(allCategories = true)
+        assertEquals(all, all.revealing(cafe, null))
+    }
+
+    @Test
+    fun `opening a sheet for a hidden place turns All on`() {
+        val all = MapFilters(allCategories = true)
+        assertEquals(all, none.revealing(cafe, null))
+        assertEquals(all, MapFilters(activeCategory = "park").revealing(cafe, null))
+        assertEquals(all, MapFilters(searchQuery = "Zoo").revealing(cafe, null))
+        assertEquals(all, MapFilters(favoritesOnly = true).revealing(cafe, Verdict.VALUE_WANT_TO_GO))
+        assertEquals(all, MapFilters(wantToGoOnly = true).revealing(cafe, null))
     }
 }

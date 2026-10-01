@@ -126,6 +126,22 @@ data class MapFilters(
     }
 
     fun clearSearch(): MapFilters = copy(searchQuery = null)
+
+    /** Whether [poi] (with verdict [verdictValue], null for none) passes these filters — the same
+     *  rules as [filterAndSort]. */
+    fun shows(poi: Poi, verdictValue: String?): Boolean = when {
+        !searchQuery.isNullOrBlank() -> poi.name?.let { matchesSearch(it, searchQuery) } == true
+        favoritesOnly -> verdictValue == Verdict.VALUE_FAVORITE
+        wantToGoOnly -> verdictValue == Verdict.VALUE_WANT_TO_GO
+        allCategories -> true
+        activeCategory != null -> poi.category == activeCategory
+        else -> false
+    }
+
+    /** The filters once a detail sheet opens for [poi] (#76 follow-up): unchanged if its marker
+     *  already shows, otherwise the "All" chip, so the marker under the sheet is visible. */
+    fun revealing(poi: Poi, verdictValue: String?): MapFilters =
+        if (shows(poi, verdictValue)) this else MapFilters(allCategories = true)
 }
 
 /** Start index of every "word" in [text] — a run of letters/digits preceded by either the
@@ -374,7 +390,7 @@ class MapViewModel(
     /**
      * "Open place on Map" (#63), shared by the check-in history and MainActivity's
      * [com.example.freizeit.ui.MainActivity.EXTRA_OPEN_ON_MAP_POI_ID] (for the widget, #66):
-     * clears every filter so the marker is guaranteed to show, cancels a half-done add-place flow
+     * turns the "All" chip on (via [selectPoi]) so the marker is guaranteed to show, cancels a half-done add-place flow
      * that would cover the map, jumps the camera to the place and opens its detail sheet. Works
      * for OSM and custom places alike (via [findPoiById]). Returns false, changing nothing, if
      * the place no longer exists or is hidden — including one whose removal is still pending Undo.
@@ -382,7 +398,7 @@ class MapViewModel(
     suspend fun openPlace(poiId: String): Boolean {
         val poi = withContext(Dispatchers.IO) { findPoiById(poiDao, customPoiDao, poiOverrideDao, poiId) }
         if (poi == null || poi.id == _pendingRemovalId.value) return false
-        filters.value = MapFilters()
+        filters.value = MapFilters(allCategories = true)
         cancelAddPoi()
         val loc = locationRepository.location.value
         val distanceMeters = loc?.let { GeoDistance.metersBetween(it.lat, it.lon, poi.lat, poi.lon) }
@@ -416,8 +432,13 @@ class MapViewModel(
         _followingLocation.value = false
     }
 
+    /** Opens (non-null) or closes the detail sheet. Opening one for a place the current filters
+     *  hide (a just-added place, say) switches to the "All" chip so its marker shows. */
     fun selectPoi(poi: PoiWithDistance?) {
-        if (poi != null) stopFollowingLocation()
+        if (poi != null) {
+            stopFollowingLocation()
+            filters.value = filters.value.revealing(poi.poi, uiState.value.verdicts[poi.poi.id]?.value)
+        }
         _selectedPoi.value = poi
         _selectedPoiLastVisit.value = null
         if (poi != null) {
