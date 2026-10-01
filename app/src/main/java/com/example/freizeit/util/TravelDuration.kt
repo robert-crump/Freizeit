@@ -1,5 +1,6 @@
 package com.example.freizeit.util
 
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class TravelMode { WALK, BIKE, CAR }
@@ -20,7 +21,7 @@ data class TravelLimits(val greenMax: Int = 20, val orangeMax: Int = 30) {
         else -> DurationBand.RED
     }
 
-    /** Snapped to [STEP]s within [MIN]..[MAX], orange never below green. */
+    /** Snapped to the nearest of [PRESETS], orange never below green. */
     fun sanitized(): TravelLimits {
         val green = snap(greenMax)
         return TravelLimits(green, snap(orangeMax).coerceAtLeast(green))
@@ -39,10 +40,9 @@ data class TravelLimits(val greenMax: Int = 20, val orangeMax: Int = 30) {
     }
 
     companion object {
-        const val MIN = 5
-        const val MAX = 60
-        const val STEP = 5
-        private fun snap(minutes: Int): Int = ((minutes + STEP / 2) / STEP * STEP).coerceIn(MIN, MAX)
+        /** The minutes both Settings questions offer, like the suggestion radius presets. */
+        val PRESETS = listOf(5, 10, 15, 20, 30, 45, 60)
+        private fun snap(minutes: Int): Int = PRESETS.minBy { abs(it - minutes) }
     }
 }
 

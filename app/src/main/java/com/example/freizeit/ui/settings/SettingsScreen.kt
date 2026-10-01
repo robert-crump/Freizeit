@@ -15,18 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Palette
@@ -57,7 +53,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -207,28 +202,28 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                TravelLimitStepper(
-                    band = DurationBand.GREEN,
-                    question = stringResource(R.string.settings_travel_short_question),
-                    minutes = travelLimits.greenMax,
-                    onChange = { viewModel.setTravelLimits(travelLimits.withGreenMax(it)) }
+                SingleChoiceRow(
+                    leading = { BandSwatch(DurationBand.GREEN) },
+                    title = stringResource(R.string.settings_travel_short_question),
+                    options = TravelLimits.PRESETS,
+                    selected = travelLimits.greenMax,
+                    label = { stringResource(R.string.duration_minutes, it) },
+                    onSelect = { viewModel.setTravelLimits(travelLimits.withGreenMax(it)) }
                 )
-                TravelLimitStepper(
-                    band = DurationBand.ORANGE,
-                    question = stringResource(R.string.settings_travel_ok_question),
-                    minutes = travelLimits.orangeMax,
-                    onChange = { viewModel.setTravelLimits(travelLimits.withOrangeMax(it)) }
+                SingleChoiceRow(
+                    leading = { BandSwatch(DurationBand.ORANGE) },
+                    title = stringResource(R.string.settings_travel_ok_question),
+                    options = TravelLimits.PRESETS,
+                    selected = travelLimits.orangeMax,
+                    label = { stringResource(R.string.duration_minutes, it) },
+                    onSelect = { viewModel.setTravelLimits(travelLimits.withOrangeMax(it)) }
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BandDot(DurationBand.RED)
-                    Text(
-                        text = stringResource(R.string.settings_travel_too_far),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    BandSwatch(DurationBand.RED)
+                    Text(text = stringResource(R.string.settings_travel_too_far))
                 }
             }
 
@@ -348,7 +343,12 @@ private val ThemeMode.labelRes: Int
 
 /** An icon, a title and a summary line under it. */
 @Composable
-private fun ActionRow(icon: ImageVector, title: String, description: String, onClick: () -> Unit) {
+private fun ActionRow(icon: ImageVector, title: String, description: String, onClick: () -> Unit) =
+    ActionRow(leading = { Icon(imageVector = icon, contentDescription = null) }, title, description, onClick)
+
+/** [ActionRow] with any 24 dp leading content in place of the icon. */
+@Composable
+private fun ActionRow(leading: @Composable () -> Unit, title: String, description: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -356,7 +356,7 @@ private fun ActionRow(icon: ImageVector, title: String, description: String, onC
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(imageVector = icon, contentDescription = null)
+        leading()
         Column {
             Text(text = title)
             Text(
@@ -369,7 +369,8 @@ private fun ActionRow(icon: ImageVector, title: String, description: String, onC
 }
 
 /** MyQuotes' App theme row: the current choice as its summary, and a single-choice dialog where
- *  picking an option applies it at once and closes the dialog. Also the Suggestion radius (#74). */
+ *  picking an option applies it at once and closes the dialog. Also the Suggestion radius (#74)
+ *  and the travel-time questions. */
 @Composable
 private fun <T> SingleChoiceRow(
     icon: ImageVector,
@@ -378,10 +379,21 @@ private fun <T> SingleChoiceRow(
     selected: T,
     label: @Composable (T) -> String,
     onSelect: (T) -> Unit
+) = SingleChoiceRow({ Icon(imageVector = icon, contentDescription = null) }, title, options, selected, label, onSelect)
+
+/** [SingleChoiceRow] with any 24 dp leading content in place of the icon (the travel-time swatches). */
+@Composable
+private fun <T> SingleChoiceRow(
+    leading: @Composable () -> Unit,
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
-    ActionRow(icon = icon, title = title, description = label(selected), onClick = { showDialog = true })
+    ActionRow(leading = leading, title = title, description = label(selected), onClick = { showDialog = true })
 
     if (showDialog) {
         AlertDialog(
@@ -420,52 +432,10 @@ private fun <T> SingleChoiceRow(
     }
 }
 
-/** The color a travel-time question sets, as a small dot in the chips' own colors. */
+/** The color a travel-time question sets: a square in the band's (darker) chip background. */
 @Composable
-private fun BandDot(band: DurationBand) {
-    val (font, background) = band.colors()
-    Box(
-        modifier = Modifier
-            .size(24.dp)
-            .background(background, CircleShape)
-            .padding(7.dp)
-            .background(font, CircleShape)
-    )
-}
-
-/** One travel-time question (shared by walk, bike and car) with a − / + stepper in
- *  [TravelLimits.STEP]-minute steps — no track, so no color range looks bigger than another. */
-@Composable
-private fun TravelLimitStepper(band: DurationBand, question: String, minutes: Int, onChange: (Int) -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BandDot(band)
-        Column {
-            Text(text = question)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { onChange(minutes - TravelLimits.STEP) },
-                    enabled = minutes > TravelLimits.MIN
-                ) {
-                    Icon(Icons.Filled.Remove, contentDescription = stringResource(R.string.settings_travel_decrease))
-                }
-                Text(
-                    text = stringResource(R.string.duration_minutes, minutes),
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(72.dp)
-                )
-                IconButton(
-                    onClick = { onChange(minutes + TravelLimits.STEP) },
-                    enabled = minutes < TravelLimits.MAX
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.settings_travel_increase))
-                }
-            }
-        }
-    }
+private fun BandSwatch(band: DurationBand) {
+    Box(modifier = Modifier.size(24.dp).background(band.colors().second))
 }
 
 private enum class NotificationSwitch { FAVORITES, WANT_TO_GO }

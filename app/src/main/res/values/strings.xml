@@ -152,8 +152,6 @@
     <string name="settings_travel_short_question">What feels short to you?</string>
     <string name="settings_travel_ok_question">How long is still OK for you?</string>
     <string name="settings_travel_too_far">Anything longer feels too far.</string>
-    <string name="settings_travel_decrease">Less</string>
-    <string name="settings_travel_increase">More</string>
     <!-- Settings: notifications (#74, auto check-in before) -->
     <string name="settings_notifications_section">Notifications</string>
     <string name="settings_notifications_description">Choose near which POIs you want to be notified so that you can check-in.</string>

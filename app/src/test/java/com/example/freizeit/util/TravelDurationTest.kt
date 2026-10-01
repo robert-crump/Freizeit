@@ -75,21 +75,21 @@ class TravelDurationTest {
     }
 
     @Test
-    fun `sanitized limits - snapped to 5 minute steps within 5 to 60, orange never below green`() {
+    fun `sanitized limits - snapped to the nearest preset, orange never below green`() {
         assertEquals(TravelLimits(20, 30), TravelLimits(19, 31).sanitized())
         assertEquals(TravelLimits(5, 60), TravelLimits(0, 200).sanitized())
-        assertEquals(TravelLimits(40, 40), TravelLimits(40, 25).sanitized())
+        assertEquals(TravelLimits(45, 45), TravelLimits(40, 25).sanitized())
     }
 
     @Test
     fun `raising short past still OK pushes still OK along`() {
-        assertEquals(TravelLimits(35, 35), TravelLimits(30, 30).withGreenMax(35))
-        assertEquals(TravelLimits(25, 30), TravelLimits(20, 30).withGreenMax(25))
+        assertEquals(TravelLimits(45, 45), TravelLimits(20, 30).withGreenMax(45))
+        assertEquals(TravelLimits(15, 30), TravelLimits(20, 30).withGreenMax(15))
     }
 
     @Test
     fun `lowering still OK below short pushes short along`() {
-        assertEquals(TravelLimits(15, 15), TravelLimits(20, 20).withOrangeMax(15))
-        assertEquals(TravelLimits(20, 25), TravelLimits(20, 30).withOrangeMax(25))
+        assertEquals(TravelLimits(15, 15), TravelLimits(20, 30).withOrangeMax(15))
+        assertEquals(TravelLimits(20, 45), TravelLimits(20, 30).withOrangeMax(45))
     }
 }

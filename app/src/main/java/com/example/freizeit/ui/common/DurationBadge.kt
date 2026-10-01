@@ -60,7 +60,8 @@ fun DurationBadge(distanceMeters: Double, modifier: Modifier = Modifier, showMin
     }
 }
 
-/** Font (icon/text) and background color of a chip in this band. */
+/** Font (icon/text) and background color of a chip in this band; the background alone is the
+ *  band's swatch in Settings. */
 fun DurationBand.colors(): Pair<Color, Color> = when (this) {
     DurationBand.GREEN -> DurationGreenFont to DurationGreenBackground
     DurationBand.ORANGE -> DurationOrangeFont to DurationOrangeBackground
