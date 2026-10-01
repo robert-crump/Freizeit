@@ -25,9 +25,9 @@ import kotlinx.coroutines.launch
 
 /**
  * Handles both Play Services' geofence ENTER/EXIT/DWELL broadcasts and the notification's own
- * action buttons — one receiver so both paths share the same "recompute the one active
- * notification" logic in [refreshNotification]. ENTER is ignored outright: only DWELL (staying,
- * not just passing by) is notification-worthy.
+ * tap (check in) and swipe-away (dismiss) — one receiver so both paths share the same
+ * "recompute the one active notification" logic in [refreshNotification]. ENTER is ignored
+ * outright: only DWELL (staying, not just passing by) is notification-worthy.
  */
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 

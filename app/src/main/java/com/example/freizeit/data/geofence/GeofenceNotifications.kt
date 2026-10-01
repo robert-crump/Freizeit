@@ -11,7 +11,6 @@ import androidx.core.app.NotificationManagerCompat
 import com.example.freizeit.BuildConfig
 import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
-import com.example.freizeit.ui.MainActivity
 
 /**
  * Builds/shows/cancels the single check-in-prompt notification. Only ever one instance is
@@ -38,12 +37,6 @@ object GeofenceNotifications {
     fun show(context: Context, poi: Poi) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
-        val contentIntent = PendingIntent.getActivity(
-            context,
-            REQUEST_CODE_CONTENT,
-            Intent(context, MainActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         val checkInIntent = PendingIntent.getBroadcast(
             context,
             REQUEST_CODE_CHECK_IN,
@@ -69,9 +62,9 @@ object GeofenceNotifications {
                     poi.name ?: context.getString(R.string.checkin_history_unnamed_place)
                 )
             )
-            .setContentIntent(contentIntent)
-            .addAction(0, context.getString(R.string.notification_checkin_action_check_in), checkInIntent)
-            .addAction(0, context.getString(R.string.notification_checkin_action_dismiss), dismissIntent)
+            // Tapping checks in, swiping away dismisses; no action buttons.
+            .setContentIntent(checkInIntent)
+            .setDeleteIntent(dismissIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .apply {
@@ -93,7 +86,6 @@ object GeofenceNotifications {
         NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
     }
 
-    private const val REQUEST_CODE_CONTENT = 1
     private const val REQUEST_CODE_CHECK_IN = 2
     private const val REQUEST_CODE_DISMISS = 3
 }
