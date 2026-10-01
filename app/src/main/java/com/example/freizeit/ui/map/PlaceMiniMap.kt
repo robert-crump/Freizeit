@@ -5,7 +5,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalContext
@@ -64,6 +66,11 @@ fun SuggestionsMiniMap(
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
 
     val state = remember { SuggestionsMapState() }
+    // Read by the style-loaded callback below, which is created once: without these it would
+    // draw the first composition's values, not whatever arrived while the style was loading.
+    val latestPois by rememberUpdatedState(pois)
+    val latestSelectedPoiId by rememberUpdatedState(selectedPoiId)
+    val latestLocation by rememberUpdatedState(location)
     state.poiById = pois.associateBy { it.id }
     state.onPoiClick = onPoiClick
 
@@ -102,7 +109,7 @@ fun SuggestionsMiniMap(
                 state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
                 state.userSource = style.getSourceAs(USER_DOT_SOURCE_ID)
                 state.ready = true
-                renderSuggestions(state, mapView, pois, selectedPoiId, location)
+                renderSuggestions(state, mapView, latestPois, latestSelectedPoiId, latestLocation)
             }
             map.addOnMapClickListener { latLng -> handleSuggestionsMapClick(state, map, latLng) }
         }

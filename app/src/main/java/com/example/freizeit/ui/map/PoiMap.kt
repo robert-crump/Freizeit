@@ -152,8 +152,10 @@ fun PoiMap(
                     state.poiSource = style.getSourceAs(POI_SOURCE_ID)
                     state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
                     state.ready = true
-                    applyPois(state, pois)
-                    applyLocation(state, location)
+                    // The latest values, not this closure's first-composition ones: the update
+                    // block below records each new list while the style is still loading.
+                    applyPois(state, state.renderedPois)
+                    applyLocation(state, state.renderedLocation)
                 }
 
                 map.addOnMapClickListener { latLng ->
