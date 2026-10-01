@@ -264,7 +264,7 @@ private fun SearchResultRow(
             }
         }
         item.distanceMeters?.let { distance ->
-            DurationBadge(distance, horizontalAlignment = Alignment.End)
+            DurationBadge(distance)
         }
     }
 }

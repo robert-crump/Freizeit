@@ -89,6 +89,24 @@ class SuggestionScenariosTest {
     }
 
     @Test
+    fun `rain - a playground gets only the warning, a cafe gets the rainy-day reason`() {
+        val ranked = SuggestionEngine.rankAll(allPois, ctx(tuesdayAt(16), rainingNow(tuesdayAt(16))))
+        assertFalse("good for a rainy day" in ranked.reasonsOf(playgroundNear))
+        assertTrue("good for a rainy day" in ranked.reasonsOf(cafe))
+    }
+
+    @Test
+    fun `rain - ice cream, tourism and park never get the rainy-day reason`() {
+        val tourism = playgroundNear.copy(id = "node/91", category = "tourism")
+        val pois = listOf(iceCream, tourism, park)
+        val ranked = SuggestionEngine.rankAll(
+            pois, ctx(tuesdayAt(16), rainingNow(tuesdayAt(16)), verdicts = favoriteAll(pois))
+        )
+        assertTrue(ranked.size == 3)
+        assertTrue(ranked.none { "good for a rainy day" in it.reasons })
+    }
+
+    @Test
     fun `only the current hour is checked - rain due next hour doesn't warn yet`() {
         // Dry this hour (14:00), rain from 15:00 on - the old 3h lookahead would have filtered
         // this, but only the current hour's probability drives the warning now.

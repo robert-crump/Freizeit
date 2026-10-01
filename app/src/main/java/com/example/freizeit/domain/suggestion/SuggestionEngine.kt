@@ -37,7 +37,8 @@ data class Suggestion(
     val distanceMeters: Double?,
     val travelMinutes: Int?,
     val openStatus: OpenStatus,
-    /** Human-readable score facts (travel time, weather fit), joined with " · " on the card. */
+    /** Human-readable score facts (weather fit). Not shown on the card since #75 — kept so tests
+     *  can assert why a place scored. */
     val reasons: List<String>,
     /** Card-level cautions (currently closed, imminent rain) that no longer remove a
      *  favorite/want-to-go place from the deck — they're surfaced here instead so the
@@ -73,6 +74,10 @@ data class Suggestion(
 object SuggestionEngine {
 
     private val OUTDOOR_CATEGORIES = setOf("playground", "park")
+
+    /** The only categories that earn "good for a rainy day" (#75) — an outdoor place in the
+     *  rain used to fall through to it; now it only gets the rain warning. */
+    private val RAINY_DAY_CATEGORIES = setOf("cafe", "restaurant", "shop")
 
     /** Above this precipitation probability (%) for the current hour, an outdoor favorite
      *  gets a rain warning instead of being silently dropped from the deck. */
@@ -159,7 +164,8 @@ object SuggestionEngine {
                     score += 12.0
                     reasons += "${weather.currentTempC.roundToInt()}° ice-cream weather"
                 }
-                WeatherSnapshot.isWetCode(weather.currentWeatherCode) -> {
+                poi.category in RAINY_DAY_CATEGORIES &&
+                    WeatherSnapshot.isWetCode(weather.currentWeatherCode) -> {
                     score += 12.0
                     reasons += "good for a rainy day"
                 }

@@ -363,6 +363,6 @@ private fun CheckInResultRow(
                 )
             }
         }
-        DurationBadge(candidate.distanceMeters, horizontalAlignment = Alignment.End)
+        DurationBadge(candidate.distanceMeters)
     }
 }

@@ -453,14 +453,6 @@ private fun SuggestionCard(
                 }
             }
 
-            if (suggestion.reasons.isNotEmpty()) {
-                Text(
-                    text = suggestion.reasons.joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
             suggestion.lastVisit?.let {
                 Text(
                     text = stringResource(R.string.detail_last_visit, it),
