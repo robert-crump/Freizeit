@@ -1,15 +1,22 @@
 package com.example.freizeit.ui
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.freizeit.FreizeitApplication
 import com.example.freizeit.ui.theme.FreizeitTheme
+import com.example.freizeit.ui.theme.LocalDarkTheme
 
 class MainActivity : ComponentActivity() {
 
@@ -37,14 +44,33 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         targetDestination = intent.getStringExtra(EXTRA_TARGET_DESTINATION)
         openOnMapPoiId = intent.getStringExtra(EXTRA_OPEN_ON_MAP_POI_ID)
+        val themeModes = (application as FreizeitApplication).container.settingsRepository.themeMode
         setContent {
-            FreizeitTheme {
-                FreizeitApp(
-                    targetDestination = targetDestination,
-                    openOnMapPoiId = openOnMapPoiId,
-                    relaunchCount = relaunchCount
-                )
+            // null until DataStore's first read, so a stored Dark never flashes Light first.
+            val themeMode by themeModes.collectAsStateWithLifecycle(initialValue = null)
+            themeMode?.let { mode ->
+                FreizeitTheme(themeMode = mode) {
+                    SystemBarsFollowTheme()
+                    FreizeitApp(
+                        targetDestination = targetDestination,
+                        openOnMapPoiId = openOnMapPoiId,
+                        relaunchCount = relaunchCount
+                    )
+                }
             }
+        }
+    }
+
+    /** enableEdgeToEdge's default reads the system's dark setting; re-run it with the app's, so
+     *  the status bar icons stay legible when Settings forces Light or Dark. */
+    @Composable
+    private fun SystemBarsFollowTheme() {
+        val darkTheme = LocalDarkTheme.current
+        LaunchedEffect(darkTheme) {
+            enableEdgeToEdge(
+                statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { darkTheme },
+                navigationBarStyle = SystemBarStyle.auto(LIGHT_NAV_SCRIM, DARK_NAV_SCRIM) { darkTheme }
+            )
         }
     }
 
@@ -60,6 +86,10 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        // enableEdgeToEdge's own default navigation bar scrims (activity 1.8).
+        private val LIGHT_NAV_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        private val DARK_NAV_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
+
         /** Intent extra carrying a [FreizeitDestination.route] to navigate to on launch (#53). */
         const val EXTRA_TARGET_DESTINATION = "target_destination"
 

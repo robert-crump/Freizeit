@@ -15,6 +15,7 @@ import com.example.freizeit.data.entity.ImportInfo
 import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
+import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.util.MergeCandidate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -72,6 +73,13 @@ class SettingsViewModel(
 
     fun setAutoCheckInEnabled(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setAutoCheckInEnabled(enabled) }
+    }
+
+    val themeMode: StateFlow<ThemeMode> = settingsRepository.themeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ThemeMode.SYSTEM)
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     val summary: StateFlow<PoiSummary?> = combine(

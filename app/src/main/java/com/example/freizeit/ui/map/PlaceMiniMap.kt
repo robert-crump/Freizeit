@@ -1,7 +1,6 @@
 package com.example.freizeit.ui.map
 
 import android.graphics.Color
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +16,7 @@ import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.freizeit.data.entity.Poi
+import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.LatLon
 import com.google.gson.JsonObject
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -62,7 +62,7 @@ fun SuggestionsMiniMap(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read once, same rationale as PoiMap's Map screen: no live re-theming mid-session.
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
 
     val state = remember { SuggestionsMapState() }

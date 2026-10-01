@@ -66,4 +66,17 @@ class SettingsRepositoryTest {
         repository.setAutoCheckInEnabled(false)
         assertEquals(false, repository.autoCheckInEnabled.first())
     }
+
+    @Test
+    fun `theme follows the system before anything is ever set`() = runTest {
+        assertEquals(ThemeMode.SYSTEM, repository.themeMode.first())
+    }
+
+    @Test
+    fun `theme mode round trips`() = runTest {
+        ThemeMode.entries.forEach { mode ->
+            repository.setThemeMode(mode)
+            assertEquals(mode, repository.themeMode.first())
+        }
+    }
 }

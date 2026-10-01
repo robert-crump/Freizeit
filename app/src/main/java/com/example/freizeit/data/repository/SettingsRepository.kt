@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -31,9 +32,19 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[AUTO_CHECKIN_ENABLED_KEY] = enabled }
     }
 
+    /** Follows the system until the user picks Light or Dark; an unknown stored value falls back too. */
+    val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
+        ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE_KEY] } ?: ThemeMode.SYSTEM
+    }
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        dataStore.edit { it[THEME_MODE_KEY] = mode.name }
+    }
+
     companion object {
         const val DEFAULT_RADIUS_KM = 40
         private val RADIUS_KM_KEY = intPreferencesKey("suggestion_radius_km")
         private val AUTO_CHECKIN_ENABLED_KEY = booleanPreferencesKey("auto_checkin_enabled")
+        private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
     }
 }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +15,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,11 +44,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
+import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.ui.common.categoryDisplayName
 import java.time.Instant
 import java.time.ZoneId
@@ -61,6 +68,7 @@ fun SettingsScreen(
     val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
     val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
     val autoCheckInEnabled by viewModel.autoCheckInEnabled.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showPoiBreakdown by remember { mutableStateOf(false) }
@@ -187,6 +195,19 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
+                    text = stringResource(R.string.settings_appearance_section),
+                    style = MaterialTheme.typography.titleMedium
+                )
+                ThemeRow(themeMode = themeMode, onThemeModeChange = viewModel::setThemeMode)
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
                     text = stringResource(R.string.settings_suggestions_section),
                     style = MaterialTheme.typography.titleMedium
                 )
@@ -251,6 +272,74 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { viewModel.dismissMerge(candidate) }) {
                     Text(stringResource(R.string.settings_merge_dismiss))
+                }
+            }
+        )
+    }
+}
+
+private val ThemeMode.labelRes: Int
+    get() = when (this) {
+        ThemeMode.SYSTEM -> R.string.settings_theme_system
+        ThemeMode.LIGHT -> R.string.settings_theme_light
+        ThemeMode.DARK -> R.string.settings_theme_dark
+    }
+
+/** MyQuotes' App theme row: the current choice as its summary, and a single-choice dialog where
+ *  picking an option applies it at once and closes the dialog. */
+@Composable
+private fun ThemeRow(themeMode: ThemeMode, onThemeModeChange: (ThemeMode) -> Unit) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { showDialog = true },
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = Icons.Outlined.Palette, contentDescription = null)
+        Column {
+            Text(text = stringResource(R.string.settings_theme))
+            Text(
+                text = stringResource(themeMode.labelRes),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(stringResource(R.string.settings_theme)) },
+            text = {
+                Column(modifier = Modifier.selectableGroup()) {
+                    ThemeMode.entries.forEach { mode ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(
+                                    selected = mode == themeMode,
+                                    role = Role.RadioButton,
+                                    onClick = {
+                                        showDialog = false
+                                        onThemeModeChange(mode)
+                                    }
+                                )
+                                .padding(vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = mode == themeMode, onClick = null)
+                            Text(stringResource(mode.labelRes))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDialog = false }) {
+                    Text(stringResource(R.string.settings_theme_cancel))
                 }
             }
         )

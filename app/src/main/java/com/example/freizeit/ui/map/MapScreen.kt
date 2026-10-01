@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,6 +64,7 @@ import com.example.freizeit.R
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.isCustomPoiId
 import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.LocationHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -330,7 +330,7 @@ private fun SearchOval(
     onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val ovalShape = RoundedCornerShape(percent = 50)
     Surface(
         modifier = modifier
@@ -452,7 +452,7 @@ private fun MapFilterChip(
     label: String,
     icon: ImageVector
 ) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val foreground = markerForegroundColor(darkTheme)
     val background = markerBackgroundColor(darkTheme)
     FilterChip(

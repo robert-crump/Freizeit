@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.RectF
 import android.view.ViewGroup
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +19,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.LatLon
 import com.google.gson.JsonObject
 import org.maplibre.android.camera.CameraPosition
@@ -96,7 +96,7 @@ fun PoiMap(
     val lifecycleOwner = LocalLifecycleOwner.current
     // Read once: the map/style is retained across Home<->Map tab switches (MapViewHolder),
     // so a live system theme change while the Map screen is open won't re-style the map mid-session.
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
     val markerBackground = markerBackgroundColor(darkTheme).toArgb()
     val markerForeground = markerForegroundColor(darkTheme).toArgb()

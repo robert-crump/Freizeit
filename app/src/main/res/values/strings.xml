@@ -131,6 +131,13 @@
     <string name="settings_backup_export_success">Exported %1$d items.</string>
     <string name="settings_backup_import_success">Restored %1$d items.</string>
     <!-- Settings: suggestions -->
+    <string name="settings_appearance_section">Appearance</string>
+    <string name="settings_theme">App theme</string>
+    <string name="settings_theme_system">Follow system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_cancel">Cancel</string>
+
     <string name="settings_suggestions_section">Suggestions</string>
     <string name="settings_radius_label">Suggestion radius (km)</string>
     <!-- Settings: auto check-in -->

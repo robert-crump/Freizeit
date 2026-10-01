@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +68,7 @@ import com.example.freizeit.ui.map.categoryIcon
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.map.markerBackgroundColor
 import com.example.freizeit.ui.map.markerForegroundColor
+import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LocationHelper
 import kotlinx.coroutines.delay
@@ -306,7 +306,7 @@ private fun CheckInResultRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val background = markerBackgroundColor(darkTheme)
     val foreground = markerForegroundColor(darkTheme)
     val poi = candidate.poi

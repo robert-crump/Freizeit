@@ -4,7 +4,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.freizeit.R
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.theme.LocalDarkTheme
 import com.example.freizeit.util.GeoDistance
 import com.example.freizeit.util.LatLon
 
@@ -208,7 +208,7 @@ private fun SearchResultRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val darkTheme = isSystemInDarkTheme()
+    val darkTheme = LocalDarkTheme.current
     val background = markerBackgroundColor(darkTheme)
     val foreground = markerForegroundColor(darkTheme)
 
