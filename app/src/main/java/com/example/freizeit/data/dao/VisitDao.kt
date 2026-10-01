@@ -24,6 +24,9 @@ interface VisitDao {
     @Query("SELECT * FROM visit ORDER BY visitedAt DESC")
     suspend fun getAll(): List<Visit>
 
+    @Query("DELETE FROM visit")
+    suspend fun deleteAll()
+
     @Query("DELETE FROM visit WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
 

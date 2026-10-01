@@ -29,8 +29,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
- * Keeps Play Services' registered geofences in sync with (auto check-in enabled) x (current
- * favorites). One 200m circular geofence per favorite, same radius as the manual check-in list's
+ * Keeps Play Services' registered geofences in sync with (any notification switch on) x (the
+ * places the enabled switches cover). Since #74 that's favorites and/or want-to-go places — the
+ * "favorites" below means whichever of them are covered, and the 100-cap spans both. One 200m circular geofence per favorite, same radius as the manual check-in list's
  * top-billing cutoff (issue #23) — see [CHECKIN_FAVORITE_RADIUS_METERS].
  *
  * Each geofence also carries a [LOITERING_DELAY_MILLIS] DWELL trigger: passing by a favorite

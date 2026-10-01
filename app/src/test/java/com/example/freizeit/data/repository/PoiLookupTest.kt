@@ -58,6 +58,26 @@ class PoiLookupTest {
     )
 
     @Test
+    fun `notification places are the union of the enabled verdicts`() = runTest {
+        val park = Poi(id = "node/2", category = "park", lat = 50.8, lon = 6.8, name = "Park")
+        val museum = Poi(id = "node/3", category = "museum", lat = 50.7, lon = 6.7, name = "Museum")
+        db.poiDao().upsertAll(listOf(osmPoi, park, museum))
+        db.customPoiDao().upsert(customPoi)
+        db.verdictDao().upsert(favorite("node/1"))
+        db.verdictDao().upsert(favorite("node/2").copy(value = Verdict.VALUE_WANT_TO_GO))
+        db.verdictDao().upsert(favorite("custom/1").copy(value = Verdict.VALUE_WANT_TO_GO))
+
+        suspend fun ids(favorites: Boolean, wantToGo: Boolean) =
+            notificationPlacesOnce(db.poiDao(), db.customPoiDao(), db.poiOverrideDao(), NotificationTargets(favorites, wantToGo))
+                .map { it.id }.toSet()
+
+        assertEquals(emptySet<String>(), ids(favorites = false, wantToGo = false))
+        assertEquals(setOf("node/1"), ids(favorites = true, wantToGo = false))
+        assertEquals(setOf("node/2", "custom/1"), ids(favorites = false, wantToGo = true))
+        assertEquals(setOf("node/1", "node/2", "custom/1"), ids(favorites = true, wantToGo = true))
+    }
+
+    @Test
     fun `findPoiById resolves an OSM poi`() = runTest {
         db.poiDao().upsertAll(listOf(osmPoi))
 

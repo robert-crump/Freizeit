@@ -17,10 +17,15 @@ import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.util.MergeCandidate
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -37,13 +42,23 @@ sealed interface ImportStatus {
     data class Error(val message: String) : ImportStatus
 }
 
-sealed interface BackupStatus {
-    data object Idle : BackupStatus
-    data object Working : BackupStatus
-    data class ExportSuccess(val count: Int) : BackupStatus
-    data class ImportSuccess(val count: Int) : BackupStatus
-    data class Error(val message: String) : BackupStatus
+/** A finished backup export/import, shown once as a snackbar (#74). */
+sealed interface BackupResult {
+    data class ExportSuccess(val count: Int) : BackupResult
+    data class ImportSuccess(val count: Int) : BackupResult
+    data class Error(val message: String) : BackupResult
 }
+
+/** The Suggestion radius dialog's choices (#74). */
+val SUGGESTION_RADIUS_PRESETS_KM = listOf(5, 10, 20, 30, 40, 60, 80, 100)
+
+/** The presets plus [currentKm] if it's a value saved before the presets existed, in order. */
+fun suggestionRadiusOptions(currentKm: Int): List<Int> =
+    (SUGGESTION_RADIUS_PRESETS_KM + currentKm).distinct().sorted()
+
+/** The export's suggested file name, e.g. `261001-freizeit-backup.json` (#74). */
+fun backupFileName(date: LocalDate): String =
+    "${date.format(DateTimeFormatter.ofPattern("yyMMdd"))}-freizeit-backup.json"
 
 class SettingsViewModel(
     private val poiRepository: PoiRepository,
@@ -68,11 +83,18 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setSuggestionRadiusKm(radiusKm) }
     }
 
-    val autoCheckInEnabled: StateFlow<Boolean> = settingsRepository.autoCheckInEnabled
+    val notifyFavorites: StateFlow<Boolean> = settingsRepository.notifyFavorites
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    fun setAutoCheckInEnabled(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setAutoCheckInEnabled(enabled) }
+    fun setNotifyFavorites(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setNotifyFavorites(enabled) }
+    }
+
+    val notifyWantToGo: StateFlow<Boolean> = settingsRepository.notifyWantToGo
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun setNotifyWantToGo(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setNotifyWantToGo(enabled) }
     }
 
     val themeMode: StateFlow<ThemeMode> = settingsRepository.themeMode
@@ -90,8 +112,8 @@ class SettingsViewModel(
         PoiSummary(counts, missing, info)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _backupStatus = MutableStateFlow<BackupStatus>(BackupStatus.Idle)
-    val backupStatus: StateFlow<BackupStatus> = _backupStatus
+    private val _backupResults = Channel<BackupResult>(Channel.BUFFERED)
+    val backupResults: Flow<BackupResult> = _backupResults.receiveAsFlow()
 
     fun importPoiFile(uri: Uri) {
         viewModelScope.launch {
@@ -126,25 +148,29 @@ class SettingsViewModel(
 
     fun exportBackup(uri: Uri) {
         viewModelScope.launch {
-            _backupStatus.value = BackupStatus.Working
-            _backupStatus.value = try {
-                BackupStatus.ExportSuccess(backupRepository.exportTo(uri))
-            } catch (e: Exception) {
-                BackupStatus.Error("Export failed: ${e.message ?: e.javaClass.simpleName}")
-            }
+            _backupResults.send(
+                try {
+                    BackupResult.ExportSuccess(backupRepository.exportTo(uri))
+                } catch (e: Exception) {
+                    BackupResult.Error("Export failed: ${e.message ?: e.javaClass.simpleName}")
+                }
+            )
         }
     }
 
+    /** A full replace — Settings asks "Replace all your data?" before picking the file. The
+     *  geofences and the theme follow the restored data on their own (both observe it). */
     fun importBackup(uri: Uri) {
         viewModelScope.launch {
-            _backupStatus.value = BackupStatus.Working
-            _backupStatus.value = try {
-                BackupStatus.ImportSuccess(backupRepository.importFrom(uri))
-            } catch (e: BackupParseException) {
-                BackupStatus.Error(e.message ?: "Invalid backup file")
-            } catch (e: Exception) {
-                BackupStatus.Error("Import failed: ${e.message ?: e.javaClass.simpleName}")
-            }
+            _backupResults.send(
+                try {
+                    BackupResult.ImportSuccess(backupRepository.importFrom(uri))
+                } catch (e: BackupParseException) {
+                    BackupResult.Error(e.message ?: "Invalid backup file")
+                } catch (e: Exception) {
+                    BackupResult.Error("Import failed: ${e.message ?: e.javaClass.simpleName}")
+                }
+            )
         }
     }
 

@@ -11,6 +11,7 @@ import com.example.freizeit.data.entity.withOverride
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * A place can live in either `poi` (OSM-sourced) or `custom_poi` (user-added, #45), and the
@@ -49,6 +50,28 @@ fun observeAllByVerdictValues(
     ) { pois, customPois, overrides ->
         applyOverrides(pois + customPois.map { it.toPoi() }, overrides.associateBy { it.placeId })
     }
+
+/** The places check-in notifications watch (#74): every place whose verdict one of the enabled
+ *  switches in [targets] covers, so a place with either verdict appears once. Empty when both
+ *  switches are off. */
+fun observeNotificationPlaces(
+    poiDao: PoiDao,
+    customPoiDao: CustomPoiDao,
+    overrideDao: PoiOverrideDao,
+    targets: NotificationTargets
+): Flow<List<Poi>> =
+    if (targets.any) {
+        observeAllByVerdictValues(poiDao, customPoiDao, overrideDao, targets.verdictValues)
+    } else {
+        flowOf(emptyList())
+    }
+
+suspend fun notificationPlacesOnce(
+    poiDao: PoiDao,
+    customPoiDao: CustomPoiDao,
+    overrideDao: PoiOverrideDao,
+    targets: NotificationTargets
+): List<Poi> = observeNotificationPlaces(poiDao, customPoiDao, overrideDao, targets).first()
 
 /** The place as stored, without overrides — what the edit form compares against. Routes on
  *  [isCustomPoiId] rather than trying `poiDao` first, since a custom id is by construction never

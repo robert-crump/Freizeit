@@ -17,11 +17,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,22 +34,24 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -53,6 +59,7 @@ import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
 import com.example.freizeit.ui.common.categoryDisplayName
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -65,13 +72,29 @@ fun SettingsScreen(
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
     val mergeCandidates by viewModel.mergeCandidates.collectAsStateWithLifecycle()
-    val backupStatus by viewModel.backupStatus.collectAsStateWithLifecycle()
     val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
-    val autoCheckInEnabled by viewModel.autoCheckInEnabled.collectAsStateWithLifecycle()
+    val notifyFavorites by viewModel.notifyFavorites.collectAsStateWithLifecycle()
+    val notifyWantToGo by viewModel.notifyWantToGo.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showPoiBreakdown by remember { mutableStateOf(false) }
+    var showImportConfirm by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val context = LocalContext.current
+    LaunchedEffect(viewModel) {
+        viewModel.backupResults.collect { result ->
+            val message = when (result) {
+                is BackupResult.ExportSuccess ->
+                    context.getString(R.string.settings_backup_export_success, result.count)
+                is BackupResult.ImportSuccess ->
+                    context.getString(R.string.settings_backup_import_success, result.count)
+                is BackupResult.Error -> result.message
+            }
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -91,154 +114,145 @@ fun SettingsScreen(
         if (uri != null) viewModel.importBackup(uri)
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = stringResource(R.string.tab_settings),
-                style = MaterialTheme.typography.headlineMedium
-            )
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = stringResource(R.string.settings_menu_description)
-                    )
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.settings_menu_poi_breakdown)) },
-                        onClick = {
-                            menuExpanded = false
-                            showPoiBreakdown = true
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.settings_import_button)) },
-                        onClick = {
-                            menuExpanded = false
-                            filePicker.launch(arrayOf("*/*"))
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.settings_backup_export)) },
-                        onClick = {
-                            menuExpanded = false
-                            backupExportPicker.launch("freizeit-backup.json")
-                        }
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.settings_backup_import)) },
-                        onClick = {
-                            menuExpanded = false
-                            backupImportPicker.launch(arrayOf("*/*"))
-                        }
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.tab_settings),
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Box {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.settings_menu_description)
+                        )
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.settings_menu_poi_information)) },
+                            onClick = {
+                                menuExpanded = false
+                                showPoiBreakdown = true
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.settings_import_button)) },
+                            onClick = {
+                                menuExpanded = false
+                                filePicker.launch(arrayOf("*/*"))
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        when (val status = importStatus) {
-            ImportStatus.Idle -> {}
-            ImportStatus.Importing -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                Text(stringResource(R.string.settings_importing))
-            }
-            is ImportStatus.Success -> Text(
-                text = stringResource(R.string.settings_import_success, status.count),
-                color = MaterialTheme.colorScheme.primary
-            )
-            is ImportStatus.Error -> Text(
-                text = status.message,
-                color = MaterialTheme.colorScheme.error
-            )
-        }
-
-        when (val status = backupStatus) {
-            BackupStatus.Idle -> {}
-            BackupStatus.Working -> Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                Text(stringResource(R.string.settings_backup_working))
-            }
-            is BackupStatus.ExportSuccess -> Text(
-                text = stringResource(R.string.settings_backup_export_success, status.count),
-                color = MaterialTheme.colorScheme.primary
-            )
-            is BackupStatus.ImportSuccess -> Text(
-                text = stringResource(R.string.settings_backup_import_success, status.count),
-                color = MaterialTheme.colorScheme.primary
-            )
-            is BackupStatus.Error -> Text(
-                text = status.message,
-                color = MaterialTheme.colorScheme.error
-            )
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_appearance_section),
-                    style = MaterialTheme.typography.titleMedium
+            when (val status = importStatus) {
+                ImportStatus.Idle -> {}
+                ImportStatus.Importing -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                    Text(stringResource(R.string.settings_importing))
+                }
+                is ImportStatus.Success -> Text(
+                    text = stringResource(R.string.settings_import_success, status.count),
+                    color = MaterialTheme.colorScheme.primary
                 )
-                ThemeRow(themeMode = themeMode, onThemeModeChange = viewModel::setThemeMode)
-            }
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_suggestions_section),
-                    style = MaterialTheme.typography.titleMedium
+                is ImportStatus.Error -> Text(
+                    text = status.message,
+                    color = MaterialTheme.colorScheme.error
                 )
-                SuggestionRadiusField(
-                    radiusKm = suggestionRadiusKm,
-                    onCommit = viewModel::setSuggestionRadiusKm
+            }
+
+            SettingsCard(title = stringResource(R.string.settings_appearance_section)) {
+                SingleChoiceRow(
+                    icon = Icons.Outlined.Palette,
+                    title = stringResource(R.string.settings_theme),
+                    options = ThemeMode.entries,
+                    selected = themeMode,
+                    label = { stringResource(it.labelRes) },
+                    onSelect = viewModel::setThemeMode
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.settings_suggestions_section)) {
+                SingleChoiceRow(
+                    icon = Icons.Outlined.Place,
+                    title = stringResource(R.string.settings_radius),
+                    options = suggestionRadiusOptions(suggestionRadiusKm),
+                    selected = suggestionRadiusKm,
+                    label = { stringResource(R.string.settings_radius_value, it) },
+                    onSelect = viewModel::setSuggestionRadiusKm
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.settings_notifications_section)) {
+                NotificationsSection(
+                    favorites = notifyFavorites,
+                    wantToGo = notifyWantToGo,
+                    onFavoritesChange = viewModel::setNotifyFavorites,
+                    onWantToGoChange = viewModel::setNotifyWantToGo
+                )
+            }
+
+            SettingsCard(title = stringResource(R.string.settings_backup_section)) {
+                ActionRow(
+                    icon = Icons.Outlined.FileUpload,
+                    title = stringResource(R.string.settings_backup_export),
+                    description = stringResource(R.string.settings_backup_export_description),
+                    onClick = { backupExportPicker.launch(backupFileName(LocalDate.now())) }
+                )
+                ActionRow(
+                    icon = Icons.Outlined.FileDownload,
+                    title = stringResource(R.string.settings_backup_import),
+                    description = stringResource(R.string.settings_backup_import_description),
+                    onClick = { showImportConfirm = true }
                 )
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_auto_checkin_section),
-                    style = MaterialTheme.typography.titleMedium
-                )
-                AutoCheckInSection(
-                    enabled = autoCheckInEnabled,
-                    onEnabledChange = viewModel::setAutoCheckInEnabled
-                )
+        SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+
+    if (showImportConfirm) {
+        AlertDialog(
+            onDismissRequest = { showImportConfirm = false },
+            title = { Text(stringResource(R.string.settings_backup_import_confirm_title)) },
+            text = { Text(stringResource(R.string.settings_backup_import_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportConfirm = false
+                        backupImportPicker.launch(arrayOf("*/*"))
+                    }
+                ) {
+                    Text(stringResource(R.string.settings_backup_import_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportConfirm = false }) {
+                    Text(stringResource(R.string.settings_cancel))
+                }
             }
-        }
+        )
     }
 
     if (showPoiBreakdown) {
         AlertDialog(
             onDismissRequest = { showPoiBreakdown = false },
-            title = { Text(stringResource(R.string.settings_poi_section)) },
+            title = { Text(stringResource(R.string.settings_menu_poi_information)) },
             text = { ImportSummaryContent(summary) },
             confirmButton = {
                 TextButton(onClick = { showPoiBreakdown = false }) {
@@ -278,6 +292,19 @@ fun SettingsScreen(
     }
 }
 
+@Composable
+private fun SettingsCard(title: String, content: @Composable () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            content()
+        }
+    }
+}
+
 private val ThemeMode.labelRes: Int
     get() = when (this) {
         ThemeMode.SYSTEM -> R.string.settings_theme_system
@@ -285,81 +312,113 @@ private val ThemeMode.labelRes: Int
         ThemeMode.DARK -> R.string.settings_theme_dark
     }
 
-/** MyQuotes' App theme row: the current choice as its summary, and a single-choice dialog where
- *  picking an option applies it at once and closes the dialog. */
+/** An icon, a title and a summary line under it. */
 @Composable
-private fun ThemeRow(themeMode: ThemeMode, onThemeModeChange: (ThemeMode) -> Unit) {
-    var showDialog by remember { mutableStateOf(false) }
-
+private fun ActionRow(icon: ImageVector, title: String, description: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { showDialog = true },
+            .clickable(onClick = onClick),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(imageVector = Icons.Outlined.Palette, contentDescription = null)
+        Icon(imageVector = icon, contentDescription = null)
         Column {
-            Text(text = stringResource(R.string.settings_theme))
+            Text(text = title)
             Text(
-                text = stringResource(themeMode.labelRes),
+                text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
+}
+
+/** MyQuotes' App theme row: the current choice as its summary, and a single-choice dialog where
+ *  picking an option applies it at once and closes the dialog. Also the Suggestion radius (#74). */
+@Composable
+private fun <T> SingleChoiceRow(
+    icon: ImageVector,
+    title: String,
+    options: List<T>,
+    selected: T,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    ActionRow(icon = icon, title = title, description = label(selected), onClick = { showDialog = true })
 
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { showDialog = false },
-            title = { Text(stringResource(R.string.settings_theme)) },
+            title = { Text(title) },
             text = {
                 Column(modifier = Modifier.selectableGroup()) {
-                    ThemeMode.entries.forEach { mode ->
+                    options.forEach { option ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .selectable(
-                                    selected = mode == themeMode,
+                                    selected = option == selected,
                                     role = Role.RadioButton,
                                     onClick = {
                                         showDialog = false
-                                        onThemeModeChange(mode)
+                                        onSelect(option)
                                     }
                                 )
                                 .padding(vertical = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(selected = mode == themeMode, onClick = null)
-                            Text(stringResource(mode.labelRes))
+                            RadioButton(selected = option == selected, onClick = null)
+                            Text(label(option))
                         }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showDialog = false }) {
-                    Text(stringResource(R.string.settings_theme_cancel))
+                    Text(stringResource(R.string.settings_cancel))
                 }
             }
         )
     }
 }
 
+private enum class NotificationSwitch { FAVORITES, WANT_TO_GO }
+
 /**
- * Owns the whole opt-in dance: toggling on shows the disclosure dialog first (issue #24's Play
- * Store compliance requirement), and only a completed foreground-location grant flips the
- * DataStore-backed switch on — denial leaves it off with a hint, never a silently-broken feature.
+ * Owns the whole opt-in dance: turning on the first switch shows the disclosure dialog first
+ * (issue #24's Play Store compliance requirement), and only a completed foreground-location grant
+ * flips that DataStore-backed switch on — denial leaves it off with a hint, never a
+ * silently-broken feature. With one switch already on, the other turns on without asking again.
  */
 @Composable
-private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
+private fun NotificationsSection(
+    favorites: Boolean,
+    wantToGo: Boolean,
+    onFavoritesChange: (Boolean) -> Unit,
+    onWantToGoChange: (Boolean) -> Unit
+) {
+    var pending by remember { mutableStateOf<NotificationSwitch?>(null) }
     var showDisclosure by remember { mutableStateOf(false) }
     var showDeniedHint by remember { mutableStateOf(false) }
+
+    fun set(switch: NotificationSwitch, enabled: Boolean) = when (switch) {
+        NotificationSwitch.FAVORITES -> onFavoritesChange(enabled)
+        NotificationSwitch.WANT_TO_GO -> onWantToGoChange(enabled)
+    }
+
+    fun enablePending() {
+        pending?.let { set(it, true) }
+        pending = null
+    }
 
     val notificationsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) {
-        onEnabledChange(true)
+        enablePending()
     }
 
     val backgroundLocationLauncher = rememberLauncherForActivityResult(
@@ -368,7 +427,7 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            onEnabledChange(true)
+            enablePending()
         }
     }
 
@@ -376,6 +435,7 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         if (results.values.none { it }) {
+            pending = null
             showDeniedHint = true
             return@rememberLauncherForActivityResult
         }
@@ -384,42 +444,50 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
                 backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
                 notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            else -> onEnabledChange(true)
+            else -> enablePending()
         }
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = stringResource(R.string.settings_auto_checkin_toggle),
-            modifier = Modifier.weight(1f)
-        )
-        Switch(
-            checked = enabled,
-            onCheckedChange = { checked ->
-                if (checked) {
-                    showDeniedHint = false
-                    showDisclosure = true
-                } else {
-                    onEnabledChange(false)
-                }
+    fun onSwitchChange(switch: NotificationSwitch, checked: Boolean) {
+        when {
+            !checked -> set(switch, false)
+            favorites || wantToGo -> set(switch, true)
+            else -> {
+                showDeniedHint = false
+                pending = switch
+                showDisclosure = true
             }
-        )
+        }
     }
+
+    Text(
+        text = stringResource(R.string.settings_notifications_description),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    NotificationSwitchRow(
+        icon = Icons.Filled.Favorite,
+        title = stringResource(R.string.settings_notifications_favorites),
+        checked = favorites,
+        onCheckedChange = { onSwitchChange(NotificationSwitch.FAVORITES, it) }
+    )
+    NotificationSwitchRow(
+        icon = Icons.Filled.Bookmark,
+        title = stringResource(R.string.settings_notifications_want_to_go),
+        checked = wantToGo,
+        onCheckedChange = { onSwitchChange(NotificationSwitch.WANT_TO_GO, it) }
+    )
 
     if (showDeniedHint) {
         Text(
-            text = stringResource(R.string.settings_auto_checkin_denied_hint),
+            text = stringResource(R.string.settings_notifications_denied_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error
         )
     }
 
     if (showDisclosure) {
-        AutoCheckInDisclosureDialog(
+        NotificationsDisclosureDialog(
             onConfirm = {
                 showDisclosure = false
                 foregroundLocationLauncher.launch(
@@ -429,52 +497,46 @@ private fun AutoCheckInSection(enabled: Boolean, onEnabledChange: (Boolean) -> U
                     )
                 )
             },
-            onDismiss = { showDisclosure = false }
+            onDismiss = {
+                showDisclosure = false
+                pending = null
+            }
         )
     }
 }
 
 @Composable
-private fun AutoCheckInDisclosureDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun NotificationSwitchRow(
+    icon: ImageVector,
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(imageVector = icon, contentDescription = null)
+        Text(text = title, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun NotificationsDisclosureDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_auto_checkin_disclosure_title)) },
-        text = { Text(stringResource(R.string.settings_auto_checkin_disclosure_body)) },
+        title = { Text(stringResource(R.string.settings_notifications_disclosure_title)) },
+        text = { Text(stringResource(R.string.settings_notifications_disclosure_body)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.settings_auto_checkin_disclosure_continue))
+                Text(stringResource(R.string.settings_notifications_disclosure_continue))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.settings_auto_checkin_disclosure_cancel))
-            }
-        }
-    )
-}
-
-/**
- * Commits on blur, not per keystroke, so an in-progress edit (or a momentarily invalid one)
- * never writes to DataStore or re-runs Home's distance filter mid-type. Reverts to the last
- * committed value if the field loses focus while empty/non-numeric.
- */
-@Composable
-private fun SuggestionRadiusField(radiusKm: Int, onCommit: (Int) -> Unit) {
-    var text by remember(radiusKm) { mutableStateOf(radiusKm.toString()) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = { text = it.filter(Char::isDigit) },
-        label = { Text(stringResource(R.string.settings_radius_label)) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.onFocusChanged { focusState ->
-            if (!focusState.isFocused) {
-                val parsed = text.toIntOrNull()
-                if (parsed != null && parsed >= 1) {
-                    onCommit(parsed)
-                } else {
-                    text = radiusKm.toString()
-                }
+                Text(stringResource(R.string.settings_cancel))
             }
         }
     )

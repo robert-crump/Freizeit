@@ -4,11 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.example.freizeit.FreizeitApplication
-import com.example.freizeit.data.repository.allFavoritesOnce
 import com.example.freizeit.util.GeofenceEventLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -32,10 +30,8 @@ class GeofenceBootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val container = app.container
-                container.geofenceSyncManager.sync(
-                    container.settingsRepository.autoCheckInEnabled.first(),
-                    allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
-                )
+                val (enabled, places) = container.geofenceTargetsOnce()
+                container.geofenceSyncManager.sync(enabled, places)
             } finally {
                 pendingResult.finish()
             }

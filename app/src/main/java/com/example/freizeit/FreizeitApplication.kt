@@ -2,17 +2,20 @@ package com.example.freizeit
 
 import android.app.Application
 import com.example.freizeit.data.geofence.GeofenceNotifications
-import com.example.freizeit.data.repository.observeAllFavorites
+import com.example.freizeit.data.repository.observeNotificationPlaces
 import com.example.freizeit.di.AppContainer
 import com.example.freizeit.ui.widget.SuggestionWidgetUpdater
 import com.example.freizeit.ui.widget.WidgetRefreshScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 
@@ -29,6 +32,7 @@ class FreizeitApplication : Application() {
 
     val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
         MapLibre.getInstance(this)
@@ -43,18 +47,24 @@ class FreizeitApplication : Application() {
         applicationScope.launch(Dispatchers.IO) {
             container.database.openHelper.writableDatabase
         }
-        // Re-registers Play Services geofences (issue #28) whenever the auto check-in toggle or
-        // the favorite list changes, including at process start. Geofences survive a process
+        // Re-registers Play Services geofences (issue #28) whenever a notification switch
+        // (Favorites / Want to go, #74) or the set of places they cover changes, including at process start. Geofences survive a process
         // restart but not a reboot; GeofenceSyncManager detects the latter (issue #58), and
         // GeofenceBootReceiver re-registers right after boot without waiting for an app open.
         // Above 100 favorites this replays the last closest-100 selection rather than re-ranking
         // (issue #29) — re-ranking only happens on significant location change, armed/disarmed
         // here alongside the toggle via geofenceLocationMonitor.
         applicationScope.launch(Dispatchers.IO) {
-            combine(
-                container.settingsRepository.autoCheckInEnabled,
-                observeAllFavorites(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
-            ) { enabled, favorites -> enabled to favorites }
+            container.settingsRepository.notificationTargets
+                .distinctUntilChanged()
+                .flatMapLatest { targets ->
+                    observeNotificationPlaces(
+                        container.database.poiDao(),
+                        container.database.customPoiDao(),
+                        container.database.poiOverrideDao(),
+                        targets
+                    ).map { places -> targets.any to places }
+                }
                 .distinctUntilChanged()
                 .collect { (enabled, favorites) ->
                     container.geofenceSyncManager.sync(enabled, favorites)

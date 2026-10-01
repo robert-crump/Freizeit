@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.freizeit.data.FreizeitDatabase
+import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.geofence.GeofenceLocationMonitor
 import com.example.freizeit.data.geofence.GeofenceSyncManager
 import com.example.freizeit.data.repository.BackupRepository
@@ -12,7 +13,7 @@ import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
-import com.example.freizeit.data.repository.allFavoritesOnce
+import com.example.freizeit.data.repository.notificationPlacesOnce
 import com.example.freizeit.data.weather.WeatherRepository
 import kotlinx.coroutines.flow.first
 
@@ -37,7 +38,7 @@ class AppContainer(private val context: Context) {
     }
 
     val backupRepository: BackupRepository by lazy {
-        BackupRepository(context, database)
+        BackupRepository(context, database, settingsRepository)
     }
 
     val settingsRepository: SettingsRepository by lazy {
@@ -63,9 +64,16 @@ class AppContainer(private val context: Context) {
     /** Drives [GeofenceSyncManager.rerank] on significant location change (issue #29). */
     val geofenceLocationMonitor: GeofenceLocationMonitor by lazy {
         GeofenceLocationMonitor(context) { location ->
-            val enabled = settingsRepository.autoCheckInEnabled.first()
-            val favorites = allFavoritesOnce(database.poiDao(), database.customPoiDao(), database.poiOverrideDao())
-            geofenceSyncManager.rerank(enabled, favorites, location)
+            val (enabled, places) = geofenceTargetsOnce()
+            geofenceSyncManager.rerank(enabled, places, location)
         }
+    }
+
+    /** Whether any check-in notification switch is on, and the places the enabled switches
+     *  cover (#74) — what every one-shot geofence sync registers. */
+    suspend fun geofenceTargetsOnce(): Pair<Boolean, List<Poi>> {
+        val targets = settingsRepository.notificationTargets.first()
+        return targets.any to
+            notificationPlacesOnce(database.poiDao(), database.customPoiDao(), database.poiOverrideDao(), targets)
     }
 }

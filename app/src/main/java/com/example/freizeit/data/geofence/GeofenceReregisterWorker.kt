@@ -7,9 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.freizeit.FreizeitApplication
-import com.example.freizeit.data.repository.allFavoritesOnce
 import com.example.freizeit.util.GeofenceEventLog
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
 /**
@@ -21,10 +19,8 @@ import java.util.concurrent.TimeUnit
 class GeofenceReregisterWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val container = (applicationContext as FreizeitApplication).container
-        container.geofenceSyncManager.forceReregister(
-            container.settingsRepository.autoCheckInEnabled.first(),
-            allFavoritesOnce(container.database.poiDao(), container.database.customPoiDao(), container.database.poiOverrideDao())
-        )
+        val (enabled, places) = container.geofenceTargetsOnce()
+        container.geofenceSyncManager.forceReregister(enabled, places)
         return Result.success()
     }
 

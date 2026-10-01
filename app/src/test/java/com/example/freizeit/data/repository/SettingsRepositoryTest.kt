@@ -3,6 +3,9 @@ package com.example.freizeit.data.repository
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import com.example.freizeit.data.entity.Verdict
 import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -54,17 +57,56 @@ class SettingsRepositoryTest {
     }
 
     @Test
-    fun `auto check-in defaults to disabled before anything is ever set`() = runTest {
-        assertEquals(false, repository.autoCheckInEnabled.first())
+    fun `both notification switches default to off before anything is ever set`() = runTest {
+        assertEquals(NotificationTargets(favorites = false, wantToGo = false), repository.notificationTargets.first())
     }
 
     @Test
-    fun `auto check-in enabled state round trips`() = runTest {
-        repository.setAutoCheckInEnabled(true)
-        assertEquals(true, repository.autoCheckInEnabled.first())
+    fun `notification switches round trip independently`() = runTest {
+        repository.setNotifyWantToGo(true)
+        assertEquals(NotificationTargets(favorites = false, wantToGo = true), repository.notificationTargets.first())
 
-        repository.setAutoCheckInEnabled(false)
-        assertEquals(false, repository.autoCheckInEnabled.first())
+        repository.setNotifyFavorites(true)
+        repository.setNotifyWantToGo(false)
+        assertEquals(NotificationTargets(favorites = true, wantToGo = false), repository.notificationTargets.first())
+    }
+
+    @Test
+    fun `an enabled pre-74 auto check-in migrates to Favorites on, Want to go off`() = runTest {
+        dataStore.edit { it[booleanPreferencesKey("auto_checkin_enabled")] = true }
+
+        assertEquals(true, repository.notifyFavorites.first())
+        assertEquals(false, repository.notifyWantToGo.first())
+    }
+
+    @Test
+    fun `turning Favorites off wins over an old enabled auto check-in`() = runTest {
+        dataStore.edit { it[booleanPreferencesKey("auto_checkin_enabled")] = true }
+
+        repository.setNotifyFavorites(false)
+
+        assertEquals(false, repository.notifyFavorites.first())
+    }
+
+    @Test
+    fun `notification targets map to the verdict values that get geofences`() {
+        assertEquals(emptyList<String>(), NotificationTargets(favorites = false, wantToGo = false).verdictValues)
+        assertEquals(listOf(Verdict.VALUE_FAVORITE), NotificationTargets(favorites = true, wantToGo = false).verdictValues)
+        assertEquals(listOf(Verdict.VALUE_WANT_TO_GO), NotificationTargets(favorites = false, wantToGo = true).verdictValues)
+        assertEquals(
+            listOf(Verdict.VALUE_FAVORITE, Verdict.VALUE_WANT_TO_GO),
+            NotificationTargets(favorites = true, wantToGo = true).verdictValues
+        )
+    }
+
+    @Test
+    fun `restore replaces every setting`() = runTest {
+        repository.setSuggestionRadiusKm(75)
+        val restored = UserSettings(suggestionRadiusKm = 15, notifyFavorites = false, notifyWantToGo = true, themeMode = ThemeMode.DARK)
+
+        repository.restore(restored)
+
+        assertEquals(restored, repository.snapshot())
     }
 
     @Test

@@ -3,6 +3,9 @@ package com.example.freizeit.data
 import com.example.freizeit.data.entity.CustomPoi
 import com.example.freizeit.data.entity.PoiOverride
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.entity.Visit
+import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.data.repository.UserSettings
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -18,18 +21,20 @@ data class BackupData(
     val exportedAt: Long,
     val verdicts: List<Verdict>,
     val overrides: List<PoiOverride>,
-    val customPois: List<CustomPoi> = emptyList()
+    val customPois: List<CustomPoi> = emptyList(),
+    val visits: List<Visit> = emptyList(),
+    val settings: UserSettings = UserSettings()
 )
 
 /**
- * The app's own backup format for the only irreplaceable data: verdicts
- * (favorites among them), the user's edits to places (`poiOverrides`, #73; files
- * written before #73 carry name-only `customNames` instead, read as name
- * overrides), and user-added custom places
- * (issue #45) — unlike OSM `poi` rows, `custom_poi` has no other source of
- * truth to regenerate from, so it's backed up here rather than excluded.
- * Parsed defensively like [PoiJsonParser] since the file can be hand-edited
- * between export and re-import.
+ * The app's own backup format for all user data (#74): verdicts (favorites among
+ * them), the user's edits to places (`poiOverrides`, #73; files written before #73
+ * carry name-only `customNames` instead, read as name overrides), user-added
+ * custom places (issue #45) — unlike OSM `poi` rows, `custom_poi` has no other
+ * source of truth to regenerate from — the check-in history (`visits`) and the
+ * user's `settings`. A section an older file lacks reads as empty, or as the
+ * default settings. Parsed defensively like [PoiJsonParser] since the file can be
+ * hand-edited between export and re-import.
  */
 object BackupJsonCodec {
 
@@ -97,6 +102,34 @@ object BackupJsonCodec {
                 }
             }
         )
+        root.add(
+            "visits",
+            JsonArray().apply {
+                data.visits.forEach { v ->
+                    add(
+                        JsonObject().apply {
+                            addProperty("id", v.id)
+                            addProperty("placeId", v.placeId)
+                            addProperty("visitedAt", v.visitedAt)
+                            addProperty("source", v.source)
+                            addProperty("snapshotName", v.snapshotName)
+                            addProperty("snapshotLat", v.snapshotLat)
+                            addProperty("snapshotLon", v.snapshotLon)
+                            addProperty("snapshotCategory", v.snapshotCategory)
+                        }
+                    )
+                }
+            }
+        )
+        root.add(
+            "settings",
+            JsonObject().apply {
+                addProperty("suggestionRadiusKm", data.settings.suggestionRadiusKm)
+                addProperty("notifyFavorites", data.settings.notifyFavorites)
+                addProperty("notifyWantToGo", data.settings.notifyWantToGo)
+                addProperty("themeMode", data.settings.themeMode.name)
+            }
+        )
         gson.toJson(root, writer)
     }
 
@@ -125,7 +158,9 @@ object BackupJsonCodec {
                 obj.array("customNames").mapIndexed { i, el -> parseCustomName(el, i) } +
                     obj.array("poiOverrides").mapIndexed { i, el -> parseOverride(el, i) }
                 ).associateBy { it.placeId }.values.toList(),
-            customPois = obj.array("customPois").mapIndexed { i, el -> parseCustomPoi(el, i) }
+            customPois = obj.array("customPois").mapIndexed { i, el -> parseCustomPoi(el, i) },
+            visits = obj.array("visits").mapIndexed { i, el -> parseVisit(el, i) },
+            settings = parseSettings(obj.get("settings"))
         )
     }
 
@@ -149,6 +184,38 @@ object BackupJsonCodec {
         )
     }
 
+    private fun parseVisit(element: JsonElement, index: Int): Visit {
+        if (!element.isJsonObject) throw BackupParseException("visits[$index] is not an object")
+        val o = element.asJsonObject
+        return Visit(
+            // A missing id lets Room assign one.
+            id = o.optLong("id") ?: 0,
+            placeId = o.requiredString("placeId", "visits", index),
+            visitedAt = o.requiredLong("visitedAt", "visits", index),
+            source = o.optString("source") ?: Visit.SOURCE_MANUAL,
+            snapshotName = o.optString("snapshotName"),
+            snapshotLat = o.requiredDouble("snapshotLat", "visits", index),
+            snapshotLon = o.requiredDouble("snapshotLon", "visits", index),
+            snapshotCategory = o.requiredString("snapshotCategory", "visits", index)
+        )
+    }
+
+    /** Settings are forgiving: a missing or odd value falls back to its default. */
+    private fun parseSettings(element: JsonElement?): UserSettings {
+        val defaults = UserSettings()
+        if (element == null || element.isJsonNull) return defaults
+        if (!element.isJsonObject) throw BackupParseException("\"settings\" is not an object")
+        val o = element.asJsonObject
+        return UserSettings(
+            suggestionRadiusKm = o.optLong("suggestionRadiusKm")?.toInt()?.takeIf { it >= 1 }
+                ?: defaults.suggestionRadiusKm,
+            notifyFavorites = o.optBoolean("notifyFavorites") ?: defaults.notifyFavorites,
+            notifyWantToGo = o.optBoolean("notifyWantToGo") ?: defaults.notifyWantToGo,
+            themeMode = ThemeMode.entries.firstOrNull { it.name == o.optString("themeMode") }
+                ?: defaults.themeMode
+        )
+    }
+
     private fun parseCustomName(element: JsonElement, index: Int): PoiOverride {
         if (!element.isJsonObject) throw BackupParseException("customNames[$index] is not an object")
         val o = element.asJsonObject
@@ -161,7 +228,6 @@ object BackupJsonCodec {
     private fun parseOverride(element: JsonElement, index: Int): PoiOverride {
         if (!element.isJsonObject) throw BackupParseException("poiOverrides[$index] is not an object")
         val o = element.asJsonObject
-        val hidden = o.get("hidden")
         return PoiOverride(
             placeId = o.requiredString("placeId", "poiOverrides", index),
             name = o.optString("name"),
@@ -171,7 +237,7 @@ object BackupJsonCodec {
             postcode = o.optString("postcode"),
             city = o.optString("city"),
             openingHours = o.optString("openingHours"),
-            hidden = hidden != null && hidden.isJsonPrimitive && hidden.asJsonPrimitive.isBoolean && hidden.asBoolean
+            hidden = o.optBoolean("hidden") ?: false
         )
     }
 
@@ -214,6 +280,18 @@ object BackupJsonCodec {
             throw BackupParseException("$list[$index] has no numeric \"$key\"")
         }
         return value.asDouble
+    }
+
+    private fun JsonObject.optLong(key: String): Long? {
+        val value = get(key) ?: return null
+        if (!value.isJsonPrimitive || !value.asJsonPrimitive.isNumber) return null
+        return value.asLong
+    }
+
+    private fun JsonObject.optBoolean(key: String): Boolean? {
+        val value = get(key) ?: return null
+        if (!value.isJsonPrimitive || !value.asJsonPrimitive.isBoolean) return null
+        return value.asBoolean
     }
 
     private fun JsonObject.optString(key: String): String? {

@@ -113,10 +113,10 @@
     <string name="detail_verdict_want_to_go">Want to go</string>
     <!-- Settings: overflow menu -->
     <string name="settings_menu_description">More options</string>
-    <string name="settings_menu_poi_breakdown">Place data breakdown</string>
+    <string name="settings_menu_poi_information">POI information</string>
     <string name="settings_close">Close</string>
+    <string name="settings_cancel">Cancel</string>
     <!-- Settings: POI import -->
-    <string name="settings_poi_section">Place data</string>
     <string name="settings_import_button">Import POI file</string>
     <string name="settings_importing">Importing…</string>
     <string name="settings_import_success">Imported %1$d places.</string>
@@ -128,34 +128,39 @@
     <string name="settings_merge_candidate_body">Is \'%1$s\' the same place as the newly-imported \'%2$s\'?</string>
     <string name="settings_merge_confirm">Yes, merge</string>
     <string name="settings_merge_dismiss">No, keep both</string>
-    <!-- Settings: backup -->
+    <!-- Settings: backup (#74) -->
     <string name="settings_backup_section">Backup</string>
-    <string name="settings_backup_export">Export backup</string>
-    <string name="settings_backup_import">Import backup</string>
-    <string name="settings_backup_working">Working…</string>
-    <string name="settings_backup_export_success">Exported %1$d items.</string>
-    <string name="settings_backup_import_success">Restored %1$d items.</string>
-    <!-- Settings: suggestions -->
+    <string name="settings_backup_export">Export to file</string>
+    <string name="settings_backup_export_description">Save your places, favorites, history and settings as a backup file</string>
+    <string name="settings_backup_import">Import from file</string>
+    <string name="settings_backup_import_description">Replace all your data with a backup file</string>
+    <string name="settings_backup_import_confirm_title">Replace all your data?</string>
+    <string name="settings_backup_import_confirm_body">Your places, favorites, history and settings will be replaced by the backup\'s contents.</string>
+    <string name="settings_backup_import_confirm">Replace</string>
+    <string name="settings_backup_export_success">Exported %1$d items</string>
+    <string name="settings_backup_import_success">Restored %1$d items</string>
+    <!-- Settings: appearance -->
     <string name="settings_appearance_section">Appearance</string>
     <string name="settings_theme">App theme</string>
     <string name="settings_theme_system">Follow system</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
-    <string name="settings_theme_cancel">Cancel</string>
-
+    <!-- Settings: suggestions -->
     <string name="settings_suggestions_section">Suggestions</string>
-    <string name="settings_radius_label">Suggestion radius (km)</string>
-    <!-- Settings: auto check-in -->
-    <string name="settings_auto_checkin_section">Auto check-in</string>
-    <string name="settings_auto_checkin_toggle">Notify me near favorites</string>
-    <string name="settings_auto_checkin_denied_hint">Some permissions were denied, so auto check-in was not enabled. Grant them in system settings and try again.</string>
-    <string name="settings_auto_checkin_disclosure_title">Background location access</string>
-    <string name="settings_auto_checkin_disclosure_body">Freizeit uses your location in the background to notice when you\'re near a favorite place, even while the app is closed, and to send you a notification asking if you\'d like to check in. Location is never shared with anyone else. You can turn this off at any time.</string>
-    <string name="settings_auto_checkin_disclosure_continue">Continue</string>
-    <string name="settings_auto_checkin_disclosure_cancel">Cancel</string>
+    <string name="settings_radius">Suggestion radius</string>
+    <string name="settings_radius_value">%1$d km</string>
+    <!-- Settings: notifications (#74, auto check-in before) -->
+    <string name="settings_notifications_section">Notifications</string>
+    <string name="settings_notifications_description">Choose near which POIs you want to be notified so that you can check-in.</string>
+    <string name="settings_notifications_favorites">Favorites</string>
+    <string name="settings_notifications_want_to_go">Want to go</string>
+    <string name="settings_notifications_denied_hint">Some permissions were denied, so notifications were not enabled. Grant them in system settings and try again.</string>
+    <string name="settings_notifications_disclosure_title">Background location access</string>
+    <string name="settings_notifications_disclosure_body">Freizeit uses your location in the background to notice when you\'re near your favorite or want-to-go places, even while the app is closed, and to send you a notification asking if you\'d like to check in. Location is never shared with anyone else. You can turn this off at any time.</string>
+    <string name="settings_notifications_disclosure_continue">Continue</string>
 
     <string name="notification_channel_checkin_name">Check-in reminders</string>
-    <string name="notification_channel_checkin_description">Prompts to check in when you\'re near a favorite place</string>
+    <string name="notification_channel_checkin_description">Prompts to check in when you\'re near a favorite or want-to-go place</string>
     <string name="notification_checkin_title">Check in?</string>
     <string name="notification_checkin_body">Do you want to check into %1$s?</string>
     <string name="notification_checkin_action_check_in">Check in</string>
