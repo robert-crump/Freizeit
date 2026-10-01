@@ -51,9 +51,9 @@ import org.junit.runner.RunWith
 /**
  * Screenshots for the README (#70, #71): Home, Map, Place detail, Check-in and dark Home, taken
  * on an emulator from real OSM places around Aachen Markt (`readme-pois.json`, cut by
- * tools/poi_extraction/make_readme_fixture.py). Run through `./gradlew readmeScreenshots`, which also clears the app's data, sets the clock to Saturday
- * 11:00, puts the emulator's GPS on Aachen Markt, sets up a clean status bar and copies the PNGs
- * to `docs/screenshots/`. Replaces the app's places, verdicts and visits, so [EmulatorOnlyRule]
+ * tools/poi_extraction/make_readme_fixture.py). Run through `./gradlew readmeScreenshots`, which
+ * also clears the app's data, sets the clock to Saturday 11:00, puts the emulator's GPS on Aachen
+ * Markt, sets up a clean status bar and copies the PNGs to `docs/screenshots/`. Replaces the app's places, verdicts and visits, so [EmulatorOnlyRule]
  * skips it without the argument and refuses real devices.
  */
 @RunWith(AndroidJUnit4::class)
