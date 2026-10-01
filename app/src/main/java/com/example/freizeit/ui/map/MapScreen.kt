@@ -45,7 +45,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -511,9 +510,11 @@ private fun VerdictFilterChipRow(
 /**
  * Every chip floated over the map shares one color (no per-category coding, matching the map
  * markers' own move away from that — see [markerForegroundColor]/[markerBackgroundColor]):
- * outlined in the foreground color when unselected, filled with it when selected, with icon+label
- * flipping to the background color for contrast — the same relationship the marker circle/icon
- * pair already has. Icon and label sizing come from [FilterChip]'s own defaults.
+ * solid in the background color with a foreground outline and icon+label when unselected (light
+ * theme: white chip, dark content; dark theme: the reverse), filled with the foreground color when
+ * selected, with icon+label flipping to the background color — the same relationship the marker
+ * circle/icon pair already has. Never transparent, so the chips stay legible over busy tiles.
+ * Icon and label sizing come from [FilterChip]'s own defaults.
  */
 @Composable
 private fun MapFilterChip(
@@ -531,7 +532,7 @@ private fun MapFilterChip(
         label = { Text(label) },
         leadingIcon = { Icon(icon, contentDescription = null) },
         colors = FilterChipDefaults.filterChipColors(
-            containerColor = Color.Transparent,
+            containerColor = background,
             labelColor = foreground,
             iconColor = foreground,
             selectedContainerColor = foreground,
