@@ -49,7 +49,8 @@ Thumbs.db
 data/pois.json
 
 ## Local-only notes (not synced to GitHub)
-/docs/
+/docs/*
+!/docs/screenshots/
 /*.md
 !/README.md
 /progress.txt

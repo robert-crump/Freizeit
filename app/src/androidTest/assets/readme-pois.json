@@ -1,0 +1,1736 @@
+{
+ "generated": "2026-07-17T04:24:51+00:00",
+ "sources": [
+  "koeln-regbez-260604.osm.pbf",
+  "limburg-260604.osm.pbf",
+  "wallonia_french_community.pbf",
+  "wallonia_german_community.pbf"
+ ],
+ "categories": [
+  "playground",
+  "park",
+  "cafe",
+  "restaurant",
+  "ice_cream",
+  "shop",
+  "tourism",
+  "leisure_other",
+  "office",
+  "craft",
+  "historic"
+ ],
+ "demo": [
+  {
+   "id": "node/12069927151",
+   "name": "Eiscafé Tasin",
+   "verdict": "favorite",
+   "visits_days_ago": [
+    6,
+    20,
+    41,
+    55
+   ]
+  },
+  {
+   "id": "way/220173254",
+   "name": "Café Dom",
+   "verdict": "favorite",
+   "visits_days_ago": [
+    2,
+    16,
+    33
+   ]
+  },
+  {
+   "id": "way/79140423",
+   "name": "Hexenhof",
+   "verdict": "favorite",
+   "visits_days_ago": [
+    9,
+    47
+   ]
+  },
+  {
+   "id": "way/10644727",
+   "name": "Elisengarten",
+   "verdict": "favorite",
+   "visits_days_ago": [
+    13,
+    27
+   ]
+  },
+  {
+   "id": "way/79141497",
+   "name": "Couven-Museum",
+   "verdict": "favorite",
+   "visits_days_ago": [
+    52
+   ]
+  },
+  {
+   "id": "way/210081990",
+   "name": "Centre Charlemagne",
+   "verdict": "want_to_go",
+   "visits_days_ago": []
+  },
+  {
+   "id": "node/4747399473",
+   "name": "Mehlwölkchen",
+   "verdict": "want_to_go",
+   "visits_days_ago": []
+  },
+  {
+   "id": "way/84972091",
+   "name": "Spielplatz Bergdriesch",
+   "verdict": "want_to_go",
+   "visits_days_ago": []
+  }
+ ],
+ "pois": [
+  {
+   "id": "node/1006920844",
+   "category": "office",
+   "lat": 50.7775943,
+   "lon": 6.0821634,
+   "name": "Fachschaft Mathematik/Physik/Informatik",
+   "opening_hours": "Mo 18:30-20:00; Th 20:00-22:00; Tu 17:45-18:45; Th 09:45-10:45",
+   "street": "Augustinerbach",
+   "housenumber": "2a",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/10692937233",
+   "category": "cafe",
+   "lat": 50.775106,
+   "lon": 6.0863658,
+   "name": "J. A. Mayer Bistro",
+   "opening_hours": "Mo-Sa 09:30-19:00"
+  },
+  {
+   "id": "node/10692937235",
+   "category": "cafe",
+   "lat": 50.7752986,
+   "lon": 6.0863876,
+   "name": "KaffeeFleck",
+   "opening_hours": "Mo-Fr 11:00-17:00"
+  },
+  {
+   "id": "node/10768920654",
+   "category": "office",
+   "lat": 50.774661,
+   "lon": 6.0849603,
+   "name": "Pfarrbüro Franziska von Aachen",
+   "opening_hours": "Mo-Fr 09:00-12:00, Th 14:00-16:00; Sa,Su,PH off",
+   "street": "Ursulinerstraße",
+   "housenumber": "1",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/10880442866",
+   "category": "shop",
+   "lat": 50.7754452,
+   "lon": 6.0842957,
+   "name": "Mishkaa",
+   "opening_hours": "Mo-Fr 11:00-18:00; Sa 11:00-17:00; Su,PH off",
+   "street": "Krämerstraße",
+   "housenumber": "14a",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/10967732406",
+   "category": "tourism",
+   "lat": 50.7759406,
+   "lon": 6.0827444,
+   "name": "Aixart",
+   "opening_hours": "Mo-Fr 12:00-18:00; Sa 11:00-14:00"
+  },
+  {
+   "id": "node/11055354505",
+   "category": "craft",
+   "lat": 50.7723918,
+   "lon": 6.0860638,
+   "name": "Phone House",
+   "opening_hours": "Mo-Fr 10:00-19:00; Sa 10:00-18:00; Su,PH off"
+  },
+  {
+   "id": "node/11114382246",
+   "category": "historic",
+   "lat": 50.7744154,
+   "lon": 6.0834135,
+   "name": "Verfolgung queerer Menschen"
+  },
+  {
+   "id": "node/1155236256",
+   "category": "ice_cream",
+   "lat": 50.7629202,
+   "lon": 6.0923465,
+   "name": "Eiscafé Dolomiti",
+   "street": "Burtscheider Markt",
+   "housenumber": "13-15",
+   "postcode": "52066",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/11722348327",
+   "category": "office",
+   "lat": 50.7756613,
+   "lon": 6.0877834,
+   "name": "Barmenia Versicherung",
+   "opening_hours": "Mo-Fr 08:30-16:30",
+   "street": "Holzgraben",
+   "housenumber": "17-19",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/11804770472",
+   "category": "restaurant",
+   "lat": 50.7740182,
+   "lon": 6.0838637,
+   "name": "Geschmacksache",
+   "opening_hours": "Tu-Th 12:00-21:30; Fr,Sa 12:00-22:00; Su,Mo off",
+   "street": "Kleinmarschierstraße",
+   "housenumber": "5",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/11804770474",
+   "category": "cafe",
+   "lat": 50.7765363,
+   "lon": 6.0833202,
+   "name": "Starbucks",
+   "opening_hours": "Mo-Th 07:30-21:00; Fr 07:30-22:00; Sa 08:30-22:00; Su 09:00-21:00",
+   "street": "Markt",
+   "housenumber": "35",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12069927151",
+   "category": "ice_cream",
+   "lat": 50.7743782,
+   "lon": 6.0837777,
+   "name": "Eiscafé Tasin",
+   "opening_hours": "Mo-Sa 10:00-20:00, Su,PH 13:00-20:00",
+   "street": "Münsterplatz",
+   "housenumber": "15",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12245771905",
+   "category": "ice_cream",
+   "lat": 50.7708647,
+   "lon": 6.085088,
+   "name": "Eisfreunde",
+   "street": "Franzstraße",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12556886541",
+   "category": "cafe",
+   "lat": 50.7759566,
+   "lon": 6.0861554,
+   "name": "MAQII",
+   "opening_hours": "Mo 12:00-18:00; Tu-Fr 12:00-18:00; Sa 12:00-16:00; Su off",
+   "street": "Nikolausstraße",
+   "housenumber": "17",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12565129850",
+   "category": "tourism",
+   "lat": 50.7747964,
+   "lon": 6.083012,
+   "name": "Bronzeplatte Dom zu Aachen"
+  },
+  {
+   "id": "node/12724329113",
+   "category": "office",
+   "lat": 50.7756382,
+   "lon": 6.0847612,
+   "name": "MachineWare GmbH",
+   "housenumber": "19",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12749679551",
+   "category": "playground",
+   "lat": 50.7760081,
+   "lon": 6.0880908,
+   "name": "Shervins Spieleparadies",
+   "opening_hours": "Mo off; Tu-Th 10:00-13:00,14:00-18:00; Fr-Su 12:00-19:00",
+   "street": "Dahmengraben",
+   "housenumber": "3-5",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/12771032802",
+   "category": "restaurant",
+   "lat": 50.7757819,
+   "lon": 6.0850754,
+   "name": "Al Triangolo",
+   "opening_hours": "Mo,We,Th 18:00-22:00; Fr 12:00-15:00,18:00-22:00; Sa,Su 12:00-15:00,17:30-22:00; Tu off",
+   "street": "Rommelsgasse",
+   "housenumber": "2-3",
+   "postcode": "52062"
+  },
+  {
+   "id": "node/12847179587",
+   "category": "tourism",
+   "lat": 50.7752372,
+   "lon": 6.0848745,
+   "name": "Chronoskop Thermalquellen"
+  },
+  {
+   "id": "node/12847185975",
+   "category": "tourism",
+   "lat": 50.7755106,
+   "lon": 6.0840119,
+   "name": "Chronoskop Pfalz"
+  },
+  {
+   "id": "node/12985229989",
+   "category": "leisure_other",
+   "lat": 50.7758702,
+   "lon": 6.0825732,
+   "name": "Intuition Creative Studio",
+   "housenumber": "22",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/13373488516",
+   "category": "shop",
+   "lat": 50.7752221,
+   "lon": 6.0844718,
+   "name": "Juwelier Vogl | Aachen",
+   "opening_hours": "Mo-Fr 10:00-18:30; Sa 10:00-16:00",
+   "street": "Krämerstraße",
+   "housenumber": "19 - 21",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/1365568337",
+   "category": "historic",
+   "lat": 50.7747296,
+   "lon": 6.0854615,
+   "name": "Römische Mauer"
+  },
+  {
+   "id": "node/1366723491",
+   "category": "historic",
+   "lat": 50.7750114,
+   "lon": 6.0863808,
+   "name": "Reste einer Römertherme"
+  },
+  {
+   "id": "node/13745639591",
+   "category": "craft",
+   "lat": 50.7788485,
+   "lon": 6.0865242,
+   "name": "Sound Service",
+   "street": "Martinstraße",
+   "housenumber": "4",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/13820990721",
+   "category": "ice_cream",
+   "lat": 50.7743831,
+   "lon": 6.0871452,
+   "name": "Eiscafé Elisenbrunnen",
+   "opening_hours": "10:00-20:00",
+   "street": "Friedrich-Wilhelm-Platz",
+   "housenumber": "14",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/1400711559",
+   "category": "craft",
+   "lat": 50.7739144,
+   "lon": 6.0788934,
+   "name": "Goldschmiede Schmelzpunkt",
+   "opening_hours": "Mo-Fr 10:00-18:30; Sa 10:00-15:00",
+   "street": "Jakobstraße",
+   "housenumber": "37",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/1435520099",
+   "category": "historic",
+   "lat": 50.776201,
+   "lon": 6.0841322,
+   "name": "Archäologisches Fenster Rathaus, Karolingisches Mauerwerk aus der Zeit um 800"
+  },
+  {
+   "id": "node/1593493538",
+   "category": "cafe",
+   "lat": 50.7768144,
+   "lon": 6.0837721,
+   "name": "Cafe Extrablatt",
+   "opening_hours": "Mo-Su 09:00-23:30+",
+   "street": "Markt",
+   "housenumber": "45-47",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/1636759787",
+   "category": "office",
+   "lat": 50.7747035,
+   "lon": 6.0866669,
+   "name": "WKK Treuhand GmbH"
+  },
+  {
+   "id": "node/1845212823",
+   "category": "ice_cream",
+   "lat": 50.7744293,
+   "lon": 6.0977923,
+   "name": "Eis Cafe San Remo",
+   "opening_hours": "Mo-Fr 11:30-18:00; Sa,Su 13:30-18:00"
+  },
+  {
+   "id": "node/2056025092",
+   "category": "craft",
+   "lat": 50.7741529,
+   "lon": 6.0793344,
+   "name": "Schneideratelier Musiol",
+   "opening_hours": "Mo-Fr 10:00-17:00"
+  },
+  {
+   "id": "node/2070697367",
+   "category": "tourism",
+   "lat": 50.7759845,
+   "lon": 6.0832416,
+   "name": "Kunst am Markt Retroviews",
+   "opening_hours": "Th,Fr 16:00-20:00; Sa,Su 12:00-18:00"
+  },
+  {
+   "id": "node/2158667561",
+   "category": "office",
+   "lat": 50.7747921,
+   "lon": 6.0855132,
+   "name": "TK",
+   "opening_hours": "Mo,We 09:00-16:00; Tu 10:00-16:00; Th 10:00-18:00; Fr 09:00-15:00; Sa-Su,PH off",
+   "street": "Ursulinerstraße",
+   "housenumber": "7-9",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/2207233191",
+   "category": "shop",
+   "lat": 50.7756313,
+   "lon": 6.0842645,
+   "name": "Nobis",
+   "opening_hours": "Mo-Fr 10:30-18:00; Sa 10:30-18:00; Su off"
+  },
+  {
+   "id": "node/2207233192",
+   "category": "shop",
+   "lat": 50.7753857,
+   "lon": 6.0843044,
+   "name": "Jardin L",
+   "opening_hours": "Mo-Sa 11:00-18:00"
+  },
+  {
+   "id": "node/2207233202",
+   "category": "shop",
+   "lat": 50.7755261,
+   "lon": 6.0842864,
+   "name": "Printenbäckerei Klein",
+   "opening_hours": "Mo-Sa 10:00-18:30; Su 12:00-17:00",
+   "street": "Krämerstraße",
+   "housenumber": "12",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/2218035568",
+   "category": "shop",
+   "lat": 50.7751074,
+   "lon": 6.0843108,
+   "name": "Dille & Kamille",
+   "opening_hours": "Mo-Sa 10:00-19:00; Su,PH off",
+   "street": "Krämerstraße",
+   "housenumber": "20-34",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/2304215491",
+   "category": "craft",
+   "lat": 50.777278,
+   "lon": 6.0892039,
+   "name": "Jünger"
+  },
+  {
+   "id": "node/2328220910",
+   "category": "shop",
+   "lat": 50.7752512,
+   "lon": 6.0842969,
+   "name": "Magazzino",
+   "opening_hours": "Mo-Sa 10:00-19:00; Su,PH off"
+  },
+  {
+   "id": "node/2351140216",
+   "category": "craft",
+   "lat": 50.777868,
+   "lon": 6.0887932,
+   "name": "Comouth Druckerei & Buchbinderei",
+   "opening_hours": "Mo-Fr 08:00-18:00",
+   "street": "Komphausbadstraße",
+   "housenumber": "3-5",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/2981171841",
+   "category": "cafe",
+   "lat": 50.7756329,
+   "lon": 6.0834128,
+   "name": "Karls",
+   "opening_hours": "Tu-Su,PH 10:00-18:00",
+   "street": "Katschhof",
+   "housenumber": "1",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/299640182",
+   "category": "tourism",
+   "lat": 50.7750373,
+   "lon": 6.0828206,
+   "name": "Domschatzkammer",
+   "opening_hours": "Mo 10:00-14:00; Mo 10:00-18:00 \"Adventszeit/Advent Season\"; Jan-Mar Tu-Su 10:00-17:00; Apr-Dec Tu-Su 10:00-18:00"
+  },
+  {
+   "id": "node/305625418",
+   "category": "ice_cream",
+   "lat": 50.7778504,
+   "lon": 6.088024,
+   "name": "Eiscafe Gelateria",
+   "street": "Großkölnstraße",
+   "housenumber": "96",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/3263812585",
+   "category": "playground",
+   "lat": 50.7815461,
+   "lon": 6.0842972,
+   "name": "Schulhof",
+   "opening_hours": "Mo-Fr 17:00-19:00"
+  },
+  {
+   "id": "node/3340060565",
+   "category": "office",
+   "lat": 50.7743975,
+   "lon": 6.0827234,
+   "name": "EUROPE DIRECT Informationsbüro Aachen",
+   "opening_hours": "Mo-Th 12:00-16:00; Fr 10:00-14:00 || \"nach Vereinbarung\"; Sa,Su,PH off",
+   "street": "Fischmarkt",
+   "housenumber": "3",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/3386158496",
+   "category": "craft",
+   "lat": 50.774077,
+   "lon": 6.0898072,
+   "name": "Mister Minit",
+   "opening_hours": "Mo-Fr 09:30-14:00,15:00-19:00; Sa 09:30-14:00,15:00-18:00; Su,PH off"
+  },
+  {
+   "id": "node/3470912743",
+   "category": "shop",
+   "lat": 50.7749428,
+   "lon": 6.0843474,
+   "name": "Olymp",
+   "opening_hours": "Mo-Sa 10:00-19:00; Su,PH off",
+   "street": "Krämerstraße",
+   "housenumber": "20-34",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/3470912744",
+   "category": "shop",
+   "lat": 50.7750231,
+   "lon": 6.0843324,
+   "name": "CONTIGO",
+   "opening_hours": "Su,PH off; Mo-Sa 10:00-19:00",
+   "street": "Krämerstraße",
+   "housenumber": "20-34",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/366392671",
+   "category": "historic",
+   "lat": 50.775086,
+   "lon": 6.0810609,
+   "name": "Archäologisches Fenster"
+  },
+  {
+   "id": "node/388108866",
+   "category": "ice_cream",
+   "lat": 50.7725355,
+   "lon": 6.0772893,
+   "name": "Eiscafé Del Negro",
+   "opening_hours": "Mo-Su,PH 12:00-20:30",
+   "street": "Jakobstraße",
+   "housenumber": "73a",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/388240538",
+   "category": "ice_cream",
+   "lat": 50.7733415,
+   "lon": 6.0865296,
+   "name": "Eiscafé Al Teatro",
+   "opening_hours": "10:00-20:00",
+   "street": "Kapuzinergraben",
+   "housenumber": "2a",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/3960656689",
+   "category": "restaurant",
+   "lat": 50.7745537,
+   "lon": 6.0828975,
+   "name": "Rose am Dom",
+   "opening_hours": "Mo-Su,PH 11:30-23:00",
+   "street": "Fischmarkt",
+   "housenumber": "1",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/3977610452",
+   "category": "office",
+   "lat": 50.7762247,
+   "lon": 6.0847502,
+   "name": "HORBACH Wirtschaftsberatung GmbH",
+   "street": "Büchel",
+   "housenumber": "4",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4154815689",
+   "category": "office",
+   "lat": 50.7729977,
+   "lon": 6.0846297,
+   "name": "Zweering Helmus Architektur + Consulting",
+   "street": "Kleinmarschierstraße",
+   "housenumber": "45",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4280684589",
+   "category": "leisure_other",
+   "lat": 50.7794063,
+   "lon": 6.0871368,
+   "name": "Aachener Kraftsport e.V.",
+   "opening_hours": "07:00-24:00",
+   "street": "Martinstraße",
+   "housenumber": "10-12",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4747399473",
+   "category": "cafe",
+   "lat": 50.7763977,
+   "lon": 6.0852633,
+   "name": "Mehlwölkchen",
+   "opening_hours": "Mo-Su 09:30-19:00",
+   "street": "Büchel",
+   "housenumber": "13",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4817520228",
+   "category": "restaurant",
+   "lat": 50.7765832,
+   "lon": 6.0844961,
+   "name": "ALEX",
+   "opening_hours": "Mo-Th 08:00-24:00, Fr,Sa 08:00-01:00, Su 09:00-24:00",
+   "street": "Markt",
+   "housenumber": "48/50",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4907848958",
+   "category": "cafe",
+   "lat": 50.7751605,
+   "lon": 6.0859814,
+   "name": "Leni liebt Kaffee",
+   "opening_hours": "Mo-Fr 08:00+; PH,Sa,Su 09:00+",
+   "street": "Buchkremerstraße",
+   "housenumber": "6",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/4954347519",
+   "category": "tourism",
+   "lat": 50.7747373,
+   "lon": 6.0841955,
+   "name": "Karlsschrein"
+  },
+  {
+   "id": "node/5348283821",
+   "category": "office",
+   "lat": 50.7757849,
+   "lon": 6.0820362,
+   "name": "Institut und Lehrstuhl für Landschaftsarchitektur",
+   "street": "Jakobstraße",
+   "housenumber": "2",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/5543441248",
+   "category": "restaurant",
+   "lat": 50.7762105,
+   "lon": 6.0826838,
+   "name": "60 seconds to napoli",
+   "opening_hours": "11:30-24:00",
+   "street": "Markt",
+   "housenumber": "17",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/5552396982",
+   "category": "shop",
+   "lat": 50.7754101,
+   "lon": 6.0844283,
+   "name": "La Strada",
+   "opening_hours": "Mo-Sa 10:00-18:30; Su,PH off"
+  },
+  {
+   "id": "node/5552396983",
+   "category": "shop",
+   "lat": 50.7755635,
+   "lon": 6.0842781,
+   "name": "Hello Motti",
+   "street": "Krämerstraße",
+   "housenumber": "10",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/5741041762",
+   "category": "restaurant",
+   "lat": 50.7759473,
+   "lon": 6.084685,
+   "name": "Gaffel Wirtshaus am Hühnerdieb",
+   "opening_hours": "Mo-Th 11:00-24:00; Fr,Sa 11:00-01:00, Su 12:00-21:00",
+   "street": "Rethelstraße",
+   "housenumber": "2",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/5753944044",
+   "category": "cafe",
+   "lat": 50.7742073,
+   "lon": 6.0839028,
+   "name": "Isabella Glutenfreie Patisserie",
+   "opening_hours": "Mo-Sa 09:30-18:00; Su 10:00-18:00",
+   "street": "Münsterplatz",
+   "housenumber": "13",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6086557912",
+   "category": "cafe",
+   "lat": 50.7761798,
+   "lon": 6.0843223,
+   "name": "Haus Eulenspiegel",
+   "opening_hours": "Mo-Sa 09:30-18:00; Su,PH off"
+  },
+  {
+   "id": "node/6088298388",
+   "category": "office",
+   "lat": 50.7748899,
+   "lon": 6.0870403,
+   "name": "Rudkowski & Hag",
+   "opening_hours": "Mo-Fr 09:00-18:00; Sa 10:00-13:00",
+   "street": "Ursulinerstraße",
+   "housenumber": "25",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6480516862",
+   "category": "ice_cream",
+   "lat": 50.7688368,
+   "lon": 6.0811392,
+   "name": "Leana und Luise",
+   "opening_hours": "Mo-Fr 11:00-21:00; Sa,Su 09:00-21:00",
+   "street": "Boxgraben",
+   "housenumber": "72",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6654969649",
+   "category": "cafe",
+   "lat": 50.7745483,
+   "lon": 6.0824459,
+   "name": "Café Didier",
+   "opening_hours": "Mo-Su,PH 08:30-22:00",
+   "street": "Fischmarkt",
+   "housenumber": "6",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6661782589",
+   "category": "shop",
+   "lat": 50.7752983,
+   "lon": 6.0844477,
+   "name": "Vogl"
+  },
+  {
+   "id": "node/6665526250",
+   "category": "shop",
+   "lat": 50.7754135,
+   "lon": 6.0843016,
+   "name": "Balsori",
+   "opening_hours": "Mo-Sa 10:00-18:30; Su,PH off",
+   "street": "Krämerstraße",
+   "housenumber": "16",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6665526254",
+   "category": "craft",
+   "lat": 50.7733677,
+   "lon": 6.08796,
+   "name": "Kunststube"
+  },
+  {
+   "id": "node/6684991022",
+   "category": "historic",
+   "lat": 50.7762002,
+   "lon": 6.083371,
+   "name": "Etablierung der NS-Herrschaft"
+  },
+  {
+   "id": "node/6788400558",
+   "category": "historic",
+   "lat": 50.774563,
+   "lon": 6.0838159,
+   "name": "Sanctus Stephanus"
+  },
+  {
+   "id": "node/6843751907",
+   "category": "ice_cream",
+   "lat": 50.7769567,
+   "lon": 6.0833852,
+   "name": "Devido",
+   "opening_hours": "12:00-22:00",
+   "street": "Pontstraße",
+   "housenumber": "8",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/6882135520",
+   "category": "historic",
+   "lat": 50.7752689,
+   "lon": 6.0835556,
+   "name": "Stummer Protest"
+  },
+  {
+   "id": "node/6882142572",
+   "category": "historic",
+   "lat": 50.7748694,
+   "lon": 6.0807014,
+   "name": "Zeugen Jehovas"
+  },
+  {
+   "id": "node/7280854094",
+   "category": "leisure_other",
+   "lat": 50.7765679,
+   "lon": 6.0815151,
+   "name": "aixscape",
+   "street": "Kockerellstraße",
+   "housenumber": "22",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/7283637714",
+   "category": "shop",
+   "lat": 50.7751966,
+   "lon": 6.0842996,
+   "name": "Pieper",
+   "opening_hours": "Mo-Fr 09:30-18:00; Sa 09:30-17:00; PH,Su off"
+  },
+  {
+   "id": "node/7597452811",
+   "category": "ice_cream",
+   "lat": 50.7631676,
+   "lon": 6.0787156,
+   "name": "Eiscafé Goethe",
+   "opening_hours": "Mo-Su 13:00-18:00",
+   "street": "Schillerstraße",
+   "housenumber": "55",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/7617102842",
+   "category": "cafe",
+   "lat": 50.7755756,
+   "lon": 6.0849851,
+   "name": "Lammerskötter im Hof",
+   "opening_hours": "Mo-Su 10:00-20:00"
+  },
+  {
+   "id": "node/7736793212",
+   "category": "leisure_other",
+   "lat": 50.7760078,
+   "lon": 6.0893578,
+   "name": "Merkur",
+   "opening_hours": "Mo-Sa 06:00-01:00, Su 08:00-01:00",
+   "street": "Peterstraße",
+   "housenumber": "32,34",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8014295170",
+   "category": "ice_cream",
+   "lat": 50.775671,
+   "lon": 6.0915259,
+   "name": "PORTOFINO",
+   "opening_hours": "Mo-Sa 09:00-20:00",
+   "street": "Blondelstraße",
+   "housenumber": "32",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8218206759",
+   "category": "historic",
+   "lat": 50.775223,
+   "lon": 6.0853343,
+   "name": "Quirinusquellen"
+  },
+  {
+   "id": "node/8324051704",
+   "category": "craft",
+   "lat": 50.7726134,
+   "lon": 6.0794324,
+   "name": "Glas Schaaf",
+   "opening_hours": "Mo-Th 09:00-17:00; Fr 09:00-13:00",
+   "street": "Löhergraben",
+   "housenumber": "18",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8324051707",
+   "category": "craft",
+   "lat": 50.772695,
+   "lon": 6.0803594,
+   "name": "Kalligraphie & Design",
+   "opening_hours": "Mo 11:00-13:00; Tu-Th 09:00-12:00; Fr 09:00-16:00",
+   "street": "Annastraße",
+   "housenumber": "64",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8460593567",
+   "category": "office",
+   "lat": 50.7753203,
+   "lon": 6.0874367,
+   "name": "GeoLegalTech GmbH",
+   "street": "Holzgraben",
+   "housenumber": "11",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/857466071",
+   "category": "ice_cream",
+   "lat": 50.777932,
+   "lon": 6.0887195,
+   "name": "Little Italy",
+   "opening_hours": "Mo-Su 09:30-22:00",
+   "postcode": "52062"
+  },
+  {
+   "id": "node/857466217",
+   "category": "playground",
+   "lat": 50.7800703,
+   "lon": 6.0884771
+  },
+  {
+   "id": "node/858881989",
+   "category": "leisure_other",
+   "lat": 50.7765634,
+   "lon": 6.0902753,
+   "name": "Löwen Play",
+   "opening_hours": "Mo-Sa 08:00-01:00, Su,PH 09:00-01:00"
+  },
+  {
+   "id": "node/8607460423",
+   "category": "restaurant",
+   "lat": 50.7742229,
+   "lon": 6.0831855,
+   "name": "Palladion",
+   "opening_hours": "Mo-Su 11:30-24:00",
+   "street": "Schmiedstraße",
+   "housenumber": "3",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8607460424",
+   "category": "cafe",
+   "lat": 50.774404,
+   "lon": 6.0830998,
+   "name": "Café Mundus",
+   "opening_hours": "Mo-Su 10:00-18:00",
+   "street": "Schmiedstraße",
+   "housenumber": "22",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/867295237",
+   "category": "office",
+   "lat": 50.7770972,
+   "lon": 6.0864675,
+   "name": "Lernimpuls Aachen",
+   "street": "Großkölnstraße",
+   "housenumber": "56",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/8746437585",
+   "category": "ice_cream",
+   "lat": 50.7795064,
+   "lon": 6.0844889,
+   "name": "Eiscafé Alkuin",
+   "opening_hours": "Mo-Su,PH 11:00-20:00",
+   "street": "Bergdriesch",
+   "housenumber": "14",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9025383744",
+   "category": "leisure_other",
+   "lat": 50.773845,
+   "lon": 6.0884967,
+   "name": "MedAix",
+   "opening_hours": "Mo,Th 08:00-22:00; Tu,We,Fr 07:00-22:00; Sa,Su 09:00-18:00",
+   "street": "Friedrich-Wilhelm-Platz",
+   "housenumber": "5-6",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9242934203",
+   "category": "tourism",
+   "lat": 50.7747111,
+   "lon": 6.0827694,
+   "name": "Jakobsweg Info Steele"
+  },
+  {
+   "id": "node/9716271698",
+   "category": "restaurant",
+   "lat": 50.7761709,
+   "lon": 6.0839528,
+   "name": "Ratskeller",
+   "opening_hours": "Mo-Su 12:00-23:00",
+   "street": "Markt",
+   "housenumber": "40",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9810586035",
+   "category": "historic",
+   "lat": 50.7743982,
+   "lon": 6.0834746,
+   "name": "Jean Horegard"
+  },
+  {
+   "id": "node/9810586038",
+   "category": "historic",
+   "lat": 50.7758792,
+   "lon": 6.087054,
+   "name": "Pauline Klein"
+  },
+  {
+   "id": "node/9888502221",
+   "category": "leisure_other",
+   "lat": 50.7779235,
+   "lon": 6.08631,
+   "name": "Ballettschule Relevé",
+   "street": "Minoritenstraße",
+   "housenumber": "7",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9892248646",
+   "category": "craft",
+   "lat": 50.7766538,
+   "lon": 6.0878395,
+   "name": "meffi.s",
+   "street": "Mefferdatisstraße",
+   "housenumber": "16-18",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9945426975",
+   "category": "restaurant",
+   "lat": 50.7755113,
+   "lon": 6.0849263,
+   "name": "Minh Châu Restaurant",
+   "opening_hours": "12:00-21:30; Su,PH off",
+   "street": "Hof",
+   "housenumber": "6/8",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "node/9956676589",
+   "category": "ice_cream",
+   "lat": 50.7751211,
+   "lon": 6.0912509,
+   "name": "Eiscafe Elisenbrunnen"
+  },
+  {
+   "id": "relation/3144663",
+   "category": "playground",
+   "lat": 50.7738673,
+   "lon": 6.0904099
+  },
+  {
+   "id": "way/10644727",
+   "category": "park",
+   "lat": 50.7743152,
+   "lon": 6.086391,
+   "name": "Elisengarten"
+  },
+  {
+   "id": "way/108249431",
+   "category": "playground",
+   "lat": 50.7701927,
+   "lon": 6.0883366
+  },
+  {
+   "id": "way/1088129452",
+   "category": "historic",
+   "lat": 50.7736209,
+   "lon": 6.0851941,
+   "name": "Elisabethhalle"
+  },
+  {
+   "id": "way/113950430",
+   "category": "leisure_other",
+   "lat": 50.7745803,
+   "lon": 6.0840824,
+   "name": "Garten Münsterplatz"
+  },
+  {
+   "id": "way/113954826",
+   "category": "playground",
+   "lat": 50.7753495,
+   "lon": 6.0783579
+  },
+  {
+   "id": "way/117038201",
+   "category": "leisure_other",
+   "lat": 50.7759554,
+   "lon": 6.0835602,
+   "name": "Karlsgarten"
+  },
+  {
+   "id": "way/1185594730",
+   "category": "park",
+   "lat": 50.7760102,
+   "lon": 6.0864872,
+   "name": "Wanderbaumallee",
+   "opening_hours": "24/7",
+   "street": "Büchel",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/1191873867",
+   "category": "leisure_other",
+   "lat": 50.7764597,
+   "lon": 6.0870382,
+   "name": "BüchelGarten"
+  },
+  {
+   "id": "way/125501775",
+   "category": "restaurant",
+   "lat": 50.7744848,
+   "lon": 6.0830022,
+   "name": "Macaroni",
+   "opening_hours": "Tu-Th,Su 11:00-22:30; Fr,Sa 11:00-23:00; Mo off",
+   "street": "Schmiedstraße",
+   "housenumber": "24",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/1259144721",
+   "category": "playground",
+   "lat": 50.7782823,
+   "lon": 6.0890389
+  },
+  {
+   "id": "way/131539090",
+   "category": "playground",
+   "lat": 50.7729694,
+   "lon": 6.0750018
+  },
+  {
+   "id": "way/1410970400",
+   "category": "leisure_other",
+   "lat": 50.7713635,
+   "lon": 6.0818384,
+   "name": "Café Kontakt | Terrasse"
+  },
+  {
+   "id": "way/182347868",
+   "category": "park",
+   "lat": 50.773002,
+   "lon": 6.079668
+  },
+  {
+   "id": "way/189908496",
+   "category": "park",
+   "lat": 50.7818704,
+   "lon": 6.0794094
+  },
+  {
+   "id": "way/195193905",
+   "category": "playground",
+   "lat": 50.7792425,
+   "lon": 6.0828648,
+   "name": "Hirschgraben"
+  },
+  {
+   "id": "way/203295733",
+   "category": "leisure_other",
+   "lat": 50.7736756,
+   "lon": 6.0851541,
+   "name": "Schwimmhalle Elisabethstraße",
+   "opening_hours": "Mo, Tu, Th, Fr 06:30-13:00; Sa, Su, PH, SH off",
+   "street": "Elisabethstraße",
+   "housenumber": "10",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/20460949",
+   "category": "park",
+   "lat": 50.7703142,
+   "lon": 6.0858918,
+   "opening_hours": "24/7"
+  },
+  {
+   "id": "way/20470246",
+   "category": "tourism",
+   "lat": 50.7747434,
+   "lon": 6.0839588,
+   "name": "Aachener Dom",
+   "street": "Domhof",
+   "housenumber": "1",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/205255999",
+   "category": "tourism",
+   "lat": 50.7749069,
+   "lon": 6.0824839,
+   "name": "Dominformation",
+   "opening_hours": "Jan-Mar: Mo-Su 10:00-17:00; Apr-Dec: Mo-Su 10:00-18:00"
+  },
+  {
+   "id": "way/205391915",
+   "category": "playground",
+   "lat": 50.7766738,
+   "lon": 6.0823515
+  },
+  {
+   "id": "way/210081990",
+   "category": "tourism",
+   "lat": 50.7757648,
+   "lon": 6.0830836,
+   "name": "Centre Charlemagne",
+   "opening_hours": "Tu-Su,PH 10:00-18:00",
+   "street": "Katschhof",
+   "housenumber": "1",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/214484174",
+   "category": "historic",
+   "lat": 50.776426,
+   "lon": 6.0836683,
+   "name": "Karlsbrunnen"
+  },
+  {
+   "id": "way/220173254",
+   "category": "cafe",
+   "lat": 50.7744198,
+   "lon": 6.0831892,
+   "name": "Café Dom",
+   "opening_hours": "Mo-Fr 09:00-19:00; Sa 09:00-19:00; Su 10:30-18:00"
+  },
+  {
+   "id": "way/221128357",
+   "category": "park",
+   "lat": 50.7779625,
+   "lon": 6.0856445
+  },
+  {
+   "id": "way/221967241",
+   "category": "park",
+   "lat": 50.7780762,
+   "lon": 6.0902625
+  },
+  {
+   "id": "way/221967244",
+   "category": "park",
+   "lat": 50.7783811,
+   "lon": 6.0904786
+  },
+  {
+   "id": "way/226989407",
+   "category": "historic",
+   "lat": 50.7754824,
+   "lon": 6.0852132,
+   "name": "Gallorömischer Umgangstempel am Hof"
+  },
+  {
+   "id": "way/30681415",
+   "category": "park",
+   "lat": 50.7805059,
+   "lon": 6.0909217
+  },
+  {
+   "id": "way/369117416",
+   "category": "park",
+   "lat": 50.7778392,
+   "lon": 6.0894612,
+   "name": "Lesegarten der Stadtbibliothek"
+  },
+  {
+   "id": "way/5038801",
+   "category": "park",
+   "lat": 50.7816262,
+   "lon": 6.0822917,
+   "name": "Veltmanplatz",
+   "street": "Veltmanplatz",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/5039061",
+   "category": "park",
+   "lat": 50.7799951,
+   "lon": 6.0885371,
+   "name": "Sandkaulpark"
+  },
+  {
+   "id": "way/55974734",
+   "category": "park",
+   "lat": 50.7782832,
+   "lon": 6.0888645
+  },
+  {
+   "id": "way/58458695",
+   "category": "restaurant",
+   "lat": 50.7761507,
+   "lon": 6.0841391,
+   "name": "Postwagen",
+   "opening_hours": "Mo,Tu 18:00-23:00; We-Sa 12:00-23:00; Su off",
+   "street": "Markt",
+   "housenumber": "40",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/60788444",
+   "category": "playground",
+   "lat": 50.7755634,
+   "lon": 6.0806031
+  },
+  {
+   "id": "way/67901914",
+   "category": "playground",
+   "lat": 50.7718215,
+   "lon": 6.0776425,
+   "name": "Spielplatz Paugasse"
+  },
+  {
+   "id": "way/72551320",
+   "category": "playground",
+   "lat": 50.7730689,
+   "lon": 6.0794466,
+   "opening_hours": "sunrise-sunset"
+  },
+  {
+   "id": "way/77517682",
+   "category": "craft",
+   "lat": 50.7766965,
+   "lon": 6.0859487,
+   "name": "Shirin",
+   "street": "Kleinkölnstraße",
+   "housenumber": "16a",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/77738927",
+   "category": "cafe",
+   "lat": 50.7760626,
+   "lon": 6.0849479,
+   "name": "Café Middelberg",
+   "opening_hours": "Tu-Fr 09:30-18:00; Sa 09:00-18:00; Su,Mo off",
+   "street": "Rethelstraße",
+   "housenumber": "6",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/77738944",
+   "category": "leisure_other",
+   "lat": 50.7779707,
+   "lon": 6.086208,
+   "name": "Turnhalle Minoritenstraße",
+   "street": "Minoritenstraße",
+   "housenumber": "7",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/77888040",
+   "category": "park",
+   "lat": 50.7761674,
+   "lon": 6.0867917,
+   "name": "Büchelpark"
+  },
+  {
+   "id": "way/79140317",
+   "category": "tourism",
+   "lat": 50.7758563,
+   "lon": 6.0851163,
+   "name": "Boarding House am Hühnerdieb",
+   "street": "Rommelsgasse",
+   "housenumber": "2-3",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140320",
+   "category": "tourism",
+   "lat": 50.7759651,
+   "lon": 6.0852277,
+   "name": "Büchel-Museum Rote Burg",
+   "opening_hours": "Th-Su 12:00-18:00",
+   "street": "Büchel",
+   "housenumber": "14",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140423",
+   "category": "restaurant",
+   "lat": 50.7757466,
+   "lon": 6.0844496,
+   "name": "Hexenhof",
+   "opening_hours": "Mo-Su 10:00-24:00",
+   "street": "Krämerstraße",
+   "housenumber": "7",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140912",
+   "category": "restaurant",
+   "lat": 50.775708,
+   "lon": 6.0855489,
+   "name": "LivingRoom",
+   "street": "Büchel",
+   "housenumber": "24",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140914",
+   "category": "tourism",
+   "lat": 50.7756892,
+   "lon": 6.0853763,
+   "name": "Galerie S.",
+   "opening_hours": "Tu,Fr 14:00-18:00; We,Th 14:00-19:00; Sa 11:00-14:00; Su 11:00-15:00",
+   "street": "Hof",
+   "housenumber": "3",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140916",
+   "category": "craft",
+   "lat": 50.7757737,
+   "lon": 6.0853315,
+   "name": "Korb Bayer",
+   "opening_hours": "Mo-Sa 10:00-18:00",
+   "street": "Körbergasse",
+   "housenumber": "5",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79140918",
+   "category": "cafe",
+   "lat": 50.7758371,
+   "lon": 6.0854652,
+   "name": "Van den Daele",
+   "opening_hours": "Mo-Fr 09:30-17:30; Sa 09:00-18:00; Su 10:00-17:00",
+   "street": "Büchel",
+   "housenumber": "18-20",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79141495",
+   "category": "restaurant",
+   "lat": 50.7755136,
+   "lon": 6.0847807,
+   "name": "Dinette",
+   "opening_hours": "Su-Th 09:00-01:00, Fr,Sa 09:00+",
+   "street": "Hühnermarkt",
+   "housenumber": "21",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79141497",
+   "category": "tourism",
+   "lat": 50.7756852,
+   "lon": 6.0849495,
+   "name": "Couven-Museum",
+   "opening_hours": "Tu-Su 10:00-18:00",
+   "street": "Hühnermarkt",
+   "housenumber": "17",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/79590070",
+   "category": "park",
+   "lat": 50.7813366,
+   "lon": 6.0780338
+  },
+  {
+   "id": "way/79590104",
+   "category": "park",
+   "lat": 50.7821638,
+   "lon": 6.0838884
+  },
+  {
+   "id": "way/8068434",
+   "category": "tourism",
+   "lat": 50.7761312,
+   "lon": 6.0836957,
+   "name": "Aachener Rathaus",
+   "opening_hours": "Mo-Su 10:00-18:00",
+   "street": "Markt",
+   "housenumber": "38-40",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83266225",
+   "category": "cafe",
+   "lat": 50.7746772,
+   "lon": 6.0848398,
+   "name": "Nobis",
+   "opening_hours": "Mo-Fr 07:00-18:30; Sa 07:30-18:00; Su 08:00-18:00",
+   "street": "Münsterplatz",
+   "housenumber": "3",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83722470",
+   "category": "office",
+   "lat": 50.7744916,
+   "lon": 6.0819829,
+   "name": "gmp Architekten von Gerkan, Marg und Partner",
+   "street": "Rennbahn",
+   "housenumber": "5,7",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83731708",
+   "category": "shop",
+   "lat": 50.7754804,
+   "lon": 6.0844745,
+   "name": "Mey Store",
+   "opening_hours": "Mo-Fr 10:00-18:30; Sa 10:00-18:00; Su,PH off",
+   "street": "Krämerstraße",
+   "housenumber": "13-15",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83737027",
+   "category": "restaurant",
+   "lat": 50.7755455,
+   "lon": 6.0820938,
+   "name": "Pasta Nudelmanufaktur",
+   "opening_hours": "Tu-Sa 10:00-22:00; Su,Mo,PH off",
+   "street": "Jakobstraße",
+   "housenumber": "3",
+   "postcode": "52064",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83741211",
+   "category": "craft",
+   "lat": 50.7757816,
+   "lon": 6.0798618,
+   "name": "Mathias Coir & Söhne",
+   "street": "Annuntiatenbach",
+   "housenumber": "33,35",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83745674",
+   "category": "office",
+   "lat": 50.7772229,
+   "lon": 6.0835149,
+   "name": "AOK",
+   "opening_hours": "Mo-Th 08:00-18:00; Fr 08:00-16:00",
+   "street": "Markt",
+   "housenumber": "45-47",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83831453",
+   "category": "craft",
+   "lat": 50.7784225,
+   "lon": 6.084555,
+   "name": "G. Gessenich Heizung Sanitär",
+   "street": "Seilgraben",
+   "housenumber": "47",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83989947",
+   "category": "ice_cream",
+   "lat": 50.7748242,
+   "lon": 6.0857687,
+   "name": "Eiscafe Il Gelato",
+   "opening_hours": "Mo-Su 12:00-21:00",
+   "street": "Ursulinerstraße",
+   "housenumber": "13",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/83989950",
+   "category": "restaurant",
+   "lat": 50.7758916,
+   "lon": 6.0849234,
+   "name": "Aix Mediterrane",
+   "opening_hours": "Mo-Su 12:00-24:00",
+   "street": "Rommelsgasse",
+   "housenumber": "5",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/84167813",
+   "category": "playground",
+   "lat": 50.7708044,
+   "lon": 6.0765819,
+   "name": "Spielplatz Stromgasse / Mühlenberg"
+  },
+  {
+   "id": "way/84654062",
+   "category": "leisure_other",
+   "lat": 50.7792393,
+   "lon": 6.0873913,
+   "name": "Poda Studio Pole Dance Aachen",
+   "street": "Martinstraße",
+   "housenumber": "12",
+   "postcode": "52062",
+   "city": "Aachen"
+  },
+  {
+   "id": "way/84972091",
+   "category": "playground",
+   "lat": 50.7796723,
+   "lon": 6.0841515,
+   "name": "Spielplatz Bergdriesch"
+  },
+  {
+   "id": "way/86973801",
+   "category": "tourism",
+   "lat": 50.7753506,
+   "lon": 6.0838715,
+   "name": "Katschhof"
+  },
+  {
+   "id": "way/889391373",
+   "category": "playground",
+   "lat": 50.7750906,
+   "lon": 6.0913822
+  },
+  {
+   "id": "way/97558821",
+   "category": "leisure_other",
+   "lat": 50.7751347,
+   "lon": 6.0852693,
+   "name": "kafarnaum Garten"
+  }
+ ]
+}

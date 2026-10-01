@@ -2,12 +2,22 @@
 
 What to do with your free time: your favorite places around Aachen, suggested by distance, weather and opening hours.
 
+<table>
+  <tr>
+    <td><img src="docs/screenshots/home.png" width="200" alt="Home: today's weather above the top suggestion, an ice-cream café one minute away by bike, with a mini-map, opening hours and the last visit"></td>
+  </tr>
+</table>
+
 - **Suggestions** from your favorite and want-to-go places, ranked by distance, weather and whether they're open
 - **Map** of playgrounds, parks, cafés, ice cream and more from OpenStreetMap, with category filters and search
 - **Mark** places as favorite or want-to-go, and add your own places the map doesn't know
 - **Check in** when you visit — manually or from a nearby-place notification — and see your history
 - **Widget** on the home screen with today's top 3 suggestions
 - **Back up** and restore your places and check-ins
+
+<sub>Screenshots show real OpenStreetMap places around Aachen Markt with made-up favorites and visits;
+map data © OpenStreetMap contributors, map style © CARTO. Regenerate with `./gradlew readmeScreenshots`
+(needs a running emulator; wipes the app's data on it).</sub>
 
 ## Build
 

@@ -1,3 +1,11 @@
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
 plugins {
     id 'com.android.application'
     id 'kotlin-android'
@@ -102,10 +110,159 @@ dependencies {
     testImplementation 'org.robolectric:robolectric:4.11.1'
     testImplementation 'androidx.test:core-ktx:1.5.0'
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+    // Espresso before 3.7 (compose ui-test's default is 3.5) crashes on recent emulator images (InputManager.getInstance).
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
     androidTestImplementation platform('androidx.compose:compose-bom:2024.09.00')
     androidTestImplementation 'androidx.compose.ui:ui-test-junit4'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'
+}
+
+// README screenshots (#70) from real Aachen places (androidTest ReadmeScreenshots), on a running
+// emulator: ./gradlew readmeScreenshots. Not part of CI.
+abstract class ReadmeScreenshotsTask extends DefaultTask {
+    @Inject abstract ExecOperations getExecOperations()
+
+    @Internal abstract Property<File> getAdbExecutable()
+    @Internal abstract RegularFileProperty getAppApk()
+    @Internal abstract RegularFileProperty getTestApk()
+    @Internal abstract Property<String> getApplicationId()
+    @Internal abstract Property<String> getTestClass()
+    @Internal abstract DirectoryProperty getPullDir()
+    @Internal abstract DirectoryProperty getScreenshotsDir()
+
+    /** Where Home thinks the user is: Aachen Markt, the middle of the fixture's places. */
+    private static final String MARKT_LON = '6.0839'
+    private static final String MARKT_LAT = '50.7753'
+    // UTC: demo mode's status bar clock is 12:00 UTC shown in the device's timezone.
+    private static final ZoneId ZONE = ZoneId.of('UTC')
+
+    @TaskAction
+    void capture() {
+        String serial = emulatorSerial()
+        String app = applicationId.get()
+        logger.lifecycle("Taking README screenshots on $serial")
+        adb(serial, 'install', '-r', '-t', appApk.get().asFile.absolutePath)
+        adb(serial, 'install', '-r', '-t', testApk.get().asFile.absolutePath)
+        // Emulator data is disposable; every run starts from an empty database.
+        adb(serial, 'shell', 'pm', 'clear', app)
+
+        // Suggestions depend on the clock (opening hours, last-visit labels, the daily ranking
+        // jitter), so it's pinned to Saturday 11:00. The coming Saturday rather than a fixed date:
+        // a clock months off breaks HTTPS for the map tiles (certificates not yet valid / expired).
+        long now = LocalDate.now(ZONE).with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
+            .atTime(LocalTime.of(11, 0)).atZone(ZONE).toInstant().toEpochMilli()
+        String timezone = adb(serial, 'shell', 'getprop', 'persist.sys.timezone').trim()
+        String autoTimeZone = adb(serial, 'shell', 'settings', 'get', 'global', 'auto_time_zone').trim()
+
+        adb(serial, 'shell', 'settings', 'put', 'global', 'sysui_demo_allowed', '1')
+        String output
+        try {
+            adb(serial, 'shell', 'settings', 'put', 'global', 'auto_time', '0')
+            adb(serial, 'shell', 'settings', 'put', 'global', 'auto_time_zone', '0')
+            // `cmd alarm` needs no root, so Play Store system images work too.
+            adb(serial, 'shell', 'cmd', 'alarm', 'set-timezone', ZONE.id)
+            adb(serial, 'shell', 'cmd', 'alarm', 'set-time', now.toString())
+            adb(serial, 'emu', 'geo', 'fix', MARKT_LON, MARKT_LAT)
+
+            // Pixel-class 1080x2400 @ 420 dpi, whatever the AVD's own profile.
+            adb(serial, 'shell', 'wm', 'size', '1080x2400')
+            adb(serial, 'shell', 'wm', 'density', '420')
+            demo(serial, 'enter')
+            demo(serial, 'clock', '-e', 'hhmm', '1200')
+            demo(serial, 'battery', '-e', 'level', '100', '-e', 'plugged', 'false')
+            demo(serial, 'network', '-e', 'wifi', 'show', '-e', 'level', '4', '-e', 'fully', 'true', '-e', 'mobile', 'hide')
+            demo(serial, 'status', '-e', 'volume', 'hide', '-e', 'bluetooth', 'hide', '-e', 'location', 'hide',
+                '-e', 'alarm', 'hide', '-e', 'sync', 'hide', '-e', 'zen', 'hide', '-e', 'mute', 'hide',
+                '-e', 'speakerphone', 'hide', '-e', 'eri', 'hide', '-e', 'tty', 'hide')
+            demo(serial, 'notifications', '-e', 'visible', 'false')
+            // Demo mode leaves some system notifications (e.g. Safety Center's "no screen lock") visible.
+            adb(serial, 'shell', 'cmd', 'statusbar', 'send-disable-flag', 'notification-icons')
+            output = adb(serial, 'shell', 'am', 'instrument', '-w',
+                '-e', 'readmeScreenshots', 'true', '-e', 'class', testClass.get(),
+                "${app}.test/androidx.test.runner.AndroidJUnitRunner".toString())
+        } finally {
+            adb(serial, 'shell', 'cmd', 'statusbar', 'send-disable-flag', 'none')
+            demo(serial, 'exit')
+            adb(serial, 'shell', 'wm', 'size', 'reset')
+            adb(serial, 'shell', 'wm', 'density', 'reset')
+            if (timezone) adb(serial, 'shell', 'cmd', 'alarm', 'set-timezone', timezone)
+            adb(serial, 'shell', 'settings', 'put', 'global', 'auto_time_zone', autoTimeZone == '0' ? '0' : '1')
+            adb(serial, 'shell', 'settings', 'put', 'global', 'auto_time', '1')
+        }
+        logger.lifecycle(output.trim())
+        // am instrument exits 0 even when a test fails; a skipped test reports "OK (1 test)" too,
+        // so the PNG check below catches that.
+        if (output.contains('FAILURES!!!') || !output.contains('OK (')) {
+            throw new GradleException('The README screenshot test failed; see the output above.')
+        }
+
+        File pulled = pullDir.get().asFile
+        pulled.deleteDir()
+        pulled.mkdirs()
+        adb(serial, 'pull', "/sdcard/Android/data/$app/files/readme-screenshots".toString(), pulled.absolutePath)
+        File[] pngs = new File(pulled, 'readme-screenshots').listFiles({ File f -> f.name.endsWith('.png') } as FileFilter) ?: new File[0]
+        if (pngs.length == 0) throw new GradleException("No screenshots were pulled from $serial.")
+
+        File target = screenshotsDir.get().asFile
+        target.mkdirs()
+        target.listFiles({ File f -> f.name.endsWith('.png') } as FileFilter)?.each { it.delete() }
+        pngs.each { File png -> new File(target, png.name).bytes = png.bytes }
+        logger.lifecycle("Saved ${pngs*.name.sort().join(', ')} to $target")
+    }
+
+    /** The one running emulator (or ANDROID_SERIAL, which must be an emulator); real devices are never used. */
+    private String emulatorSerial() {
+        String requested = System.getenv('ANDROID_SERIAL')
+        if (requested?.trim()) {
+            if (adb(requested, 'shell', 'getprop', 'ro.kernel.qemu').trim() != '1') {
+                throw new GradleException("ANDROID_SERIAL=$requested is not an emulator; readmeScreenshots never runs on a physical device.")
+            }
+            return requested
+        }
+        List<String> emulators = adb(null, 'devices').readLines()
+            .collect { it.split('\t') }
+            .findAll { it.length == 2 && it[1].trim() == 'device' && it[0].startsWith('emulator-') }
+            .collect { it[0] }
+        if (emulators.isEmpty()) throw new GradleException('readmeScreenshots needs a running emulator; none found.')
+        if (emulators.size() > 1) {
+            throw new GradleException("Several emulators are running ($emulators); pick one with ANDROID_SERIAL.")
+        }
+        return emulators[0]
+    }
+
+    private void demo(String serial, String command, String... extras) {
+        List<String> args = ['shell', 'am', 'broadcast', '-a', 'com.android.systemui.demo', '-e', 'command', command]
+        args.addAll(extras)
+        adb(serial, args as String[])
+    }
+
+    private String adb(String serial, String... args) {
+        List<String> commandLine = [adbExecutable.get().absolutePath]
+        if (serial != null) commandLine.addAll(['-s', serial])
+        commandLine.addAll(args)
+        def out = new ByteArrayOutputStream()
+        execOperations.exec {
+            it.commandLine(commandLine)
+            it.standardOutput = out
+        }
+        return out.toString('UTF-8')
+    }
+}
+
+tasks.register('readmeScreenshots', ReadmeScreenshotsTask) {
+    group = 'documentation'
+    description = 'Takes the README screenshots from demo places around Aachen on a running emulator.'
+    dependsOn('assembleDebug', 'assembleDebugAndroidTest')
+    adbExecutable.set(android.adbExecutable)
+    appApk.set(layout.buildDirectory.file('outputs/apk/debug/app-debug.apk'))
+    testApk.set(layout.buildDirectory.file('outputs/apk/androidTest/debug/app-debug-androidTest.apk'))
+    applicationId.set(android.defaultConfig.applicationId)
+    testClass.set('com.example.freizeit.readme.ReadmeScreenshots')
+    pullDir.set(layout.buildDirectory.dir('readme-screenshots'))
+    screenshotsDir.set(rootProject.layout.projectDirectory.dir('docs/screenshots'))
+    outputs.upToDateWhen { false }
 }
