@@ -15,7 +15,7 @@ const val DARK_MATTER_STYLE_URL = "https://basemaps.cartocdn.com/gl/dark-matter-
 /** CARTO's light counterpart to [DARK_MATTER_STYLE_URL], paired with the app's light theme. */
 const val POSITRON_STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
 
-/** Which basemap style to load for the given theme; read once at map creation, not live-switched. */
+/** Which basemap style to load for the given theme; the maps re-load it when the theme changes. */
 fun mapStyleUrl(darkTheme: Boolean): String = if (darkTheme) DARK_MATTER_STYLE_URL else POSITRON_STYLE_URL
 
 /** Fixed dark blue for the "you are here" marker — deliberately not theme-derived so it stays a

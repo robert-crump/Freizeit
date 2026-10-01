@@ -1,6 +1,7 @@
 package com.example.freizeit.ui.map
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.RectF
 import android.view.ViewGroup
@@ -97,14 +98,14 @@ fun PoiMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Read once: the map/style is retained across Home<->Map tab switches (MapViewHolder),
-    // so a live system theme change while the Map screen is open won't re-style the map mid-session.
+    // The map/style is retained across Home<->Map tab switches (MapViewHolder), so a theme change
+    // (Settings, or the system's while following it) re-styles it below rather than at creation.
     val darkTheme = LocalDarkTheme.current
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
-    val markerBackground = markerBackgroundColor(darkTheme).toArgb()
-    val markerForeground = markerForegroundColor(darkTheme).toArgb()
 
     val (mapView, state) = remember(context) { MapViewHolder.obtain(context) }
+    state.darkTheme = darkTheme
+    state.markerBitmaps = markerBitmaps
     state.onPoiClick = onPoiClick
     state.onCameraIdle = onCameraIdle
     state.onUserCameraMove = onStopFollowing
@@ -136,31 +137,7 @@ fun PoiMap(
                 // first Map visit, #63) is applied now instead of being lost.
                 applyPendingFocus(state)
 
-                map.setStyle(
-                    Style.Builder()
-                        .fromUri(mapStyleUrl(darkTheme))
-                        .withSource(
-                            GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
-                        )
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, markerBackground, markerForeground, upperBound = 20))
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, markerBackground, markerForeground, lowerBound = 20, upperBound = 100))
-                        .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, markerBackground, markerForeground, lowerBound = 100))
-                        .withLayer(clusterCountLayer(markerForeground))
-                        .withLayer(poiSymbolLayer())
-                        .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
-                        .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
-                        .withLayer(locationDotLayer(POSITION_DOT_COLOR))
-                ) { style ->
-                    markerBitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
-                    state.style = style
-                    state.poiSource = style.getSourceAs(POI_SOURCE_ID)
-                    state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
-                    state.ready = true
-                    // The latest values, not this closure's first-composition ones: the update
-                    // block below records each new list while the style is still loading.
-                    applyPois(state, state.renderedPois)
-                    applyLocation(state, state.renderedLocation)
-                }
+                loadStyle(state)
 
                 map.addOnMapClickListener { latLng ->
                     handleMapClick(state, map, latLng)
@@ -179,6 +156,10 @@ fun PoiMap(
             }
         }
         onDispose { }
+    }
+
+    LaunchedEffect(darkTheme) {
+        if (state.map != null && state.styledDarkTheme != darkTheme) loadStyle(state)
     }
 
     // Reports the map's current center as soon as pin-placement starts, not just on the next
@@ -280,6 +261,53 @@ private class PoiMapState {
     var handledFocusRequest: Int = 0
     /** A focus target waiting for [map] to be ready, see [applyPendingFocus]. */
     var pendingFocus: LatLon? = null
+    /** The current theme and its marker bitmaps, as last composed — what [loadStyle] draws. */
+    var darkTheme: Boolean = false
+    var markerBitmaps: Map<String, Bitmap> = emptyMap()
+    /** The theme of the style last requested from [loadStyle]. */
+    var styledDarkTheme: Boolean? = null
+}
+
+/**
+ * (Re)loads the basemap style for [PoiMapState.darkTheme] with the POI/cluster/location layers
+ * in matching marker colors. Sources go away with the old style, so the latest POIs and location
+ * are re-applied once the new one has loaded.
+ */
+private fun loadStyle(state: PoiMapState) {
+    val map = state.map ?: return
+    val darkTheme = state.darkTheme
+    val markerBitmaps = state.markerBitmaps
+    val markerBackground = markerBackgroundColor(darkTheme).toArgb()
+    val markerForeground = markerForegroundColor(darkTheme).toArgb()
+    state.styledDarkTheme = darkTheme
+    state.ready = false
+    map.setStyle(
+        Style.Builder()
+            .fromUri(mapStyleUrl(darkTheme))
+            .withSource(
+                GeoJsonSource(POI_SOURCE_ID, FeatureCollection.fromFeatures(emptyArray()), poiClusterOptions())
+            )
+            .withLayer(clusterCircleLayer(CLUSTER_LAYER_SMALL, markerBackground, markerForeground, upperBound = 20))
+            .withLayer(clusterCircleLayer(CLUSTER_LAYER_MEDIUM, markerBackground, markerForeground, lowerBound = 20, upperBound = 100))
+            .withLayer(clusterCircleLayer(CLUSTER_LAYER_LARGE, markerBackground, markerForeground, lowerBound = 100))
+            .withLayer(clusterCountLayer(markerForeground))
+            .withLayer(poiSymbolLayer())
+            .withSource(GeoJsonSource(LOCATION_SOURCE_ID))
+            .withLayer(locationAccuracyLayer(POSITION_DOT_COLOR))
+            .withLayer(locationDotLayer(POSITION_DOT_COLOR))
+    ) { style ->
+        // A newer theme's style was requested while this one loaded; that one wins.
+        if (state.styledDarkTheme != darkTheme) return@setStyle
+        markerBitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
+        state.style = style
+        state.poiSource = style.getSourceAs(POI_SOURCE_ID)
+        state.locationSource = style.getSourceAs(LOCATION_SOURCE_ID)
+        state.ready = true
+        // The latest values, not the first composition's: the AndroidView update block records
+        // each new list while the style is still loading.
+        applyPois(state, state.renderedPois)
+        applyLocation(state, state.renderedLocation)
+    }
 }
 
 private fun applyPendingFocus(state: PoiMapState) {

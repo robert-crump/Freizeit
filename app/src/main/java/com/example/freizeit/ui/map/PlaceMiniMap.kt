@@ -61,7 +61,7 @@ fun SuggestionsMiniMap(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Read once, same rationale as PoiMap's Map screen: no live re-theming mid-session.
+    // Re-styled on a theme change (see the LaunchedEffect below), like PoiMap's Map screen.
     val darkTheme = LocalDarkTheme.current
     val markerBitmaps = rememberMarkerBitmaps(darkTheme)
 
@@ -71,6 +71,8 @@ fun SuggestionsMiniMap(
     val latestPois by rememberUpdatedState(pois)
     val latestSelectedPoiId by rememberUpdatedState(selectedPoiId)
     val latestLocation by rememberUpdatedState(location)
+    val latestDarkTheme by rememberUpdatedState(darkTheme)
+    val latestMarkerBitmaps by rememberUpdatedState(markerBitmaps)
     state.poiById = pois.associateBy { it.id }
     state.onPoiClick = onPoiClick
 
@@ -86,6 +88,30 @@ fun SuggestionsMiniMap(
         MapView(context, options).apply { onCreate(null) }
     }
 
+    fun loadStyle(map: MapLibreMap) {
+        val dark = latestDarkTheme
+        val bitmaps = latestMarkerBitmaps
+        state.styledDarkTheme = dark
+        state.ready = false
+        map.setStyle(
+            Style.Builder()
+                .fromUri(mapStyleUrl(dark))
+                .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
+                .withLayer(poiSymbolLayer())
+                .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
+                .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, POSITION_DOT_COLOR))
+        ) { style ->
+            // A newer theme's style was requested while this one loaded; that one wins.
+            if (state.styledDarkTheme != dark) return@setStyle
+            bitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
+            state.style = style
+            state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
+            state.userSource = style.getSourceAs(USER_DOT_SOURCE_ID)
+            state.ready = true
+            renderSuggestions(state, mapView, latestPois, latestSelectedPoiId, latestLocation)
+        }
+    }
+
     DisposableEffect(mapView) {
         mapView.getMapAsync { map ->
             state.map = map
@@ -96,24 +122,15 @@ fun SuggestionsMiniMap(
                 isTiltGesturesEnabled = false
                 isDoubleTapGesturesEnabled = false
             }
-            map.setStyle(
-                Style.Builder()
-                    .fromUri(mapStyleUrl(darkTheme))
-                    .withSource(GeoJsonSource(POI_DOT_SOURCE_ID))
-                    .withLayer(poiSymbolLayer())
-                    .withSource(GeoJsonSource(USER_DOT_SOURCE_ID))
-                    .withLayer(dotLayer(USER_DOT_LAYER_ID, USER_DOT_SOURCE_ID, POSITION_DOT_COLOR))
-            ) { style ->
-                markerBitmaps.forEach { (category, bitmap) -> style.addImage(markerIconId(category), bitmap) }
-                state.style = style
-                state.poiSource = style.getSourceAs(POI_DOT_SOURCE_ID)
-                state.userSource = style.getSourceAs(USER_DOT_SOURCE_ID)
-                state.ready = true
-                renderSuggestions(state, mapView, latestPois, latestSelectedPoiId, latestLocation)
-            }
+            loadStyle(map)
             map.addOnMapClickListener { latLng -> handleSuggestionsMapClick(state, map, latLng) }
         }
         onDispose { }
+    }
+
+    LaunchedEffect(darkTheme) {
+        val map = state.map ?: return@LaunchedEffect
+        if (state.styledDarkTheme != darkTheme) loadStyle(map)
     }
 
     LaunchedEffect(pois, selectedPoiId, location?.lat, location?.lon) {
@@ -151,6 +168,8 @@ private class SuggestionsMapState {
     var userSource: GeoJsonSource? = null
     var poiById: Map<String, Poi> = emptyMap()
     var onPoiClick: (Poi) -> Unit = {}
+    /** The theme of the style last requested, so a theme change knows to re-style. */
+    var styledDarkTheme: Boolean? = null
 }
 
 private fun dotLayer(layerId: String, sourceId: String, color: Int): CircleLayer =
