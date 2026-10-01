@@ -5,6 +5,10 @@ What to do with your free time: your favorite places around Aachen, suggested by
 <table>
   <tr>
     <td><img src="docs/screenshots/home.png" width="200" alt="Home: today's weather above the top suggestion, an ice-cream café one minute away by bike, with a mini-map, opening hours and the last visit"></td>
+    <td><img src="docs/screenshots/map.png" width="200" alt="Map of central Aachen filtered to favorites: café, ice cream, restaurant and museum markers around the current position"></td>
+    <td><img src="docs/screenshots/place.png" width="200" alt="Place detail sheet for a favorite café over the map: check-in button, distance, cycling time, last visit two days ago and opening hours"></td>
+    <td><img src="docs/screenshots/checkin.png" width="200" alt="Check-in history grouped into this week, last week, last month and August, one row per visit with place and time"></td>
+    <td><img src="docs/screenshots/home-dark.png" width="200" alt="Home in dark theme: the same top suggestion with a dark mini-map"></td>
   </tr>
 </table>
 

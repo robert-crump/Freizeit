@@ -9,8 +9,15 @@ import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -34,6 +41,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -41,8 +49,8 @@ import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 
 /**
- * Screenshots for the README (#70), taken on an emulator from real OSM places around Aachen Markt
- * (`readme-pois.json`, cut by tools/poi_extraction/make_readme_fixture.py). Run through
+ * Screenshots for the README (#70, #71): Home, Map, Place detail, Check-in and dark Home, taken
+ * on an emulator from real OSM places around Aachen Markt (`readme-pois.json`, cut by tools/poi_extraction/make_readme_fixture.py). Run through
  * `./gradlew readmeScreenshots`, which also clears the app's data, sets the clock to Saturday
  * 11:00, puts the emulator's GPS on Aachen Markt, sets up a clean status bar and copies the PNGs
  * to `docs/screenshots/`. Replaces the app's places, verdicts and visits, so [EmulatorOnlyRule]
@@ -63,9 +71,7 @@ class ReadmeScreenshots {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         context = instrumentation.targetContext
         screenshots = ReadmeScreenshotCapture.cleared(context)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            context.getSystemService(UiModeManager::class.java).setApplicationNightMode(UiModeManager.MODE_NIGHT_NO)
-        }
+        setNightMode(UiModeManager.MODE_NIGHT_NO)
         assertEquals(
             "The device clock isn't on a Saturday; run through ./gradlew readmeScreenshots",
             DayOfWeek.SATURDAY, LocalDate.now().dayOfWeek
@@ -100,13 +106,24 @@ class ReadmeScreenshots {
         }
     }
 
+    /** Back to following the system theme; the night mode is the app's own, the emulator's is untouched. */
+    @After
+    fun tearDown() {
+        setNightMode(UiModeManager.MODE_NIGHT_AUTO)
+    }
+
     @Test
     fun captureReadmeScreenshots() {
-        captureHome()
+        captureHome("home")
+        captureMapCheckInAndPlace()
+        // The app's UI mode, as the system's dark theme would set it; the activity is relaunched
+        // so Home's mini-map loads CARTO Dark Matter.
+        setNightMode(UiModeManager.MODE_NIGHT_YES)
+        captureHome("home-dark")
     }
 
     /** Home with the ice-cream place, the day's top suggestion, in the middle of the pager. */
-    private fun captureHome() {
+    private fun captureHome(name: String) {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             waitForText(HERO)
             waitForText("ice-cream weather")
@@ -119,7 +136,56 @@ class ReadmeScreenshots {
                 "$HERO isn't the centered (top) suggestion",
                 hero.any { abs(it - screenCenter) < screenCenter / 2 }
             )
-            screenshots.capture(compose, "home")
+            screenshots.capture(compose, name)
+        }
+    }
+
+    /**
+     * The Map tab around the Markt with the favorites shown, the Check-in tab's history of the
+     * seeded visits, and the detail sheet on a favorite, picked in the Map's search.
+     */
+    private fun captureMapCheckInAndPlace() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            waitForText(HERO)
+            clickTab("Map")
+            waitForText("Search here")
+            // The Map shows markers only for a picked category, verdict or search.
+            compose.onNode(hasText("Favorites")).performClick()
+            // Lets Compose hand the favorites to the map before MapSettle starts polling.
+            compose.waitUntil(UI_TIMEOUT_MS) {
+                compose.onAllNodes(hasText("Favorites") and isSelected()).fetchSemanticsNodes().isNotEmpty()
+            }
+            MapSettle.await(scenario, MAP_TIMEOUT_MS, markerLayer = POI_MARKER_LAYER)
+            screenshots.capture(compose, "map")
+
+            clickTab("Check-in")
+            waitForText("Check-in history")
+            waitForText(DETAIL_PLACE)
+            screenshots.capture(compose, "checkin")
+
+            // Through the Map's search: its row tap opens the sheet synchronously. The history
+            // row's "open on Map" resumes off the main thread under the Compose test dispatcher.
+            clickTab("Map")
+            compose.onNode(hasText("Search here")).performClick()
+            compose.onNode(hasSetTextAction()).performTextInput(DETAIL_PLACE_QUERY)
+            waitForText(DETAIL_PLACE)
+            compose.onNode(hasText(DETAIL_PLACE) and hasSetTextAction().not()).performClick()
+            waitForText("Opening hours: ")
+            waitForText("Last visit: ")
+            MapSettle.await(scenario, MAP_TIMEOUT_MS)
+            screenshots.capture(compose, "place")
+        }
+    }
+
+    /** A bottom-nav tab, not Home's or the sheet's buttons of the same name. */
+    private fun clickTab(label: String) {
+        compose.onNode(hasText(label) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+            .performClick()
+    }
+
+    private fun setNightMode(mode: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(UiModeManager::class.java).setApplicationNightMode(mode)
         }
     }
 
@@ -189,6 +255,10 @@ class ReadmeScreenshots {
     private companion object {
         const val FIXTURE = "readme-pois.json"
         const val HERO = "Eiscafé Tasin"
+        const val DETAIL_PLACE = "Café Dom"
+        const val DETAIL_PLACE_QUERY = "Dom"
+        /** PoiMap's layer of single POI markers. */
+        const val POI_MARKER_LAYER = "pois-points"
         const val MARKT_LAT = 50.7753
         const val MARKT_LON = 6.0839
         const val LOCATION_TOLERANCE_M = 100.0
