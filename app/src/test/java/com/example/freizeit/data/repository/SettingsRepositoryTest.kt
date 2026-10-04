@@ -137,4 +137,17 @@ class SettingsRepositoryTest {
 
         assertEquals(TravelLimits(greenMax = 15, orangeMax = 15), repository.travelLimits.first())
     }
+
+    @Test
+    fun `startup permission prompt not yet asked on a fresh install`() = runTest {
+        assertEquals(false, repository.startupPermissionsAsked.first())
+    }
+
+    @Test
+    fun `startup permission prompt stays asked once marked, and a backup restore keeps it`() = runTest {
+        repository.markStartupPermissionsAsked()
+        repository.restore(repository.snapshot().copy(notifyFavorites = true))
+
+        assertEquals(true, repository.startupPermissionsAsked.first())
+    }
 }

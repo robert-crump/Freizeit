@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -140,6 +141,14 @@ class HomeViewModel(
     init {
         viewModelScope.launch { weatherRepository.loadCache() }
         refreshLocation()
+    }
+
+    /** True exactly once per install: the first launch asks for everything check-in
+     *  notifications need, not just Home's own location (see HomeScreen). */
+    suspend fun consumeStartupPermissionRequest(): Boolean {
+        if (settingsRepository.startupPermissionsAsked.first()) return false
+        settingsRepository.markStartupPermissionsAsked()
+        return true
     }
 
     fun refreshLocation() {

@@ -84,6 +84,10 @@ class GeofenceSyncManager(
      */
     suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>) = mutex.withLock {
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
+            // Logged so a switch that's on but silently unregistered shows up in the trail.
+            if (autoCheckInEnabled && favorites.isNotEmpty()) {
+                GeofenceEventLog.append(context, "sync skipped: missing location permission (background=${AutoCheckInPermissions.hasBackgroundLocation(context)})")
+            }
             removeAll()
             return@withLock
         }

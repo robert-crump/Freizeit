@@ -1,7 +1,8 @@
 package com.example.freizeit.ui.settings
 
-import android.Manifest
-import android.os.Build
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -42,6 +43,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,16 +53,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.ui.common.CheckInPermissionOutcome
 import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.common.categoryDisplayName
 import com.example.freizeit.ui.common.colors
+import com.example.freizeit.ui.common.rememberCheckInPermissionFlow
+import com.example.freizeit.util.AutoCheckInPermissions
+import com.example.freizeit.util.CheckInPermission
 import com.example.freizeit.util.DurationBand
 import com.example.freizeit.util.TravelLimits
 import java.time.Instant
@@ -441,10 +450,11 @@ private fun BandSwatch(band: DurationBand) {
 private enum class NotificationSwitch { FAVORITES, WANT_TO_GO }
 
 /**
- * Owns the whole opt-in dance: turning on the first switch shows the disclosure dialog first
- * (issue #24's Play Store compliance requirement), and only a completed foreground-location grant
- * flips that DataStore-backed switch on — denial leaves it off with a hint, never a
- * silently-broken feature. With one switch already on, the other turns on without asking again.
+ * Turning a switch on runs [rememberCheckInPermissionFlow] whenever anything it needs is still
+ * missing — not only for the first switch, so a switch turned on after a reinstall or a revoked
+ * grant still prompts. A refused foreground-location grant (or a cancelled disclosure) leaves the
+ * switch off; anything else refused leaves it on, and the warning row below says what's missing
+ * with a shortcut to the system settings, re-checked on every resume.
  */
 @Composable
 private fun NotificationsSection(
@@ -453,61 +463,37 @@ private fun NotificationsSection(
     onFavoritesChange: (Boolean) -> Unit,
     onWantToGoChange: (Boolean) -> Unit
 ) {
-    var pending by remember { mutableStateOf<NotificationSwitch?>(null) }
-    var showDisclosure by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val permissionFlow = rememberCheckInPermissionFlow()
     var showDeniedHint by remember { mutableStateOf(false) }
+    var missing by remember { mutableStateOf(AutoCheckInPermissions.missing(context)) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) missing = AutoCheckInPermissions.missing(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     fun set(switch: NotificationSwitch, enabled: Boolean) = when (switch) {
         NotificationSwitch.FAVORITES -> onFavoritesChange(enabled)
         NotificationSwitch.WANT_TO_GO -> onWantToGoChange(enabled)
     }
 
-    fun enablePending() {
-        pending?.let { set(it, true) }
-        pending = null
-    }
-
-    val notificationsLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) {
-        enablePending()
-    }
-
-    val backgroundLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            enablePending()
-        }
-    }
-
-    val foregroundLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        if (results.values.none { it }) {
-            pending = null
-            showDeniedHint = true
-            return@rememberLauncherForActivityResult
-        }
-        when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
-                backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
-                notificationsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            else -> enablePending()
-        }
-    }
-
     fun onSwitchChange(switch: NotificationSwitch, checked: Boolean) {
-        when {
-            !checked -> set(switch, false)
-            favorites || wantToGo -> set(switch, true)
-            else -> {
-                showDeniedHint = false
-                pending = switch
-                showDisclosure = true
+        if (!checked || AutoCheckInPermissions.missing(context).isEmpty()) {
+            set(switch, checked)
+            return
+        }
+        showDeniedHint = false
+        permissionFlow.request { outcome ->
+            missing = AutoCheckInPermissions.missing(context)
+            when (outcome) {
+                CheckInPermissionOutcome.DONE -> set(switch, true)
+                CheckInPermissionOutcome.LOCATION_DENIED -> showDeniedHint = true
+                CheckInPermissionOutcome.CANCELLED -> Unit
             }
         }
     }
@@ -538,22 +524,40 @@ private fun NotificationsSection(
         )
     }
 
-    if (showDisclosure) {
-        NotificationsDisclosureDialog(
-            onConfirm = {
-                showDisclosure = false
-                foregroundLocationLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    )
-                )
-            },
-            onDismiss = {
-                showDisclosure = false
-                pending = null
+    if ((favorites || wantToGo) && missing.isNotEmpty()) {
+        MissingPermissionsWarning(missing)
+    }
+}
+
+/** A switch is on but the device won't let it work — say which grants are missing, and offer
+ *  the app's system settings page, which works even once Android stops showing its dialogs. */
+@Composable
+private fun MissingPermissionsWarning(missing: List<CheckInPermission>) {
+    val context = LocalContext.current
+    val names = missing.map {
+        stringResource(
+            when (it) {
+                CheckInPermission.FOREGROUND_LOCATION -> R.string.settings_notifications_missing_location
+                CheckInPermission.NOTIFICATIONS -> R.string.settings_notifications_missing_notifications
+                CheckInPermission.BACKGROUND_LOCATION -> R.string.settings_notifications_missing_background_location
             }
         )
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = stringResource(R.string.settings_notifications_missing, names.joinToString(", ")),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
+        TextButton(
+            onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                )
+            }
+        ) {
+            Text(stringResource(R.string.settings_notifications_open_system_settings))
+        }
     }
 }
 
@@ -573,25 +577,6 @@ private fun NotificationSwitchRow(
         Text(text = title, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
-}
-
-@Composable
-private fun NotificationsDisclosureDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_notifications_disclosure_title)) },
-        text = { Text(stringResource(R.string.settings_notifications_disclosure_body)) },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.settings_notifications_disclosure_continue))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.settings_cancel))
-            }
-        }
-    )
 }
 
 @Composable

@@ -55,6 +55,19 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             NotificationTargets(favorites, wantToGo)
         }
 
+    /**
+     * Whether the first-launch permission prompt has run on this install. Device state, not a
+     * user setting: deliberately left out of [snapshot]/[restore], so a restored backup still
+     * gets asked on the new install.
+     */
+    val startupPermissionsAsked: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[STARTUP_PERMISSIONS_ASKED_KEY] ?: false
+    }
+
+    suspend fun markStartupPermissionsAsked() {
+        dataStore.edit { it[STARTUP_PERMISSIONS_ASKED_KEY] = true }
+    }
+
     /** Follows the system until the user picks Light or Dark; an unknown stored value falls back too. */
     val themeMode: Flow<ThemeMode> = dataStore.data.map { prefs ->
         ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE_KEY] } ?: ThemeMode.SYSTEM
@@ -109,6 +122,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val AUTO_CHECKIN_ENABLED_KEY = booleanPreferencesKey("auto_checkin_enabled")
         private val NOTIFY_FAVORITES_KEY = booleanPreferencesKey("notify_favorites")
         private val NOTIFY_WANT_TO_GO_KEY = booleanPreferencesKey("notify_want_to_go")
+        private val STARTUP_PERMISSIONS_ASKED_KEY = booleanPreferencesKey("startup_permissions_asked")
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
         private val TRAVEL_GREEN_MAX_KEY = intPreferencesKey("travel_green_max")
         private val TRAVEL_ORANGE_MAX_KEY = intPreferencesKey("travel_orange_max")

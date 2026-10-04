@@ -28,4 +28,26 @@ object AutoCheckInPermissions {
                 context,
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED
+
+    /** What check-in notifications still lack on this device, in asking order. */
+    fun missing(context: Context): List<CheckInPermission> = missingCheckInPermissions(
+        hasForegroundLocation = hasForegroundLocation(context),
+        hasBackgroundLocation = hasBackgroundLocation(context),
+        hasNotifications = hasNotifications(context)
+    )
 }
+
+/** A runtime permission check-in notifications need. Declared in the order they must be asked:
+ *  background location can only be requested once foreground location is granted. */
+enum class CheckInPermission { FOREGROUND_LOCATION, NOTIFICATIONS, BACKGROUND_LOCATION }
+
+/** The [CheckInPermission]s not yet granted, in asking order; empty when notifications can work. */
+fun missingCheckInPermissions(
+    hasForegroundLocation: Boolean,
+    hasBackgroundLocation: Boolean,
+    hasNotifications: Boolean
+): List<CheckInPermission> = listOfNotNull(
+    CheckInPermission.FOREGROUND_LOCATION.takeUnless { hasForegroundLocation },
+    CheckInPermission.NOTIFICATIONS.takeUnless { hasNotifications },
+    CheckInPermission.BACKGROUND_LOCATION.takeUnless { hasBackgroundLocation }
+)

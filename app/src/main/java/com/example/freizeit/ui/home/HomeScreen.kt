@@ -68,6 +68,7 @@ import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.common.rememberCheckInPermissionFlow
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
@@ -97,8 +98,14 @@ fun HomeScreen(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { viewModel.refreshLocation() }
 
+    // First launch on this install (a reinstall too) asks for everything check-in notifications
+    // need, so a backup restored with its switches on doesn't sit there silently not working.
+    // Later launches only re-ask Home's own location, as before.
+    val checkInPermissionFlow = rememberCheckInPermissionFlow()
     LaunchedEffect(Unit) {
-        if (!LocationHelper.hasPermission(context)) {
+        if (viewModel.consumeStartupPermissionRequest()) {
+            checkInPermissionFlow.request { viewModel.refreshLocation() }
+        } else if (!LocationHelper.hasPermission(context)) {
             permissionLauncher.launch(
                 arrayOf(
                     Manifest.permission.ACCESS_COARSE_LOCATION,
