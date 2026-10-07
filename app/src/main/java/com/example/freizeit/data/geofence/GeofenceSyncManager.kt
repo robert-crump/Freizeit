@@ -9,7 +9,6 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
-import com.example.freizeit.BuildConfig
 import com.example.freizeit.data.dao.CustomPoiDao
 import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.PoiOverrideDao
@@ -229,7 +228,7 @@ class GeofenceSyncManager(
                     Geofence.GEOFENCE_TRANSITION_EXIT or
                     Geofence.GEOFENCE_TRANSITION_DWELL
             )
-            .setLoiteringDelay(loiteringDelayMillis)
+            .setLoiteringDelay(LOITERING_DELAY_MILLIS)
             .setNotificationResponsiveness(NOTIFICATION_RESPONSIVENESS_MILLIS)
             .build()
 
@@ -265,15 +264,10 @@ class GeofenceSyncManager(
 
         /**
          * How long a device must stay continuously inside a geofence before DWELL fires — the
-         * "staying" side of the passing-by-vs-staying distinction. Shorter in debug builds so a
-         * test cycle isn't a real 15-minute wait; still exercises the real DWELL path end to end.
-         * [GeofenceNotifications] surfaces this shortened delay on the notification itself so a
-         * debug build doesn't read as "dwell time ignored" (issue #34).
+         * "staying" side of the passing-by-vs-staying distinction. The same in debug builds:
+         * the debug build is used day to day, and a short debug delay prompted on every walk-by.
          */
         private const val LOITERING_DELAY_MILLIS = 15 * 60 * 1000
-        const val DEBUG_LOITERING_DELAY_MILLIS = 30 * 1000
-        val loiteringDelayMillis: Int
-            get() = if (BuildConfig.DEBUG) DEBUG_LOITERING_DELAY_MILLIS else LOITERING_DELAY_MILLIS
 
         /**
          * Delays Play Services' transition reporting by this much to smooth over GPS jitter at

@@ -20,11 +20,10 @@ object WidgetRefreshScheduler {
     private const val UNIQUE_WORK_NAME = "widget_refresh_schedule"
 
     /**
-     * Shortened, fixed interval in debug builds — same shape as
-     * [com.example.freizeit.data.geofence.GeofenceSyncManager.DEBUG_LOITERING_DELAY_MILLIS]: swap
-     * in a short constant rather than a different mechanism, so the real self-rescheduling loop
-     * and the recompute-and-push call are both exercised end to end without waiting for the real
-     * weekday-noon/weekend-8am wall clock (issue's debug-verifiability AC).
+     * Shortened, fixed interval in debug builds: swap in a short constant rather than a different
+     * mechanism, so the real self-rescheduling loop and the recompute-and-push call are both
+     * exercised end to end without waiting for the real weekday-noon/weekend-8am wall clock
+     * (issue's debug-verifiability AC).
      */
     private const val DEBUG_REFRESH_INTERVAL_MILLIS = 30_000L
 

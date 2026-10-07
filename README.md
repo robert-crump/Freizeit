@@ -31,8 +31,8 @@ Clone, open, run.
 For everyday use install the release build: `./gradlew installRelease` (or `assembleRelease`, then
 `adb install -r app/build/outputs/apk/release/app-release.apk`). It is signed with the same debug keystore
 and uses the same app id as the debug build, so it installs over a debug install and keeps your places,
-check-ins, settings, geofences and widget. Only the release build uses the real 15-minute dwell before a
-check-in notification (the debug build fires after 30 s). Export a backup in Settings first as a safety net.
+check-ins, settings, geofences and widget. Both builds wait for 15 minutes at a place before a check-in
+notification. Export a backup in Settings first as a safety net.
 
 Check-in notifications only run while location "Allow all the time", notifications and unrestricted battery
 usage are all granted; otherwise Settings shows them as paused. The battery exemption is requested with
