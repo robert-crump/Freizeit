@@ -39,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -116,13 +117,23 @@ fun CheckInScreen(
                 actionLabel = undoActionLabel,
                 // Material3 defaults duration to Indefinite whenever actionLabel is non-null —
                 // without this, the undo window would never actually time out on its own.
-                duration = SnackbarDuration.Long
+                duration = SnackbarDuration.Short
             )
             if (result == SnackbarResult.ActionPerformed) {
                 viewModel.undoDelete()
             } else {
                 viewModel.dismissUndo()
             }
+        }
+    }
+    // Leaving the screen (another tab, search, a pushed Map) ends whatever snackbar is up for
+    // good. The host is hoisted, so without this a "Checked into X" kept counting down while
+    // away, and a cancelled delete Undo came back with a fresh timer on return. Dismissing
+    // keeps the check-in; dismissUndo makes the delete final, as Map already does (#47).
+    DisposableEffect(Unit) {
+        onDispose {
+            checkInSnackbarHostState.currentSnackbarData?.dismiss()
+            viewModel.dismissUndo()
         }
     }
 

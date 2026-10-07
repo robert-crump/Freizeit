@@ -112,7 +112,7 @@ fun MapScreen(
             actionLabel = undoLabel,
             // Material3 defaults duration to Indefinite whenever actionLabel is non-null — without
             // this, "timing out" (per the comment above) would never actually happen on its own.
-            duration = SnackbarDuration.Long
+            duration = SnackbarDuration.Short
         )
         if (result == SnackbarResult.ActionPerformed) {
             viewModel.undoRemovePlace()

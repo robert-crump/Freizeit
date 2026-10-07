@@ -129,6 +129,11 @@ fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    // The host is hoisted, so a "place no longer exists" would otherwise still be up when
+    // switching back to Home quickly — leaving the tab ends it, like the Check-in tab's.
+    DisposableEffect(Unit) {
+        onDispose { snackbarHostState.currentSnackbarData?.dismiss() }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         // No horizontal padding here: the pager spans the full width so neighbor cards peek in
