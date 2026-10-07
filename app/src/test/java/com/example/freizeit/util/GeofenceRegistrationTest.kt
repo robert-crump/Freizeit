@@ -59,4 +59,28 @@ class GeofenceRegistrationTest {
         val now = registrationEpoch(bootCount = 7, lastUpdateTimeMillis = 1_000L)
         assertTrue(isEpochReset(ids, null, now))
     }
+
+    @Test
+    fun `boot completed within the persisted boot is an unstop after force stop`() {
+        val epoch = registrationEpoch(bootCount = 21, lastUpdateTimeMillis = 1_000L)
+        assertTrue(isUnstopAfterForceStop(epoch, currentBootCount = 21))
+    }
+
+    @Test
+    fun `boot completed after a reboot is not an unstop`() {
+        val epoch = registrationEpoch(bootCount = 21, lastUpdateTimeMillis = 1_000L)
+        assertFalse(isUnstopAfterForceStop(epoch, currentBootCount = 22))
+    }
+
+    @Test
+    fun `boot completed with nothing persisted is not an unstop`() {
+        assertFalse(isUnstopAfterForceStop(null, currentBootCount = 21))
+    }
+
+    @Test
+    fun `an update within the same boot still counts as an unstop`() {
+        // Studio's install force-stops the app, so the first launch after it is an unstop too.
+        val beforeUpdate = registrationEpoch(bootCount = 21, lastUpdateTimeMillis = 1_000L)
+        assertTrue(isUnstopAfterForceStop(beforeUpdate, currentBootCount = 21))
+    }
 }

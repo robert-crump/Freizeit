@@ -10,28 +10,34 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Re-registers geofences right after a reboot (issue #58) or an update/reinstall of this app
- * (`MY_PACKAGE_REPLACED`, issue #61). Play Services drops them all in both cases, and otherwise
- * nothing re-adds them until the app process happens to start for another reason — auto check-in
- * would stay dead until the next app open. Both count as an epoch reset, so the sync also
- * schedules [GeofenceReregisterWorker]'s delayed forced pass.
+ * Re-registers geofences right after a reboot (issue #58), an update/reinstall of this app
+ * (`MY_PACKAGE_REPLACED`, issue #61), or the app leaving the stopped state after a force stop
+ * (Android 15+ sends `BOOT_COMPLETED` then, see [GeofenceSyncManager.syncAfterBootCompleted]).
+ * Play Services drops them all in each case, and otherwise nothing re-adds them until the app
+ * process happens to start for another reason — auto check-in would stay dead until the next app
+ * open. Reboots and updates count as an epoch reset, so the sync also schedules
+ * [GeofenceReregisterWorker]'s delayed forced pass.
  */
 class GeofenceBootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val trigger = when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> "boot completed"
-            Intent.ACTION_MY_PACKAGE_REPLACED -> "package replaced"
+        val bootCompleted = when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED -> true
+            Intent.ACTION_MY_PACKAGE_REPLACED -> false
             else -> return
         }
         val pendingResult = goAsync()
         val app = context.applicationContext as FreizeitApplication
-        GeofenceEventLog.append(app, "$trigger -> sync")
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val container = app.container
                 val (enabled, places) = container.geofenceTargetsOnce()
-                container.geofenceSyncManager.sync(enabled, places)
+                if (bootCompleted) {
+                    container.geofenceSyncManager.syncAfterBootCompleted(enabled, places)
+                } else {
+                    GeofenceEventLog.append(app, "package replaced -> sync")
+                    container.geofenceSyncManager.sync(enabled, places)
+                }
             } finally {
                 pendingResult.finish()
             }

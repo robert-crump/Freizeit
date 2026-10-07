@@ -38,3 +38,14 @@ fun isEpochReset(
     persistedEpoch: String?,
     currentEpoch: String
 ): Boolean = if (persistedEpoch == null) persistedIds.isNotEmpty() else persistedEpoch != currentEpoch
+
+/**
+ * Whether a `BOOT_COMPLETED` broadcast came without a reboot, i.e. the app is leaving the stopped
+ * state after a force stop (a Studio redeploy, or Force stop in system settings). Android 15+
+ * sends `BOOT_COMPLETED` then. A stopped app receives nothing, so its geofences are gone, yet the
+ * epoch still matches and [effectiveRegisteredIds] would trust them. Only a persisted epoch from
+ * this very boot counts. Nothing persisted means nothing registered, and that goes through a
+ * plain sync.
+ */
+fun isUnstopAfterForceStop(persistedEpoch: String?, currentBootCount: Int): Boolean =
+    persistedEpoch?.substringBefore(':')?.toIntOrNull() == currentBootCount

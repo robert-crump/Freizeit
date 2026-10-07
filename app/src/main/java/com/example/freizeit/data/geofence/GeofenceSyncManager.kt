@@ -20,6 +20,7 @@ import com.example.freizeit.util.AutoCheckInPermissions
 import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.effectiveRegisteredIds
 import com.example.freizeit.util.isEpochReset
+import com.example.freizeit.util.isUnstopAfterForceStop
 import com.example.freizeit.util.reconcileDwellingOnUnregister
 import com.example.freizeit.util.registrationEpoch
 import com.example.freizeit.util.selectClosestFavorites
@@ -79,9 +80,10 @@ class GeofenceSyncManager(
      * Reconciles registered geofences with the current favorites, or — past [MAX_GEOFENCES] —
      * with whichever closest-100 selection the last [rerank] computed. Doesn't rank anything
      * itself; see the class doc for why. See [register] for why this reconciles rather than
-     * rebuilding from scratch.
+     * rebuilding from scratch. [force] re-adds every target even if the persisted set claims
+     * they're live — for when they were wiped without the epoch changing, see [syncAfterBootCompleted].
      */
-    suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>) = mutex.withLock {
+    suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>, force: Boolean = false) = mutex.withLock {
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             // Logged so a switch that's on but silently unregistered shows up in the trail.
             if (autoCheckInEnabled && favorites.isNotEmpty()) {
@@ -91,7 +93,19 @@ class GeofenceSyncManager(
             return@withLock
         }
         val targets = if (favorites.size <= MAX_GEOFENCES) favorites else replaySelection(favorites)
-        register(targets)
+        register(targets, force, label = if (force) "forced register" else "register")
+    }
+
+    /**
+     * `BOOT_COMPLETED`: after a real reboot the epoch reset in [register] already re-adds
+     * everything. Android 15+ also sends it when the app leaves the stopped state after a force
+     * stop, within the same boot ([isUnstopAfterForceStop]). A stopped app gets no broadcasts and
+     * its geofences are gone, but the epoch still matches, so that case forces the re-add.
+     */
+    suspend fun syncAfterBootCompleted(autoCheckInEnabled: Boolean, favorites: List<Poi>) {
+        val unstop = isUnstopAfterForceStop(geofenceState.getRegistrationEpoch(), currentBootCount())
+        GeofenceEventLog.append(context, if (unstop) "unstopped after force stop -> forced sync" else "boot completed -> sync")
+        sync(autoCheckInEnabled, favorites, force = unstop)
     }
 
     /**
@@ -107,7 +121,7 @@ class GeofenceSyncManager(
         }
         val selected = selectClosestFavorites(favorites, location.latitude, location.longitude, MAX_GEOFENCES)
         geofenceState.setSelectedFavoriteIds(selected.map { it.id }.toSet())
-        register(selected)
+        register(selected, force = false, label = "register")
     }
 
     /**
@@ -124,7 +138,7 @@ class GeofenceSyncManager(
             return@withLock
         }
         val targets = if (favorites.size <= MAX_GEOFENCES) favorites else replaySelection(favorites)
-        register(targets, force = true)
+        register(targets, force = true, label = "delayed forced re-register ran")
     }
 
     /**
@@ -161,7 +175,7 @@ class GeofenceSyncManager(
      * that re-add has landed, though (issue #61), so every epoch reset also schedules one delayed
      * [forceReregister] pass, which re-adds all of [favorites] via [force].
      */
-    private suspend fun register(favorites: List<Poi>, force: Boolean = false) {
+    private suspend fun register(favorites: List<Poi>, force: Boolean, label: String) {
         val targetIds = favorites.map { it.id }.toSet()
         val epoch = currentEpoch()
         val persistedIds = geofenceState.getRegisteredFavoriteIds()
@@ -190,9 +204,10 @@ class GeofenceSyncManager(
             }
             geofenceState.setRegisteredFavoriteIds(targetIds)
             geofenceState.setRegistrationEpoch(epoch)
-            val label = if (force) "delayed forced re-register ran" else "register"
             GeofenceEventLog.append(context, "$label added=${toAdd.size} removed=${idsToRemove.size} total=${targetIds.size}")
-            if (epochReset && !force) GeofenceReregisterWorker.schedule(context)
+            // The delayed pass itself never sees a reset (the first pass wrote this epoch), so
+            // this doesn't loop; a forced sync after an update still needs its own delayed pass.
+            if (epochReset) GeofenceReregisterWorker.schedule(context)
         } catch (e: ApiException) {
             // E.g. GEOFENCE_NOT_AVAILABLE while location is switched off. Same reasoning as below:
             // don't persist, let the next sync retry.
@@ -249,10 +264,13 @@ class GeofenceSyncManager(
 
     /** Changes on every reboot and every install/update — see [effectiveRegisteredIds]. */
     private fun currentEpoch(): String {
-        val bootCount = Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)
+        val bootCount = currentBootCount()
         val lastUpdateTime = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
         return registrationEpoch(bootCount, lastUpdateTime)
     }
+
+    private fun currentBootCount(): Int =
+        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0)
 
     /** Every grant a switch needs to count as on — the same check Settings shows. */
     private fun hasRequiredPermissions(): Boolean = AutoCheckInPermissions.missing(context).isEmpty()
