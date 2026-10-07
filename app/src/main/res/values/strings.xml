@@ -161,11 +161,16 @@
     <string name="settings_notifications_disclosure_title">Background location access</string>
     <string name="settings_notifications_disclosure_body">Freizeit uses your location in the background to notice when you\'re near your favorite or want-to-go places, even while the app is closed, and to send you a notification asking if you\'d like to check in. Location is never shared with anyone else. You can turn this off at any time.</string>
     <string name="settings_notifications_disclosure_continue">Continue</string>
-    <string name="settings_notifications_missing">Notifications can\'t reach you yet. Missing: %1$s.</string>
+    <string name="settings_notifications_missing">Check-in notifications are paused. Missing: %1$s.</string>
     <string name="settings_notifications_missing_location">location access</string>
     <string name="settings_notifications_missing_background_location">location “Allow all the time”</string>
     <string name="settings_notifications_missing_notifications">notifications</string>
     <string name="settings_notifications_open_system_settings">Open system settings</string>
+    <string name="settings_notifications_missing_battery">unrestricted battery usage</string>
+    <string name="settings_notifications_fix_notifications">Open notification settings</string>
+    <string name="settings_notifications_fix_battery">Allow unrestricted battery usage</string>
+    <string name="settings_notifications_battery_title">Unrestricted battery usage</string>
+    <string name="settings_notifications_battery_body">To notice reliably when you\'re near a place, Freizeit needs to be exempt from battery optimization. Otherwise Android may delay or drop the location updates check-in notifications rely on.</string>
 
     <string name="notification_channel_checkin_name">Check-in reminders</string>
     <string name="notification_channel_checkin_description">Prompts to check in when you\'re near a favorite or want-to-go place</string>

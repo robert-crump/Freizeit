@@ -1,8 +1,6 @@
 package com.example.freizeit.ui.settings
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -43,7 +41,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,12 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
@@ -89,6 +83,7 @@ fun SettingsScreen(
     val suggestionRadiusKm by viewModel.suggestionRadiusKm.collectAsStateWithLifecycle()
     val notifyFavorites by viewModel.notifyFavorites.collectAsStateWithLifecycle()
     val notifyWantToGo by viewModel.notifyWantToGo.collectAsStateWithLifecycle()
+    val checkInMissing by viewModel.checkInMissing.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val travelLimits by viewModel.travelLimits.collectAsStateWithLifecycle()
 
@@ -240,8 +235,10 @@ fun SettingsScreen(
                 NotificationsSection(
                     favorites = notifyFavorites,
                     wantToGo = notifyWantToGo,
+                    missing = checkInMissing,
                     onFavoritesChange = viewModel::setNotifyFavorites,
-                    onWantToGoChange = viewModel::setNotifyWantToGo
+                    onWantToGoChange = viewModel::setNotifyWantToGo,
+                    onPermissionsAsked = viewModel::refreshCheckInPermissions
                 )
             }
 
@@ -450,32 +447,27 @@ private fun BandSwatch(band: DurationBand) {
 private enum class NotificationSwitch { FAVORITES, WANT_TO_GO }
 
 /**
+ * A switch shows on only while the user chose it ([favorites]/[wantToGo], what's stored) *and*
+ * nothing is [missing] — the stored choice is never cleared behind the user's back, so a grant
+ * coming back turns it on again by itself. [missing] is re-checked on every resume.
+ *
  * Turning a switch on runs [rememberCheckInPermissionFlow] whenever anything it needs is still
- * missing — not only for the first switch, so a switch turned on after a reinstall or a revoked
- * grant still prompts. A refused foreground-location grant (or a cancelled disclosure) leaves the
- * switch off; anything else refused leaves it on, and the warning row below says what's missing
- * with a shortcut to the system settings, re-checked on every resume.
+ * missing — also for a switch that's stored on but paused. A refused foreground-location grant
+ * (or a cancelled disclosure) leaves the choice off; anything else refused stores it on, and the
+ * "paused" row below says what's missing with a button to where it can be fixed.
  */
 @Composable
 private fun NotificationsSection(
     favorites: Boolean,
     wantToGo: Boolean,
+    missing: List<CheckInPermission>,
     onFavoritesChange: (Boolean) -> Unit,
-    onWantToGoChange: (Boolean) -> Unit
+    onWantToGoChange: (Boolean) -> Unit,
+    onPermissionsAsked: () -> Unit
 ) {
     val context = LocalContext.current
     val permissionFlow = rememberCheckInPermissionFlow()
     var showDeniedHint by remember { mutableStateOf(false) }
-    var missing by remember { mutableStateOf(AutoCheckInPermissions.missing(context)) }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) missing = AutoCheckInPermissions.missing(context)
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     fun set(switch: NotificationSwitch, enabled: Boolean) = when (switch) {
         NotificationSwitch.FAVORITES -> onFavoritesChange(enabled)
@@ -489,7 +481,7 @@ private fun NotificationsSection(
         }
         showDeniedHint = false
         permissionFlow.request { outcome ->
-            missing = AutoCheckInPermissions.missing(context)
+            onPermissionsAsked()
             when (outcome) {
                 CheckInPermissionOutcome.DONE -> set(switch, true)
                 CheckInPermissionOutcome.LOCATION_DENIED -> showDeniedHint = true
@@ -506,13 +498,13 @@ private fun NotificationsSection(
     NotificationSwitchRow(
         icon = Icons.Filled.Favorite,
         title = stringResource(R.string.settings_notifications_favorites),
-        checked = favorites,
+        checked = favorites && missing.isEmpty(),
         onCheckedChange = { onSwitchChange(NotificationSwitch.FAVORITES, it) }
     )
     NotificationSwitchRow(
         icon = Icons.Filled.Bookmark,
         title = stringResource(R.string.settings_notifications_want_to_go),
-        checked = wantToGo,
+        checked = wantToGo && missing.isEmpty(),
         onCheckedChange = { onSwitchChange(NotificationSwitch.WANT_TO_GO, it) }
     )
 
@@ -529,8 +521,9 @@ private fun NotificationsSection(
     }
 }
 
-/** A switch is on but the device won't let it work — say which grants are missing, and offer
- *  the app's system settings page, which works even once Android stops showing its dialogs. */
+/** A switch is chosen but paused — say which grants are missing, and offer the page that fixes
+ *  the first one. A settings page, not the permission dialog again: Android stops showing those
+ *  after two refusals, while the page always works. */
 @Composable
 private fun MissingPermissionsWarning(missing: List<CheckInPermission>) {
     val context = LocalContext.current
@@ -540,6 +533,7 @@ private fun MissingPermissionsWarning(missing: List<CheckInPermission>) {
                 CheckInPermission.FOREGROUND_LOCATION -> R.string.settings_notifications_missing_location
                 CheckInPermission.NOTIFICATIONS -> R.string.settings_notifications_missing_notifications
                 CheckInPermission.BACKGROUND_LOCATION -> R.string.settings_notifications_missing_background_location
+                CheckInPermission.BATTERY_UNRESTRICTED -> R.string.settings_notifications_missing_battery
             }
         )
     }
@@ -549,14 +543,25 @@ private fun MissingPermissionsWarning(missing: List<CheckInPermission>) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error
         )
+        val first = missing.first()
         TextButton(
             onClick = {
-                context.startActivity(
-                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                )
+                try {
+                    context.startActivity(AutoCheckInPermissions.fixIntent(context, first))
+                } catch (e: ActivityNotFoundException) {
+                    context.startActivity(AutoCheckInPermissions.appDetailsIntent(context))
+                }
             }
         ) {
-            Text(stringResource(R.string.settings_notifications_open_system_settings))
+            Text(
+                stringResource(
+                    when (first) {
+                        CheckInPermission.NOTIFICATIONS -> R.string.settings_notifications_fix_notifications
+                        CheckInPermission.BATTERY_UNRESTRICTED -> R.string.settings_notifications_fix_battery
+                        else -> R.string.settings_notifications_open_system_settings
+                    }
+                )
+            )
         }
     }
 }

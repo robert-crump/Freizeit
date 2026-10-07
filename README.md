@@ -34,6 +34,10 @@ and uses the same app id as the debug build, so it installs over a debug install
 check-ins, settings, geofences and widget. Only the release build uses the real 15-minute dwell before a
 check-in notification (the debug build fires after 30 s). Export a backup in Settings first as a safety net.
 
+Check-in notifications only run while location "Allow all the time", notifications and unrestricted battery
+usage are all granted; otherwise Settings shows them as paused. The battery exemption is requested with
+`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, which Google Play only allows for apps that need it for a core feature.
+
 The app starts empty. Generate a `pois.json` with [`tools/poi_extraction`](tools/poi_extraction) from any
 OpenStreetMap `.osm.pbf` extract (for example from [Geofabrik](https://download.geofabrik.de/)), then import it in Settings.
 

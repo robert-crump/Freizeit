@@ -54,16 +54,21 @@ class FreizeitApplication : Application() {
         // Above 100 favorites this replays the last closest-100 selection rather than re-ranking
         // (issue #29) — re-ranking only happens on significant location change, armed/disarmed
         // here alongside the toggle via geofenceLocationMonitor.
+        // A switch only counts as on while every check-in grant is there (CheckInReadiness), so
+        // granting or revoking one in system settings re-syncs without waiting for a restart.
         applicationScope.launch(Dispatchers.IO) {
-            container.settingsRepository.notificationTargets
+            combine(
+                container.settingsRepository.notificationTargets,
+                container.checkInReadiness.missing.map { it.isEmpty() }
+            ) { targets, ready -> targets to ready }
                 .distinctUntilChanged()
-                .flatMapLatest { targets ->
+                .flatMapLatest { (targets, ready) ->
                     observeNotificationPlaces(
                         container.database.poiDao(),
                         container.database.customPoiDao(),
                         container.database.poiOverrideDao(),
                         targets
-                    ).map { places -> targets.any to places }
+                    ).map { places -> (targets.any && ready) to places }
                 }
                 .distinctUntilChanged()
                 .collect { (enabled, favorites) ->

@@ -15,6 +15,7 @@ import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.notificationPlacesOnce
 import com.example.freizeit.data.weather.WeatherRepository
+import com.example.freizeit.util.CheckInReadiness
 import kotlinx.coroutines.flow.first
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -49,6 +50,11 @@ class AppContainer(private val context: Context) {
      *  three UI ViewModels no longer each read location independently. */
     val locationRepository: LocationRepository by lazy {
         LocationRepository(context)
+    }
+
+    /** Which check-in grants are missing right now; refreshed on every activity resume. */
+    val checkInReadiness: CheckInReadiness by lazy {
+        CheckInReadiness(context)
     }
 
     val geofenceStateRepository: GeofenceStateRepository by lazy {

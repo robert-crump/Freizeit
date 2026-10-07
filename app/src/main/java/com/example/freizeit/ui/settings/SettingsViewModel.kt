@@ -16,6 +16,8 @@ import com.example.freizeit.data.repository.BackupRepository
 import com.example.freizeit.data.repository.PoiRepository
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.util.CheckInPermission
+import com.example.freizeit.util.CheckInReadiness
 import com.example.freizeit.util.TravelLimits
 import com.example.freizeit.util.MergeCandidate
 import java.time.LocalDate
@@ -64,7 +66,8 @@ fun backupFileName(date: LocalDate): String =
 class SettingsViewModel(
     private val poiRepository: PoiRepository,
     private val backupRepository: BackupRepository,
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    private val checkInReadiness: CheckInReadiness
 ) : ViewModel() {
 
     private val _importStatus = MutableStateFlow<ImportStatus>(ImportStatus.Idle)
@@ -90,6 +93,11 @@ class SettingsViewModel(
     fun setNotifyFavorites(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.setNotifyFavorites(enabled) }
     }
+
+    /** Grants the notification switches still lack; a switch only shows on while this is empty. */
+    val checkInMissing: StateFlow<List<CheckInPermission>> = checkInReadiness.missing
+
+    fun refreshCheckInPermissions() = checkInReadiness.refresh()
 
     val notifyWantToGo: StateFlow<Boolean> = settingsRepository.notifyWantToGo
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -189,7 +197,8 @@ class SettingsViewModel(
                 SettingsViewModel(
                     app.container.poiRepository,
                     app.container.backupRepository,
-                    app.container.settingsRepository
+                    app.container.settingsRepository,
+                    app.container.checkInReadiness
                 )
             }
         }

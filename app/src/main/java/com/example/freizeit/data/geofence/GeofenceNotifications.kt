@@ -19,7 +19,7 @@ import com.example.freizeit.data.entity.Poi
  */
 object GeofenceNotifications {
 
-    private const val CHANNEL_ID = "checkin_proximity"
+    const val CHANNEL_ID = "checkin_proximity"
     private const val NOTIFICATION_ID = 4200
 
     fun ensureChannel(context: Context) {

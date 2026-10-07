@@ -67,6 +67,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Grants can change in system settings (or a system dialog) while the app is in the
+     *  background, without restarting the process — re-check them on every return. */
+    override fun onResume() {
+        super.onResume()
+        (application as FreizeitApplication).container.checkInReadiness.refresh()
+    }
+
     /** enableEdgeToEdge's default reads the system's dark setting; re-run it with the app's, so
      *  the status bar icons stay legible when Settings forces Light or Dark. */
     @Composable

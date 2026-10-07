@@ -86,7 +86,7 @@ class GeofenceSyncManager(
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             // Logged so a switch that's on but silently unregistered shows up in the trail.
             if (autoCheckInEnabled && favorites.isNotEmpty()) {
-                GeofenceEventLog.append(context, "sync skipped: missing location permission (background=${AutoCheckInPermissions.hasBackgroundLocation(context)})")
+                GeofenceEventLog.append(context, "sync skipped: missing ${AutoCheckInPermissions.missing(context)}")
             }
             removeAll()
             return@withLock
@@ -255,9 +255,8 @@ class GeofenceSyncManager(
         return registrationEpoch(bootCount, lastUpdateTime)
     }
 
-    private fun hasRequiredPermissions(): Boolean =
-        AutoCheckInPermissions.hasForegroundLocation(context) &&
-            AutoCheckInPermissions.hasBackgroundLocation(context)
+    /** Every grant a switch needs to count as on — the same check Settings shows. */
+    private fun hasRequiredPermissions(): Boolean = AutoCheckInPermissions.missing(context).isEmpty()
 
     companion object {
         private const val GEOFENCE_PENDING_INTENT_REQUEST_CODE = 1

@@ -1,9 +1,13 @@
 package com.example.freizeit.ui.common
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -20,7 +24,8 @@ import com.example.freizeit.util.CheckInPermission
 
 /** How a [CheckInPermissionFlow.request] ended. */
 enum class CheckInPermissionOutcome {
-    /** Every step was asked (each grant may still have been refused, except foreground location). */
+    /** Every step was asked (each grant may still have been refused, except foreground location);
+     *  whatever is still missing shows up as Settings' "paused" row. */
     DONE,
     /** Foreground location was refused — nothing location-based can work, so the flow stopped. */
     LOCATION_DENIED,
@@ -38,14 +43,18 @@ class CheckInPermissionFlow internal constructor(
 /**
  * The one permission sequence for check-in notifications, shared by the first launch and the
  * Settings switches: foreground location, then notifications, then — after the background-location
- * disclosure (issue #24's Play Store requirement) — background location. Steps already granted are
- * skipped; with nothing missing, [CheckInPermissionFlow.request] reports DONE straight away.
+ * disclosure (issue #24's Play Store requirement) — background location, then — after its own
+ * explanation — the battery-optimization exemption. Steps already granted are skipped; with
+ * nothing missing, [CheckInPermissionFlow.request] reports DONE straight away. Dismissing the
+ * battery explanation still reports DONE: like any other refusal past foreground location, the
+ * switch stays chosen and Settings says what's missing.
  */
 @Composable
 fun rememberCheckInPermissionFlow(): CheckInPermissionFlow {
     val context = LocalContext.current
     var onDone by remember { mutableStateOf<((CheckInPermissionOutcome) -> Unit)?>(null) }
     var showDisclosure by remember { mutableStateOf(false) }
+    var showBatteryExplanation by remember { mutableStateOf(false) }
 
     fun finish(outcome: CheckInPermissionOutcome) {
         val callback = onDone
@@ -53,15 +62,28 @@ fun rememberCheckInPermissionFlow(): CheckInPermissionFlow {
         callback?.invoke(outcome)
     }
 
+    // The dialog's own result code is unreliable across OEMs; the next resume re-checks anyway.
+    val batteryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { finish(CheckInPermissionOutcome.DONE) }
+
+    fun askBattery() {
+        if (CheckInPermission.BATTERY_UNRESTRICTED in AutoCheckInPermissions.missing(context)) {
+            showBatteryExplanation = true
+        } else {
+            finish(CheckInPermissionOutcome.DONE)
+        }
+    }
+
     val backgroundLocationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { finish(CheckInPermissionOutcome.DONE) }
+    ) { askBattery() }
 
     fun askBackgroundLocation() {
         if (CheckInPermission.BACKGROUND_LOCATION in AutoCheckInPermissions.missing(context)) {
             showDisclosure = true
         } else {
-            finish(CheckInPermissionOutcome.DONE)
+            askBattery()
         }
     }
 
@@ -86,18 +108,40 @@ fun rememberCheckInPermissionFlow(): CheckInPermissionFlow {
     }
 
     if (showDisclosure) {
-        CheckInDisclosureDialog(
+        ExplanationDialog(
+            title = R.string.settings_notifications_disclosure_title,
+            body = R.string.settings_notifications_disclosure_body,
             onConfirm = {
                 showDisclosure = false
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 } else {
-                    finish(CheckInPermissionOutcome.DONE)
+                    askBattery()
                 }
             },
             onDismiss = {
                 showDisclosure = false
                 finish(CheckInPermissionOutcome.CANCELLED)
+            }
+        )
+    }
+
+    if (showBatteryExplanation) {
+        ExplanationDialog(
+            title = R.string.settings_notifications_battery_title,
+            body = R.string.settings_notifications_battery_body,
+            onConfirm = {
+                showBatteryExplanation = false
+                try {
+                    batteryLauncher.launch(AutoCheckInPermissions.batteryExemptionIntent(context))
+                } catch (e: ActivityNotFoundException) {
+                    // Some OEM builds drop the direct dialog; the list page always exists.
+                    batteryLauncher.launch(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            },
+            onDismiss = {
+                showBatteryExplanation = false
+                finish(CheckInPermissionOutcome.DONE)
             }
         )
     }
@@ -116,12 +160,13 @@ fun rememberCheckInPermissionFlow(): CheckInPermissionFlow {
     }
 }
 
+/** Says why the next system dialog is coming, before it does. */
 @Composable
-private fun CheckInDisclosureDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+private fun ExplanationDialog(@StringRes title: Int, @StringRes body: Int, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_notifications_disclosure_title)) },
-        text = { Text(stringResource(R.string.settings_notifications_disclosure_body)) },
+        title = { Text(stringResource(title)) },
+        text = { Text(stringResource(body)) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(stringResource(R.string.settings_notifications_disclosure_continue))
