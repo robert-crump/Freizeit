@@ -80,7 +80,28 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * When each favorite's check-in notification was last posted (issue #80): one prompt per
+     * favorite per calendar day, however it ended. Stored as "millis:placeId" strings — place ids
+     * contain '/' but the millis never contain ':', so the first ':' splits them unambiguously.
+     */
+    suspend fun getLastNotifiedAt(): Map<String, Long> =
+        (dataStore.data.first()[LAST_NOTIFIED_AT_KEY] ?: emptySet())
+            .mapNotNull { entry ->
+                val separator = entry.indexOf(':')
+                val millis = entry.substring(0, separator.coerceAtLeast(0)).toLongOrNull()
+                if (separator < 0 || millis == null) null else entry.substring(separator + 1) to millis
+            }
+            .toMap()
+
+    suspend fun setLastNotifiedAt(lastNotifiedAt: Map<String, Long>) {
+        dataStore.edit { prefs ->
+            prefs[LAST_NOTIFIED_AT_KEY] = lastNotifiedAt.map { (placeId, millis) -> "$millis:$placeId" }.toSet()
+        }
+    }
+
     private companion object {
+        val LAST_NOTIFIED_AT_KEY = stringSetPreferencesKey("geofence_last_notified_at")
         val DWELLING_PLACE_IDS_KEY = stringSetPreferencesKey("geofence_dwelling_place_ids")
         val SELECTED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_selected_favorite_ids")
         val REGISTERED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_registered_favorite_ids")

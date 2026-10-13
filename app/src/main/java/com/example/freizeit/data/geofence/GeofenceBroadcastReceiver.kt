@@ -19,6 +19,8 @@ import com.example.freizeit.util.LocationHelper
 import com.example.freizeit.util.closestEligibleFavorite
 import com.example.freizeit.util.isCoolingDown
 import com.example.freizeit.util.isNotificationStale
+import com.example.freizeit.util.notifiedTodayPlaceIds
+import com.example.freizeit.util.recordNotified
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -124,12 +126,18 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .filter { isCoolingDown(visitDao.lastVisitedAt(it.placeId), now) }
             .map { it.placeId }
             .toSet()
+        val geofenceState = app.container.geofenceStateRepository
+        val notifiedToday = notifiedTodayPlaceIds(
+            lastNotifiedAt = geofenceState.getLastNotifiedAt(),
+            activeNotificationPlaceId = geofenceState.getActiveNotificationPlaceId(),
+            nowMillis = now
+        )
 
-        val closest = closestEligibleFavorite(candidates, coolingDown, triggerLat, triggerLon)
+        val closest = closestEligibleFavorite(candidates, coolingDown + notifiedToday, triggerLat, triggerLon)
         GeofenceEventLog.append(
             app,
             "closestEligibleFavorite candidates=${candidates.map { it.placeId }} coolingDown=$coolingDown " +
-                "-> ${closest?.placeId ?: "none"}"
+                "notifiedToday=$notifiedToday -> ${closest?.placeId ?: "none"}"
         )
         if (closest == null) {
             cancelNotification(app)
@@ -163,8 +171,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
     }
 
     private suspend fun showNotification(app: FreizeitApplication, poi: Poi) {
-        GeofenceNotifications.show(app, poi)
-        app.container.geofenceStateRepository.setActiveNotificationPlaceId(poi.id)
+        if (!GeofenceNotifications.show(app, poi)) return
+        val geofenceState = app.container.geofenceStateRepository
+        geofenceState.setActiveNotificationPlaceId(poi.id)
+        geofenceState.setLastNotifiedAt(
+            recordNotified(geofenceState.getLastNotifiedAt(), poi.id, System.currentTimeMillis())
+        )
     }
 
     private suspend fun cancelNotification(app: FreizeitApplication) {

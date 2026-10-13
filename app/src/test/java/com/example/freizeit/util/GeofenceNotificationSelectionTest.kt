@@ -160,4 +160,67 @@ class GeofenceNotificationSelectionTest {
         assertEquals(setOf("a", "b"), result.dwellingPlaceIds)
         assertEquals(false, result.cancelActiveNotification)
     }
+
+    @Test
+    fun `a place notified earlier today is held back even though it was only dismissed`() {
+        val result = notifiedTodayPlaceIds(
+            lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-25T16:10:00+02:00")),
+            activeNotificationPlaceId = null,
+            nowMillis = millisAt("2026-07-25T18:10:00+02:00"),
+            zone = zone
+        )
+        assertEquals(setOf("cafe"), result)
+    }
+
+    @Test
+    fun `a place notified yesterday may notify again`() {
+        val result = notifiedTodayPlaceIds(
+            lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-24T23:59:00+02:00")),
+            activeNotificationPlaceId = null,
+            nowMillis = millisAt("2026-07-25T00:01:00+02:00"),
+            zone = zone
+        )
+        assertEquals(emptySet<String>(), result)
+    }
+
+    @Test
+    fun `the notification still on screen is not held back by its own stamp`() {
+        val today = millisAt("2026-07-25T16:10:00+02:00")
+        val result = notifiedTodayPlaceIds(
+            lastNotifiedAt = mapOf("cafe" to today, "park" to today),
+            activeNotificationPlaceId = "cafe",
+            nowMillis = millisAt("2026-07-25T16:30:00+02:00"),
+            zone = zone
+        )
+        assertEquals(setOf("park"), result)
+    }
+
+    @Test
+    fun `a nearby favorite takes over once the closest one already notified today`() {
+        val cafe = GeofenceCandidate("cafe", lat = 50.9005, lon = 6.9)
+        val park = GeofenceCandidate("park", lat = 50.902, lon = 6.9)
+        val notifiedToday = notifiedTodayPlaceIds(
+            lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-25T16:10:00+02:00")),
+            activeNotificationPlaceId = null,
+            nowMillis = millisAt("2026-07-25T18:10:00+02:00"),
+            zone = zone
+        )
+
+        val result = closestEligibleFavorite(listOf(cafe, park), notifiedToday, triggerLat = 50.9, triggerLon = 6.9)
+
+        assertEquals("park", result?.placeId)
+    }
+
+    @Test
+    fun `recording a notification stamps the place and drops earlier days`() {
+        val now = millisAt("2026-07-25T18:10:00+02:00")
+        val earlierToday = millisAt("2026-07-25T09:00:00+02:00")
+        val result = recordNotified(
+            lastNotifiedAt = mapOf("old" to millisAt("2026-07-24T12:00:00+02:00"), "park" to earlierToday),
+            placeId = "cafe",
+            nowMillis = now,
+            zone = zone
+        )
+        assertEquals(mapOf("park" to earlierToday, "cafe" to now), result)
+    }
 }

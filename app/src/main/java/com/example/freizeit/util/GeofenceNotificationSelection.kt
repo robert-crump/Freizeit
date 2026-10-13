@@ -73,3 +73,32 @@ fun reconcileDwellingOnUnregister(
     dwellingPlaceIds = dwellingPlaceIds - idsToRemove,
     cancelActiveNotification = activeNotificationPlaceId != null && activeNotificationPlaceId in idsToRemove
 )
+
+/**
+ * Favorites whose check-in notification was already shown today (issue #80) and so stay quiet
+ * until the next calendar day — whether that one was tapped, swiped away, ignored or cancelled on
+ * EXIT. [lastNotifiedAt] maps place id to when its notification was last posted.
+ * [activeNotificationPlaceId] is exempt: it's the one still on screen, and every unrelated
+ * transition re-ranks, so filtering it would cancel the very notification it refers to.
+ */
+fun notifiedTodayPlaceIds(
+    lastNotifiedAt: Map<String, Long>,
+    activeNotificationPlaceId: String?,
+    nowMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault()
+): Set<String> =
+    lastNotifiedAt
+        .filter { (placeId, notifiedAt) -> placeId != activeNotificationPlaceId && isCoolingDown(notifiedAt, nowMillis, zone) }
+        .keys
+
+/**
+ * [lastNotifiedAt] with [placeId] stamped at [nowMillis] and every entry from an earlier day
+ * dropped — only today's entries can ever suppress anything, so the map never outgrows a day.
+ */
+fun recordNotified(
+    lastNotifiedAt: Map<String, Long>,
+    placeId: String,
+    nowMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault()
+): Map<String, Long> =
+    lastNotifiedAt.filterValues { isCoolingDown(it, nowMillis, zone) } + (placeId to nowMillis)

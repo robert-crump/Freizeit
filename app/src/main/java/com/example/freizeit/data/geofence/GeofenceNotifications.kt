@@ -33,8 +33,9 @@ object GeofenceNotifications {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    fun show(context: Context, poi: Poi) {
-        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+    /** Posts the prompt for [poi]; false when notifications are off and nothing was shown. */
+    fun show(context: Context, poi: Poi): Boolean {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
 
         val checkInIntent = PendingIntent.getBroadcast(
             context,
@@ -69,6 +70,7 @@ object GeofenceNotifications {
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        return true
     }
 
     fun cancel(context: Context) {
