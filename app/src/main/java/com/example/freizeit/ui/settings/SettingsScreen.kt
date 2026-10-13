@@ -1,6 +1,5 @@
 package com.example.freizeit.ui.settings
 
-import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -57,15 +56,18 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.freizeit.R
 import com.example.freizeit.data.repository.ThemeMode
+import com.example.freizeit.ui.common.CheckInFixButton
 import com.example.freizeit.ui.common.CheckInPermissionOutcome
 import com.example.freizeit.ui.common.ScreenTitleBar
 import com.example.freizeit.ui.common.categoryDisplayName
+import com.example.freizeit.ui.common.checkInPausedText
 import com.example.freizeit.ui.common.colors
 import com.example.freizeit.ui.common.rememberCheckInPermissionFlow
 import com.example.freizeit.util.AutoCheckInPermissions
 import com.example.freizeit.util.CheckInPermission
 import com.example.freizeit.util.DurationBand
 import com.example.freizeit.util.TravelLimits
+import com.example.freizeit.util.checkInsPaused
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -516,53 +518,22 @@ private fun NotificationsSection(
         )
     }
 
-    if ((favorites || wantToGo) && missing.isNotEmpty()) {
+    if (checkInsPaused(favorites, wantToGo, missing)) {
         MissingPermissionsWarning(missing)
     }
 }
 
 /** A switch is chosen but paused — say which grants are missing, and offer the page that fixes
- *  the first one. A settings page, not the permission dialog again: Android stops showing those
- *  after two refusals, while the page always works. */
+ *  the first one. */
 @Composable
 private fun MissingPermissionsWarning(missing: List<CheckInPermission>) {
-    val context = LocalContext.current
-    val names = missing.map {
-        stringResource(
-            when (it) {
-                CheckInPermission.FOREGROUND_LOCATION -> R.string.settings_notifications_missing_location
-                CheckInPermission.NOTIFICATIONS -> R.string.settings_notifications_missing_notifications
-                CheckInPermission.BACKGROUND_LOCATION -> R.string.settings_notifications_missing_background_location
-                CheckInPermission.BATTERY_UNRESTRICTED -> R.string.settings_notifications_missing_battery
-            }
-        )
-    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
-            text = stringResource(R.string.settings_notifications_missing, names.joinToString(", ")),
+            text = checkInPausedText(missing),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error
         )
-        val first = missing.first()
-        TextButton(
-            onClick = {
-                try {
-                    context.startActivity(AutoCheckInPermissions.fixIntent(context, first))
-                } catch (e: ActivityNotFoundException) {
-                    context.startActivity(AutoCheckInPermissions.appDetailsIntent(context))
-                }
-            }
-        ) {
-            Text(
-                stringResource(
-                    when (first) {
-                        CheckInPermission.NOTIFICATIONS -> R.string.settings_notifications_fix_notifications
-                        CheckInPermission.BATTERY_UNRESTRICTED -> R.string.settings_notifications_fix_battery
-                        else -> R.string.settings_notifications_open_system_settings
-                    }
-                )
-            )
-        }
+        CheckInFixButton(missing.first())
     }
 }
 

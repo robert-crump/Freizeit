@@ -13,6 +13,9 @@
     <string name="home_checkin">Check-in</string>
     <string name="home_unfavorite">Remove from favorites</string>
     <string name="home_remove_want_to_go">Remove from want to go</string>
+    <string name="home_checkins_turn_off">Turn off</string>
+    <string name="home_checkins_turned_off">Check-in notifications turned off</string>
+    <string name="home_checkins_undo">Undo</string>
     <string name="home_open_now">Open now</string>
     <!-- Shared search bar (#77): Map oval, Map search overlay, check-in search -->
     <string name="search_bar_placeholder">Search here</string>

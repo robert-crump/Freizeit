@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,9 +30,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -67,12 +71,15 @@ import com.example.freizeit.domain.opening.OpenStatus
 import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.weather.WeatherSnapshot
 import com.example.freizeit.ui.checkin.CheckInDateTimeFlow
+import com.example.freizeit.ui.common.CheckInFixButton
 import com.example.freizeit.ui.common.DurationBadge
+import com.example.freizeit.ui.common.checkInPausedText
 import com.example.freizeit.ui.common.rememberCheckInPermissionFlow
 import com.example.freizeit.ui.map.SuggestionsMiniMap
 import com.example.freizeit.ui.map.displayName
 import com.example.freizeit.ui.theme.FavoriteRed
 import com.example.freizeit.ui.theme.WantToGoBlue
+import com.example.freizeit.util.CheckInPermission
 import com.example.freizeit.util.LatLon
 import com.example.freizeit.util.LocationHelper
 import java.time.LocalDateTime
@@ -135,6 +142,12 @@ fun HomeScreen(
         onDispose { snackbarHostState.currentSnackbarData?.dismiss() }
     }
 
+    // #79: a chosen check-in switch that can't work shows here, not only deep in Settings.
+    val checkInsPausedMissing by viewModel.checkInsPausedMissing.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val turnedOffMessage = stringResource(R.string.home_checkins_turned_off)
+    val undoLabel = stringResource(R.string.home_checkins_undo)
+
     Box(modifier = modifier.fillMaxSize()) {
         // No horizontal padding here: the pager spans the full width so neighbor cards peek in
         // at the screen edges; everything else brings its own 16dp gutter.
@@ -144,6 +157,24 @@ fun HomeScreen(
                 .padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (checkInsPausedMissing.isNotEmpty()) {
+                CheckInsPausedCard(
+                    missing = checkInsPausedMissing,
+                    onTurnOff = {
+                        scope.launch {
+                            val before = viewModel.turnOffCheckIns()
+                            val result = snackbarHostState.showSnackbar(
+                                message = turnedOffMessage,
+                                actionLabel = undoLabel,
+                                duration = SnackbarDuration.Short
+                            )
+                            if (result == SnackbarResult.ActionPerformed) viewModel.restoreCheckIns(before)
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+
             WeatherStrip(state.weather, modifier = Modifier.padding(horizontal = 16.dp))
 
             when {
@@ -305,6 +336,36 @@ private fun SuggestionPager(
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             )
+        }
+    }
+}
+
+/** Check-in notifications are chosen but paused (#79). No dismiss: the ways out are fixing the
+ *  first missing grant or turning check-ins off (with Undo). */
+@Composable
+private fun CheckInsPausedCard(
+    missing: List<CheckInPermission>,
+    onTurnOff: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Filled.Warning, contentDescription = null)
+                Text(checkInPausedText(missing), style = MaterialTheme.typography.bodyMedium)
+            }
+            Row(modifier = Modifier.align(Alignment.End)) {
+                TextButton(onClick = onTurnOff) {
+                    Text(stringResource(R.string.home_checkins_turn_off))
+                }
+                CheckInFixButton(missing.first())
+            }
         }
     }
 }

@@ -63,6 +63,18 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun `turning both switches off and undoing restores what was on before`() = runTest {
+        repository.setNotifyFavorites(true)
+        val before = repository.notificationTargets.first()
+
+        repository.setNotificationTargets(NotificationTargets(favorites = false, wantToGo = false))
+        assertEquals(NotificationTargets(favorites = false, wantToGo = false), repository.notificationTargets.first())
+
+        repository.setNotificationTargets(before)
+        assertEquals(NotificationTargets(favorites = true, wantToGo = false), repository.notificationTargets.first())
+    }
+
+    @Test
     fun `notification switches round trip independently`() = runTest {
         repository.setNotifyWantToGo(true)
         assertEquals(NotificationTargets(favorites = false, wantToGo = true), repository.notificationTargets.first())

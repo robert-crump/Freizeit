@@ -55,6 +55,14 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
             NotificationTargets(favorites, wantToGo)
         }
 
+    /** Writes both switches in one edit; Home's "Turn off" and its Undo (#79). */
+    suspend fun setNotificationTargets(targets: NotificationTargets) {
+        dataStore.edit {
+            it[NOTIFY_FAVORITES_KEY] = targets.favorites
+            it[NOTIFY_WANT_TO_GO_KEY] = targets.wantToGo
+        }
+    }
+
     /**
      * Whether the first-launch permission prompt has run on this install. Device state, not a
      * user setting: deliberately left out of [snapshot]/[restore], so a restored backup still

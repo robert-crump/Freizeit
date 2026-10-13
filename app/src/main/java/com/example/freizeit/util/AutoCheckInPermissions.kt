@@ -99,6 +99,11 @@ fun missingCheckInPermissions(
     CheckInPermission.BATTERY_UNRESTRICTED.takeUnless { hasBatteryExemption }
 )
 
+/** A switch is chosen but can't work: the condition behind both Settings' "paused" row and
+ *  Home's paused card (#79), so the two never disagree. */
+fun checkInsPaused(favorites: Boolean, wantToGo: Boolean, missing: List<CheckInPermission>): Boolean =
+    (favorites || wantToGo) && missing.isNotEmpty()
+
 /**
  * App-wide view of [AutoCheckInPermissions.missing]. Grants change outside the app (system
  * settings, battery page) and granting doesn't restart the process, so [refresh] runs on every

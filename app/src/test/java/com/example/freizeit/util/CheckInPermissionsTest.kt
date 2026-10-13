@@ -37,6 +37,15 @@ class CheckInPermissionsTest {
     }
 
     @Test
+    fun `paused only while a switch is on and something is missing`() {
+        val missing = listOf(CheckInPermission.BACKGROUND_LOCATION)
+        assertEquals(true, checkInsPaused(favorites = true, wantToGo = false, missing = missing))
+        assertEquals(true, checkInsPaused(favorites = false, wantToGo = true, missing = missing))
+        assertEquals(false, checkInsPaused(favorites = false, wantToGo = false, missing = missing))
+        assertEquals(false, checkInsPaused(favorites = true, wantToGo = true, missing = emptyList()))
+    }
+
+    @Test
     fun `every grant but battery optimization still counts as missing`() {
         assertEquals(
             listOf(CheckInPermission.BATTERY_UNRESTRICTED),

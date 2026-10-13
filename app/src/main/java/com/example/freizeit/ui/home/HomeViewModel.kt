@@ -17,6 +17,7 @@ import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
 import com.example.freizeit.data.repository.LocationRepository
+import com.example.freizeit.data.repository.NotificationTargets
 import com.example.freizeit.data.repository.SettingsRepository
 import com.example.freizeit.data.repository.observeAllByVerdictValues
 import com.example.freizeit.data.weather.WeatherRepository
@@ -24,7 +25,10 @@ import com.example.freizeit.domain.suggestion.Suggestion
 import com.example.freizeit.domain.suggestion.SuggestionContext
 import com.example.freizeit.domain.suggestion.SuggestionEngine
 import com.example.freizeit.domain.weather.WeatherSnapshot
+import com.example.freizeit.util.CheckInPermission
+import com.example.freizeit.util.CheckInReadiness
 import com.example.freizeit.util.LatLon
+import com.example.freizeit.util.checkInsPaused
 import java.time.LocalDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,7 +73,8 @@ class HomeViewModel(
     private val poiOverrideDao: PoiOverrideDao,
     private val visitDao: VisitDao,
     private val settingsRepository: SettingsRepository,
-    private val customPoiDao: CustomPoiDao
+    private val customPoiDao: CustomPoiDao,
+    checkInReadiness: CheckInReadiness
 ) : ViewModel() {
 
     /** A one-time snapshot of [LocationRepository.location], taken only inside [refreshLocation]
@@ -138,6 +143,25 @@ class HomeViewModel(
         // that cold-restart was the visible 0.5-1s lag when returning from Map.
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeUiState())
 
+    /** What a chosen check-in switch still lacks; empty unless check-ins are paused (#79). */
+    val checkInsPausedMissing: StateFlow<List<CheckInPermission>> = combine(
+        settingsRepository.notificationTargets,
+        checkInReadiness.missing
+    ) { targets, missing ->
+        if (checkInsPaused(targets.favorites, targets.wantToGo, missing)) missing else emptyList()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** The paused card's "Turn off": both switches off. Returns what was on, for Undo. */
+    suspend fun turnOffCheckIns(): NotificationTargets {
+        val before = settingsRepository.notificationTargets.first()
+        settingsRepository.setNotificationTargets(NotificationTargets(favorites = false, wantToGo = false))
+        return before
+    }
+
+    fun restoreCheckIns(targets: NotificationTargets) {
+        viewModelScope.launch { settingsRepository.setNotificationTargets(targets) }
+    }
+
     init {
         viewModelScope.launch { weatherRepository.loadCache() }
         refreshLocation()
@@ -194,7 +218,8 @@ class HomeViewModel(
                     app.container.database.poiOverrideDao(),
                     app.container.database.visitDao(),
                     app.container.settingsRepository,
-                    app.container.database.customPoiDao()
+                    app.container.database.customPoiDao(),
+                    app.container.checkInReadiness
                 )
             }
         }
