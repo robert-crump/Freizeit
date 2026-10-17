@@ -6,6 +6,7 @@ import com.example.freizeit.data.repository.observeNotificationPlaces
 import com.example.freizeit.di.AppContainer
 import com.example.freizeit.ui.widget.SuggestionWidgetUpdater
 import com.example.freizeit.ui.widget.WidgetRefreshScheduler
+import com.example.freizeit.util.ProcessStartLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -35,6 +36,8 @@ class FreizeitApplication : Application() {
     @OptIn(ExperimentalCoroutinesApi::class)
     override fun onCreate() {
         super.onCreate()
+        // First, synchronously, so it precedes whatever the receiver that woke us logs.
+        ProcessStartLog.append(this)
         MapLibre.getInstance(this)
         container = AppContainer(this)
         GeofenceNotifications.ensureChannel(this)
