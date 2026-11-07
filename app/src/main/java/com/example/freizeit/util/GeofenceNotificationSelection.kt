@@ -3,6 +3,14 @@ package com.example.freizeit.util
 import java.time.Instant
 import java.time.ZoneId
 
+/**
+ * Radius of each auto check-in geofence, and of the staleness check that backs it up. Deliberately
+ * its own constant, not the check-in tab's "Favorites nearby" radius: that one grew to 500 m in
+ * #78, which silently grew the geofences too and put home inside a nearby favorite's circle, so
+ * coming home prompted a check-in there.
+ */
+const val GEOFENCE_RADIUS_METERS = 200.0
+
 /** A favorite currently inside its geofence, snapshotted just enough to rank by distance. */
 data class GeofenceCandidate(val placeId: String, val lat: Double, val lon: Double)
 

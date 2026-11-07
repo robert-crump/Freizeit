@@ -15,8 +15,8 @@ import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.findPoiById
-import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
 import com.example.freizeit.util.AutoCheckInPermissions
+import com.example.freizeit.util.GEOFENCE_RADIUS_METERS
 import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.effectiveRegisteredIds
 import com.example.freizeit.util.isEpochReset
@@ -31,8 +31,8 @@ import kotlinx.coroutines.tasks.await
 /**
  * Keeps Play Services' registered geofences in sync with (any notification switch on) x (the
  * places the enabled switches cover). Since #74 that's favorites and/or want-to-go places — the
- * "favorites" below means whichever of them are covered, and the 100-cap spans both. One 200m circular geofence per favorite, same radius as the manual check-in list's
- * top-billing cutoff (issue #23) — see [CHECKIN_FAVORITE_RADIUS_METERS].
+ * "favorites" below means whichever of them are covered, and the 100-cap spans both. One circular geofence of
+ * [GEOFENCE_RADIUS_METERS] per favorite.
  *
  * Each geofence also carries a [LOITERING_DELAY_MILLIS] DWELL trigger: passing by a favorite
  * (ENTER/EXIT with no DWELL in between) never prompts a check-in, only staying continuously for
@@ -236,7 +236,7 @@ class GeofenceSyncManager(
     private fun buildGeofence(poi: Poi): Geofence =
         Geofence.Builder()
             .setRequestId(poi.id)
-            .setCircularRegion(poi.lat, poi.lon, CHECKIN_FAVORITE_RADIUS_METERS.toFloat())
+            .setCircularRegion(poi.lat, poi.lon, GEOFENCE_RADIUS_METERS.toFloat())
             .setExpirationDuration(Geofence.NEVER_EXPIRE)
             .setTransitionTypes(
                 Geofence.GEOFENCE_TRANSITION_ENTER or

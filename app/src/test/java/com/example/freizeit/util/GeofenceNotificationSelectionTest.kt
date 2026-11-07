@@ -119,6 +119,17 @@ class GeofenceNotificationSelectionTest {
     }
 
     @Test
+    fun `a fix 290 m from a favorite is outside its geofence radius`() {
+        // ~290 m away with a precise fix. With the geofence riding on the 500 m "Favorites
+        // nearby" radius this passed and prompted.
+        val stale = isNotificationStale(
+            currentLat = 50.9, currentLon = 6.9, accuracyMeters = 13f,
+            poiLat = 50.9026, poiLon = 6.9, radiusMeters = GEOFENCE_RADIUS_METERS
+        )
+        assertEquals(true, stale)
+    }
+
+    @Test
     fun `reconcile drops a removed id from dwelling and leaves others untouched`() {
         val result = reconcileDwellingOnUnregister(
             dwellingPlaceIds = setOf("a", "b"),

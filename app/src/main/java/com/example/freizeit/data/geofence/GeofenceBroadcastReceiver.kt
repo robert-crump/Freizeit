@@ -12,7 +12,7 @@ import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Visit
 import com.example.freizeit.data.repository.findPoiById
-import com.example.freizeit.ui.checkin.CHECKIN_FAVORITE_RADIUS_METERS
+import com.example.freizeit.util.GEOFENCE_RADIUS_METERS
 import com.example.freizeit.util.GeofenceCandidate
 import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.LocationHelper
@@ -159,7 +159,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 accuracyMeters = currentLocation.accuracyMeters,
                 poiLat = poi.lat,
                 poiLon = poi.lon,
-                radiusMeters = CHECKIN_FAVORITE_RADIUS_METERS
+                radiusMeters = GEOFENCE_RADIUS_METERS
             )
         GeofenceEventLog.append(app, "staleness poi=${poi.id} currentLocation=$currentLocation stale=$stale")
         if (stale) {
