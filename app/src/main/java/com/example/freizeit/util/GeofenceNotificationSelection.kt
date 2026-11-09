@@ -27,9 +27,8 @@ fun isCoolingDown(lastVisitedAtMillis: Long?, nowMillis: Long, zone: ZoneId = Zo
 
 /**
  * Of the favorites currently inside their geofence, the nearest one that isn't cooling down —
- * the sole candidate whose notification may be shown/active at any moment (issue #28). Null when
- * every candidate is either absent or on cooldown, meaning any existing notification should be
- * cancelled instead.
+ * the one favorite a single geofence event may prompt for (issue #28). Null when every
+ * candidate is absent, on cooldown or already notified today.
  */
 fun closestEligibleFavorite(
     candidates: List<GeofenceCandidate>,
@@ -61,43 +60,38 @@ fun isNotificationStale(
     return distance > radiusMeters + pad
 }
 
-/** Outcome of reconciling dwelling state against favorites that just lost their geofence. */
-data class DwellReconciliation(val dwellingPlaceIds: Set<String>, val cancelActiveNotification: Boolean)
-
 /**
- * Drops [idsToRemove] (favorites whose geofence just got unregistered — e.g. un-favorited) from
- * [dwellingPlaceIds]. Without this, such a place has no geofence left to ever send an EXIT, so it
- * would stay marked "dwelling" forever and keep winning [closestEligibleFavorite] on later,
- * unrelated transitions (issue #42). [activeNotificationPlaceId] is the place id, if any, the
- * currently-shown notification is for — [cancelActiveNotification] is true only when that exact
- * id was one of the ones removed, since there's no location fix available in this path to safely
- * re-rank the remaining dwelling favorites and pick a replacement.
- */
-fun reconcileDwellingOnUnregister(
-    dwellingPlaceIds: Set<String>,
-    idsToRemove: Set<String>,
-    activeNotificationPlaceId: String?
-): DwellReconciliation = DwellReconciliation(
-    dwellingPlaceIds = dwellingPlaceIds - idsToRemove,
-    cancelActiveNotification = activeNotificationPlaceId != null && activeNotificationPlaceId in idsToRemove
-)
-
-/**
- * Favorites whose check-in notification was already shown today (issue #80) and so stay quiet
- * until the next calendar day — whether that one was tapped, swiped away, ignored or cancelled on
- * EXIT. [lastNotifiedAt] maps place id to when its notification was last posted.
- * [activeNotificationPlaceId] is exempt: it's the one still on screen, and every unrelated
- * transition re-ranks, so filtering it would cancel the very notification it refers to.
+ * Favorites whose check-in notification was already posted today (issue #80) and so stay quiet
+ * until the next calendar day — whether it's still up, was answered, swiped away or ignored.
+ * No exemption for prompts still on screen (#81): those are never re-posted either, so the
+ * posting time their Check in action carries never resets. [lastNotifiedAt] maps place id to
+ * when its notification was last posted.
  */
 fun notifiedTodayPlaceIds(
     lastNotifiedAt: Map<String, Long>,
-    activeNotificationPlaceId: String?,
     nowMillis: Long,
     zone: ZoneId = ZoneId.systemDefault()
 ): Set<String> =
-    lastNotifiedAt
-        .filter { (placeId, notifiedAt) -> placeId != activeNotificationPlaceId && isCoolingDown(notifiedAt, nowMillis, zone) }
-        .keys
+    lastNotifiedAt.filterValues { isCoolingDown(it, nowMillis, zone) }.keys
+
+/**
+ * How long a prompt posted at [nowMillis] stays up at most (#81): until the next local midnight,
+ * since "notified today" is the unit it belongs to.
+ */
+fun millisUntilMidnight(nowMillis: Long, zone: ZoneId = ZoneId.systemDefault()): Long {
+    val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
+    val midnight = now.toLocalDate().plusDays(1).atStartOfDay(zone)
+    return midnight.toInstant().toEpochMilli() - nowMillis
+}
+
+/**
+ * Which of the on-screen check-in prompts ([promptedPlaceIds]) to cancel after a geofence sync
+ * (#81): those whose place is no longer a notification target — un-favorited, removed from
+ * want-to-go or deleted. While every switch is off ([enabled] false: paused/turned off), the
+ * target list is empty without anything having changed about the places, so nothing goes.
+ */
+fun promptsToCancel(promptedPlaceIds: Set<String>, targetPlaceIds: Set<String>, enabled: Boolean): Set<String> =
+    if (!enabled) emptySet() else promptedPlaceIds - targetPlaceIds
 
 /**
  * [lastNotifiedAt] with [placeId] stamped at [nowMillis] and every entry from an earlier day

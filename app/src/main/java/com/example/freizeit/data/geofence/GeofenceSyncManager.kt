@@ -21,7 +21,7 @@ import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.effectiveRegisteredIds
 import com.example.freizeit.util.isEpochReset
 import com.example.freizeit.util.isUnstopAfterForceStop
-import com.example.freizeit.util.reconcileDwellingOnUnregister
+import com.example.freizeit.util.promptsToCancel
 import com.example.freizeit.util.registrationEpoch
 import com.example.freizeit.util.selectClosestFavorites
 import kotlinx.coroutines.sync.Mutex
@@ -84,6 +84,7 @@ class GeofenceSyncManager(
      * they're live — for when they were wiped without the epoch changing, see [syncAfterBootCompleted].
      */
     suspend fun sync(autoCheckInEnabled: Boolean, favorites: List<Poi>, force: Boolean = false) = mutex.withLock {
+        cancelPromptsForDroppedPlaces(autoCheckInEnabled, favorites)
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             // Logged so a switch that's on but silently unregistered shows up in the trail.
             if (autoCheckInEnabled && favorites.isNotEmpty()) {
@@ -94,6 +95,22 @@ class GeofenceSyncManager(
         }
         val targets = if (favorites.size <= MAX_GEOFENCES) favorites else replaySelection(favorites)
         register(targets, force, label = if (force) "forced register" else "register")
+    }
+
+    /**
+     * A check-in prompt stays up through pausing, missing permissions and leaving the place (#81),
+     * but not past its place dropping out of [favorites] (all covered places, not just the
+     * closest-100 selection): un-favorited, removed from want-to-go or deleted.
+     */
+    private fun cancelPromptsForDroppedPlaces(autoCheckInEnabled: Boolean, favorites: List<Poi>) {
+        val dropped = promptsToCancel(
+            promptedPlaceIds = GeofenceNotifications.promptedPlaceIds(context),
+            targetPlaceIds = favorites.map { it.id }.toSet(),
+            enabled = autoCheckInEnabled
+        )
+        if (dropped.isEmpty()) return
+        dropped.forEach { GeofenceNotifications.cancelPrompt(context, it) }
+        GeofenceEventLog.append(context, "prompts cancelled, places no longer targets: $dropped")
     }
 
     /**
@@ -115,6 +132,7 @@ class GeofenceSyncManager(
      * never from a periodic job.
      */
     suspend fun rerank(autoCheckInEnabled: Boolean, favorites: List<Poi>, location: Location) = mutex.withLock {
+        cancelPromptsForDroppedPlaces(autoCheckInEnabled, favorites)
         if (!autoCheckInEnabled || favorites.isEmpty() || !hasRequiredPermissions()) {
             removeAll()
             return@withLock
@@ -165,9 +183,7 @@ class GeofenceSyncManager(
      * Whatever actually gets removed also gets purged from [GeofenceStateRepository]'s dwelling
      * state (issue #42): a place that loses its geofence has no way to ever send an EXIT, so
      * without this it would stay marked "dwelling" forever and could keep resurfacing a
-     * check-in notification for a place that's no longer even a favorite. If that place is the
-     * one the currently-shown notification is for, the notification is cancelled immediately too
-     * — see [reconcileDwellingOnUnregister].
+     * check-in notification for a place that's no longer even a favorite.
      *
      * The persisted set is only trusted within the boot/install it was written in (issue #58):
      * Play Services drops every geofence on reboot, so after one the diff starts from empty and
@@ -193,7 +209,7 @@ class GeofenceSyncManager(
         try {
             if (idsToRemove.isNotEmpty()) {
                 geofencingClient.removeGeofences(idsToRemove.toList()).await()
-                reconcileDwellingState(idsToRemove)
+                geofenceState.setDwellingPlaceIds(geofenceState.getDwellingPlaceIds() - idsToRemove)
             }
             if (toAdd.isNotEmpty()) {
                 val request = GeofencingRequest.Builder()
@@ -217,19 +233,6 @@ class GeofenceSyncManager(
             // Settings mid-flight) — leave Play Services in whatever state it's already in
             // rather than crash; the next favorites/enabled change retries. Don't persist
             // targetIds here since we don't know which of the two calls above actually landed.
-        }
-    }
-
-    private suspend fun reconcileDwellingState(idsToRemove: Set<String>) {
-        val reconciliation = reconcileDwellingOnUnregister(
-            dwellingPlaceIds = geofenceState.getDwellingPlaceIds(),
-            idsToRemove = idsToRemove,
-            activeNotificationPlaceId = geofenceState.getActiveNotificationPlaceId()
-        )
-        geofenceState.setDwellingPlaceIds(reconciliation.dwellingPlaceIds)
-        if (reconciliation.cancelActiveNotification) {
-            GeofenceNotifications.cancel(context)
-            geofenceState.setActiveNotificationPlaceId(null)
         }
     }
 
@@ -258,8 +261,7 @@ class GeofenceSyncManager(
         geofenceState.setDwellingPlaceIds(emptySet())
         geofenceState.setRegisteredFavoriteIds(emptySet())
         geofenceState.setRegistrationEpoch(null)
-        geofenceState.setActiveNotificationPlaceId(null)
-        GeofenceNotifications.cancel(context)
+        // Prompts already up stay (#81): pausing or a missing grant only stops new ones.
     }
 
     /** Changes on every reboot and every install/update — see [effectiveRegisteredIds]. */

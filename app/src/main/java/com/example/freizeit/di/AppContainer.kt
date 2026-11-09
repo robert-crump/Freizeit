@@ -9,6 +9,7 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.geofence.GeofenceLocationMonitor
 import com.example.freizeit.data.geofence.GeofenceSyncManager
 import com.example.freizeit.data.repository.BackupRepository
+import com.example.freizeit.data.repository.CheckInRecorder
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.PoiRepository
@@ -55,6 +56,11 @@ class AppContainer(private val context: Context) {
     /** Which check-in grants are missing right now; refreshed on every activity resume. */
     val checkInReadiness: CheckInReadiness by lazy {
         CheckInReadiness(context)
+    }
+
+    /** In-app check-ins: log the visit and clear that place's check-in prompt (#81). */
+    val checkInRecorder: CheckInRecorder by lazy {
+        CheckInRecorder(context, database.visitDao())
     }
 
     val geofenceStateRepository: GeofenceStateRepository by lazy {

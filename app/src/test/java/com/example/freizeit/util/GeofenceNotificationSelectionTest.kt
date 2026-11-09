@@ -130,53 +130,9 @@ class GeofenceNotificationSelectionTest {
     }
 
     @Test
-    fun `reconcile drops a removed id from dwelling and leaves others untouched`() {
-        val result = reconcileDwellingOnUnregister(
-            dwellingPlaceIds = setOf("a", "b"),
-            idsToRemove = setOf("a"),
-            activeNotificationPlaceId = null
-        )
-        assertEquals(setOf("b"), result.dwellingPlaceIds)
-        assertEquals(false, result.cancelActiveNotification)
-    }
-
-    @Test
-    fun `reconcile cancels the active notification when its own place is removed`() {
-        val result = reconcileDwellingOnUnregister(
-            dwellingPlaceIds = setOf("a", "b"),
-            idsToRemove = setOf("a"),
-            activeNotificationPlaceId = "a"
-        )
-        assertEquals(setOf("b"), result.dwellingPlaceIds)
-        assertEquals(true, result.cancelActiveNotification)
-    }
-
-    @Test
-    fun `reconcile leaves the active notification alone when a different place is removed`() {
-        val result = reconcileDwellingOnUnregister(
-            dwellingPlaceIds = setOf("a", "b"),
-            idsToRemove = setOf("a"),
-            activeNotificationPlaceId = "b"
-        )
-        assertEquals(false, result.cancelActiveNotification)
-    }
-
-    @Test
-    fun `reconcile is a no-op when nothing is removed`() {
-        val result = reconcileDwellingOnUnregister(
-            dwellingPlaceIds = setOf("a", "b"),
-            idsToRemove = emptySet(),
-            activeNotificationPlaceId = "a"
-        )
-        assertEquals(setOf("a", "b"), result.dwellingPlaceIds)
-        assertEquals(false, result.cancelActiveNotification)
-    }
-
-    @Test
     fun `a place notified earlier today is held back even though it was only dismissed`() {
         val result = notifiedTodayPlaceIds(
             lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-25T16:10:00+02:00")),
-            activeNotificationPlaceId = null,
             nowMillis = millisAt("2026-07-25T18:10:00+02:00"),
             zone = zone
         )
@@ -187,7 +143,6 @@ class GeofenceNotificationSelectionTest {
     fun `a place notified yesterday may notify again`() {
         val result = notifiedTodayPlaceIds(
             lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-24T23:59:00+02:00")),
-            activeNotificationPlaceId = null,
             nowMillis = millisAt("2026-07-25T00:01:00+02:00"),
             zone = zone
         )
@@ -195,15 +150,14 @@ class GeofenceNotificationSelectionTest {
     }
 
     @Test
-    fun `the notification still on screen is not held back by its own stamp`() {
+    fun `a prompt still on screen counts as notified today, so it is never re-posted`() {
         val today = millisAt("2026-07-25T16:10:00+02:00")
         val result = notifiedTodayPlaceIds(
             lastNotifiedAt = mapOf("cafe" to today, "park" to today),
-            activeNotificationPlaceId = "cafe",
             nowMillis = millisAt("2026-07-25T16:30:00+02:00"),
             zone = zone
         )
-        assertEquals(setOf("park"), result)
+        assertEquals(setOf("cafe", "park"), result)
     }
 
     @Test
@@ -212,7 +166,6 @@ class GeofenceNotificationSelectionTest {
         val park = GeofenceCandidate("park", lat = 50.902, lon = 6.9)
         val notifiedToday = notifiedTodayPlaceIds(
             lastNotifiedAt = mapOf("cafe" to millisAt("2026-07-25T16:10:00+02:00")),
-            activeNotificationPlaceId = null,
             nowMillis = millisAt("2026-07-25T18:10:00+02:00"),
             zone = zone
         )
@@ -233,5 +186,36 @@ class GeofenceNotificationSelectionTest {
             zone = zone
         )
         assertEquals(mapOf("park" to earlierToday, "cafe" to now), result)
+    }
+
+    @Test
+    fun `a prompt posted in the evening expires at the next local midnight`() {
+        val result = millisUntilMidnight(millisAt("2026-07-25T22:30:00+02:00"), zone)
+        assertEquals(90 * 60 * 1000L, result)
+    }
+
+    @Test
+    fun `midnight expiry follows the local day across a DST switch`() {
+        // 2026-10-25 is 25 hours long in Berlin (clocks go back at 03:00).
+        val result = millisUntilMidnight(millisAt("2026-10-25T00:00:00+02:00"), zone)
+        assertEquals(25 * 60 * 60 * 1000L, result)
+    }
+
+    @Test
+    fun `prompts for places that are no longer targets are cancelled`() {
+        val result = promptsToCancel(setOf("cafe", "park"), targetPlaceIds = setOf("park", "lake"), enabled = true)
+        assertEquals(setOf("cafe"), result)
+    }
+
+    @Test
+    fun `un-favoriting the last favorite cancels its prompt`() {
+        val result = promptsToCancel(setOf("cafe"), targetPlaceIds = emptySet(), enabled = true)
+        assertEquals(setOf("cafe"), result)
+    }
+
+    @Test
+    fun `pausing check-ins keeps every prompt already on screen`() {
+        val result = promptsToCancel(setOf("cafe", "park"), targetPlaceIds = emptySet(), enabled = false)
+        assertEquals(emptySet<String>(), result)
     }
 }

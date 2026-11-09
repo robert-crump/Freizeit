@@ -66,21 +66,6 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
-     * Which favorite the single outstanding check-in notification (if any) is for — lets
-     * [GeofenceSyncManager.register] tell whether a favorite losing its geofence (e.g.
-     * un-favorited mid-dwell) is the one currently on screen, so it can cancel that notification
-     * immediately instead of leaving a stale prompt up until the next transition (issue #42).
-     */
-    suspend fun getActiveNotificationPlaceId(): String? =
-        dataStore.data.first()[ACTIVE_NOTIFICATION_PLACE_ID_KEY]
-
-    suspend fun setActiveNotificationPlaceId(placeId: String?) {
-        dataStore.edit {
-            if (placeId == null) it.remove(ACTIVE_NOTIFICATION_PLACE_ID_KEY) else it[ACTIVE_NOTIFICATION_PLACE_ID_KEY] = placeId
-        }
-    }
-
-    /**
      * When each favorite's check-in notification was last posted (issue #80): one prompt per
      * favorite per calendar day, however it ended. Stored as "millis:placeId" strings — place ids
      * contain '/' but the millis never contain ':', so the first ':' splits them unambiguously.
@@ -105,7 +90,6 @@ class GeofenceStateRepository(private val dataStore: DataStore<Preferences>) {
         val DWELLING_PLACE_IDS_KEY = stringSetPreferencesKey("geofence_dwelling_place_ids")
         val SELECTED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_selected_favorite_ids")
         val REGISTERED_FAVORITE_IDS_KEY = stringSetPreferencesKey("geofence_registered_favorite_ids")
-        val ACTIVE_NOTIFICATION_PLACE_ID_KEY = stringPreferencesKey("geofence_active_notification_place_id")
         val REGISTRATION_EPOCH_KEY = stringPreferencesKey("geofence_registration_epoch")
     }
 }

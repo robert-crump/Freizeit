@@ -12,9 +12,9 @@ import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
-import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.CheckInRecorder
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.observeAllPlaces
 import com.example.freizeit.util.GeoDistance
@@ -104,7 +104,8 @@ class CheckInViewModel(
     customPoiDao: CustomPoiDao,
     poiOverrideDao: PoiOverrideDao,
     verdictDao: VerdictDao,
-    private val visitDao: VisitDao
+    private val visitDao: VisitDao,
+    private val checkInRecorder: CheckInRecorder
 ) : ViewModel() {
 
     /** A one-time snapshot of [LocationRepository.location], taken only inside [refreshLocation]
@@ -176,7 +177,7 @@ class CheckInViewModel(
 
     /** Returns the new visit's id, so the caller can offer Undo. */
     suspend fun checkIn(poi: Poi, visitedAt: Long): Long {
-        return withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
+        return withContext(Dispatchers.IO) { checkInRecorder.checkIn(poi, visitedAt) }
     }
 
     suspend fun undoCheckIn(visitId: Long) {
@@ -193,7 +194,8 @@ class CheckInViewModel(
                     app.container.database.customPoiDao(),
                     app.container.database.poiOverrideDao(),
                     app.container.database.verdictDao(),
-                    app.container.database.visitDao()
+                    app.container.database.visitDao(),
+                    app.container.checkInRecorder
                 )
             }
         }

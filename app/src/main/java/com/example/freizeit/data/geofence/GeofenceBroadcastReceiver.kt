@@ -26,10 +26,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * Handles both Play Services' geofence ENTER/EXIT/DWELL broadcasts and the notification's own
- * tap (check in) and swipe-away (dismiss) — one receiver so both paths share the same
- * "recompute the one active notification" logic in [refreshNotification]. ENTER is ignored
- * outright: only DWELL (staying, not just passing by) is notification-worthy.
+ * Handles both Play Services' geofence ENTER/EXIT/DWELL broadcasts and the check-in
+ * notifications' actions: Check in, Dismiss/swipe-away and the confirmation's Undo (#81). ENTER
+ * is ignored outright: only DWELL (staying, not just passing by) is notification-worthy.
+ *
+ * Transitions only ever add prompts (#81): once posted, a prompt stays up until it's answered,
+ * the place is checked in some other way, midnight, or the place stops being a target (see
+ * [GeofenceSyncManager]) — leaving the place, location going off or a stale fix no longer
+ * remove it, they only keep new prompts from being posted.
  */
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
@@ -41,7 +45,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_GEOFENCE_TRANSITION -> handleGeofenceTransition(appContext, intent)
                     ACTION_CHECK_IN -> handleCheckIn(appContext, intent)
-                    ACTION_DISMISS -> cancelNotification(appContext)
+                    ACTION_DISMISS -> intent.getStringExtra(EXTRA_PLACE_ID)?.let { GeofenceNotifications.cancelPrompt(appContext, it) }
+                    ACTION_UNDO_CHECK_IN -> handleUndoCheckIn(appContext, intent)
                 }
             } finally {
                 pendingResult.finish()
@@ -61,7 +66,6 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 geofenceState.setRegisteredFavoriteIds(emptySet())
                 geofenceState.setRegistrationEpoch(null)
                 geofenceState.setDwellingPlaceIds(emptySet())
-                cancelNotification(app)
             }
             return
         }
@@ -91,6 +95,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         refreshNotification(app, dwellingIds, triggerLocation.latitude, triggerLocation.longitude)
     }
 
+    /** Logs the visit at the prompt's posting time, not now (#81), and swaps the prompt for the
+     *  Undo confirmation. A place deleted since just loses its prompt. */
     private suspend fun handleCheckIn(app: FreizeitApplication, intent: Intent) {
         val placeId = intent.getStringExtra(EXTRA_PLACE_ID) ?: return
         val poi = findPoiById(
@@ -98,9 +104,24 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             app.container.database.customPoiDao(),
             app.container.database.poiOverrideDao(),
             placeId
-        ) ?: return
-        app.container.database.visitDao().checkIn(poi, source = Visit.SOURCE_NOTIFICATION)
-        cancelNotification(app)
+        )
+        if (poi == null) {
+            GeofenceNotifications.cancelPrompt(app, placeId)
+            return
+        }
+        val visitedAt = intent.getLongExtra(EXTRA_POSTED_AT, 0L).takeIf { it > 0L } ?: System.currentTimeMillis()
+        val visitId = app.container.database.visitDao().checkIn(poi, source = Visit.SOURCE_NOTIFICATION, visitedAt = visitedAt)
+        GeofenceEventLog.append(app, "check-in from notification poi=${poi.id} visitedAt=$visitedAt")
+        GeofenceNotifications.showConfirmation(app, poi.id, poi.name, visitId, visitedAt)
+    }
+
+    /** Removes just the visit; the prompt doesn't come back (#81). */
+    private suspend fun handleUndoCheckIn(app: FreizeitApplication, intent: Intent) {
+        val placeId = intent.getStringExtra(EXTRA_PLACE_ID) ?: return
+        val visitId = intent.getLongExtra(EXTRA_VISIT_ID, -1L)
+        if (visitId >= 0L) app.container.database.visitDao().deleteByIds(listOf(visitId))
+        GeofenceEventLog.append(app, "undo check-in from notification poi=$placeId visit=$visitId")
+        GeofenceNotifications.cancelConfirmation(app, placeId)
     }
 
     private suspend fun refreshNotification(
@@ -109,10 +130,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         triggerLat: Double,
         triggerLon: Double
     ) {
-        if (dwellingPlaceIds.isEmpty()) {
-            cancelNotification(app)
-            return
-        }
+        if (dwellingPlaceIds.isEmpty()) return
         val poiDao = app.container.database.poiDao()
         val customPoiDao = app.container.database.customPoiDao()
         val overrideDao = app.container.database.poiOverrideDao()
@@ -127,11 +145,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             .map { it.placeId }
             .toSet()
         val geofenceState = app.container.geofenceStateRepository
-        val notifiedToday = notifiedTodayPlaceIds(
-            lastNotifiedAt = geofenceState.getLastNotifiedAt(),
-            activeNotificationPlaceId = geofenceState.getActiveNotificationPlaceId(),
-            nowMillis = now
-        )
+        val notifiedToday = notifiedTodayPlaceIds(lastNotifiedAt = geofenceState.getLastNotifiedAt(), nowMillis = now)
 
         val closest = closestEligibleFavorite(candidates, coolingDown + notifiedToday, triggerLat, triggerLon)
         GeofenceEventLog.append(
@@ -139,10 +153,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             "closestEligibleFavorite candidates=${candidates.map { it.placeId }} coolingDown=$coolingDown " +
                 "notifiedToday=$notifiedToday -> ${closest?.placeId ?: "none"}"
         )
-        if (closest == null) {
-            cancelNotification(app)
-            return
-        }
+        if (closest == null) return
         val poi = findPoiById(poiDao, customPoiDao, overrideDao, closest.placeId) ?: return
 
         // Play Services can deliver a DWELL broadcast well after the fact under Doze/standby
@@ -162,33 +173,27 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 radiusMeters = GEOFENCE_RADIUS_METERS
             )
         GeofenceEventLog.append(app, "staleness poi=${poi.id} currentLocation=$currentLocation stale=$stale")
-        if (stale) {
-            cancelNotification(app)
-            return
-        }
+        if (stale) return
 
-        showNotification(app, poi)
+        showPrompt(app, poi)
     }
 
-    private suspend fun showNotification(app: FreizeitApplication, poi: Poi) {
-        if (!GeofenceNotifications.show(app, poi)) return
+    private suspend fun showPrompt(app: FreizeitApplication, poi: Poi) {
+        val postedAt = System.currentTimeMillis()
+        if (!GeofenceNotifications.showPrompt(app, poi, postedAt)) return
         val geofenceState = app.container.geofenceStateRepository
-        geofenceState.setActiveNotificationPlaceId(poi.id)
-        geofenceState.setLastNotifiedAt(
-            recordNotified(geofenceState.getLastNotifiedAt(), poi.id, System.currentTimeMillis())
-        )
-    }
-
-    private suspend fun cancelNotification(app: FreizeitApplication) {
-        GeofenceNotifications.cancel(app)
-        app.container.geofenceStateRepository.setActiveNotificationPlaceId(null)
+        geofenceState.setLastNotifiedAt(recordNotified(geofenceState.getLastNotifiedAt(), poi.id, postedAt))
     }
 
     companion object {
         const val ACTION_GEOFENCE_TRANSITION = "com.example.freizeit.action.GEOFENCE_TRANSITION"
         const val ACTION_CHECK_IN = "com.example.freizeit.action.GEOFENCE_CHECK_IN"
         const val ACTION_DISMISS = "com.example.freizeit.action.GEOFENCE_DISMISS"
+        const val ACTION_UNDO_CHECK_IN = "com.example.freizeit.action.GEOFENCE_UNDO_CHECK_IN"
         const val EXTRA_PLACE_ID = "place_id"
+        /** When the prompt was posted: the time its Check in logs (#81). */
+        const val EXTRA_POSTED_AT = "posted_at"
+        const val EXTRA_VISIT_ID = "visit_id"
         private const val TAG = "GeofenceReceiver"
     }
 }

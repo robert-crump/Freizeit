@@ -12,10 +12,10 @@ import com.example.freizeit.data.dao.PoiDao
 import com.example.freizeit.data.dao.PoiOverrideDao
 import com.example.freizeit.data.dao.VerdictDao
 import com.example.freizeit.data.dao.VisitDao
-import com.example.freizeit.data.dao.checkIn
 import com.example.freizeit.data.dao.setVerdict
 import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.entity.Verdict
+import com.example.freizeit.data.repository.CheckInRecorder
 import com.example.freizeit.data.repository.LocationRepository
 import com.example.freizeit.data.repository.NotificationTargets
 import com.example.freizeit.data.repository.SettingsRepository
@@ -74,7 +74,8 @@ class HomeViewModel(
     private val visitDao: VisitDao,
     private val settingsRepository: SettingsRepository,
     private val customPoiDao: CustomPoiDao,
-    checkInReadiness: CheckInReadiness
+    checkInReadiness: CheckInReadiness,
+    private val checkInRecorder: CheckInRecorder
 ) : ViewModel() {
 
     /** A one-time snapshot of [LocationRepository.location], taken only inside [refreshLocation]
@@ -194,7 +195,7 @@ class HomeViewModel(
     /** Tapping "Check-in" on a card records a visit at the picked date/time, same as the
      *  Check-in tab. Returns the new visit's id, so the caller can offer Undo. */
     suspend fun checkIn(poi: Poi, visitedAt: Long): Long =
-        withContext(Dispatchers.IO) { visitDao.checkIn(poi, visitedAt = visitedAt) }
+        withContext(Dispatchers.IO) { checkInRecorder.checkIn(poi, visitedAt) }
 
     suspend fun undoCheckIn(visitId: Long) {
         withContext(Dispatchers.IO) { visitDao.deleteByIds(listOf(visitId)) }
@@ -219,7 +220,8 @@ class HomeViewModel(
                     app.container.database.visitDao(),
                     app.container.settingsRepository,
                     app.container.database.customPoiDao(),
-                    app.container.checkInReadiness
+                    app.container.checkInReadiness,
+                    app.container.checkInRecorder
                 )
             }
         }
