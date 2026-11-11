@@ -42,7 +42,8 @@ object LocationHelper {
     /**
      * Actively requests a fresh fix, unlike [lastKnownLocation]'s passive cache read — a stale
      * cache is likely right after an indoor visit, where it can wrongly fail auto check-in's
-     * staleness check (issue #43). Returns null if no fix arrives within [timeoutMillis].
+     * fresh-fix confirmation (issue #43; since #82 the only source that check trusts). Returns
+     * null if no fix arrives within [timeoutMillis].
      */
     suspend fun freshLocation(context: Context, timeoutMillis: Long = FRESH_LOCATION_TIMEOUT_MILLIS): LatLon? {
         if (!hasPermission(context)) return null

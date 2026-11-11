@@ -177,7 +177,7 @@
 
     <string name="notification_channel_checkin_name">Check-in reminders</string>
     <string name="notification_channel_checkin_description">Prompts to check in when you\'re near a favorite or want-to-go place</string>
-    <string name="notification_checkin_body">Were you here? Check in at %1$s.</string>
+    <string name="notification_checkin_body">Were you here? Arrival noted at %1$s.</string>
     <string name="notification_checkin_action_check_in">Check in</string>
     <string name="notification_checkin_action_dismiss">Dismiss</string>
     <string name="notification_checked_in_title">Checked in: %1$s</string>

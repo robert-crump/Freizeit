@@ -81,52 +81,45 @@ class GeofenceNotificationSelectionTest {
         assertNull(closestEligibleFavorite(emptyList(), emptySet(), 50.9, 6.9))
     }
 
+    // Fixes ~150 m / ~161 m / ~26 m due north of place_X (1e-5 deg of latitude is ~1.11 m),
+    // mirroring the #82 phone log: two prompts from a spot near place_X, one real visit.
+
     @Test
-    fun `location well within the radius is not stale`() {
-        val stale = isNotificationStale(
-            currentLat = 50.9, currentLon = 6.9, accuracyMeters = 10f,
-            poiLat = 50.9001, poiLon = 6.9, radiusMeters = 200.0
-        )
-        assertEquals(false, stale)
+    fun `a precise fix 150 m away is inside the geofence but not confirmed`() {
+        assertEquals(false, isWithinConfirmRadius(50.901349, 6.9, poiLat = 50.9, poiLon = 6.9))
     }
 
     @Test
-    fun `location well beyond the radius plus accuracy is stale`() {
-        val stale = isNotificationStale(
-            currentLat = 50.9, currentLon = 6.9, accuracyMeters = 10f,
-            poiLat = 50.95, poiLon = 6.9, radiusMeters = 200.0
-        )
-        assertEquals(true, stale)
+    fun `a poor fix 161 m away is not confirmed - accuracy no longer pads the radius`() {
+        assertEquals(false, isWithinConfirmRadius(50.901448, 6.9, poiLat = 50.9, poiLon = 6.9))
     }
 
     @Test
-    fun `accuracy buffer forgives a fix just past the bare radius`() {
-        // ~210m away: past the 200m radius alone, but within radius + 50m accuracy.
-        val stale = isNotificationStale(
-            currentLat = 50.9, currentLon = 6.9, accuracyMeters = 50f,
-            poiLat = 50.9019, poiLon = 6.9, radiusMeters = 200.0
-        )
-        assertEquals(false, stale)
+    fun `a fix 26 m away is confirmed`() {
+        assertEquals(true, isWithinConfirmRadius(50.900234, 6.9, poiLat = 50.9, poiLon = 6.9))
     }
 
     @Test
-    fun `null or non-positive accuracy adds no buffer`() {
-        val stale = isNotificationStale(
-            currentLat = 50.9, currentLon = 6.9, accuracyMeters = null,
-            poiLat = 50.9019, poiLon = 6.9, radiusMeters = 200.0
-        )
-        assertEquals(true, stale)
+    fun `the confirm radius is well inside the geofence radius`() {
+        assertEquals(true, CHECKIN_CONFIRM_RADIUS_METERS <= GEOFENCE_RADIUS_METERS / 2)
     }
 
     @Test
-    fun `a fix 290 m from a favorite is outside its geofence radius`() {
-        // ~290 m away with a precise fix. With the geofence riding on the 500 m "Favorites
-        // nearby" radius this passed and prompted.
-        val stale = isNotificationStale(
-            currentLat = 50.9, currentLon = 6.9, accuracyMeters = 13f,
-            poiLat = 50.9026, poiLon = 6.9, radiusMeters = GEOFENCE_RADIUS_METERS
-        )
-        assertEquals(true, stale)
+    fun `a fix 290 m from a favorite is not confirmed`() {
+        // With the geofence riding on the 500 m "Favorites nearby" radius this passed and prompted.
+        assertEquals(false, isWithinConfirmRadius(50.9026, 6.9, poiLat = 50.9, poiLon = 6.9))
+    }
+
+    @Test
+    fun `arrival is the dwell fix time minus the loitering delay`() {
+        val dwell = millisAt("2026-11-10T08:28:00+01:00")
+        assertEquals(millisAt("2026-11-10T08:13:00+01:00"), arrivalTime(dwellFixTimeMillis = dwell, nowMillis = dwell + 60_000L))
+    }
+
+    @Test
+    fun `arrival falls back to now when the dwell fix has no time`() {
+        val now = millisAt("2026-11-10T08:30:00+01:00")
+        assertEquals(millisAt("2026-11-10T08:15:00+01:00"), arrivalTime(dwellFixTimeMillis = 0L, nowMillis = now))
     }
 
     @Test

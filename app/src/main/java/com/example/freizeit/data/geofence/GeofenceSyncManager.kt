@@ -16,6 +16,7 @@ import com.example.freizeit.data.entity.Poi
 import com.example.freizeit.data.repository.GeofenceStateRepository
 import com.example.freizeit.data.repository.findPoiById
 import com.example.freizeit.util.AutoCheckInPermissions
+import com.example.freizeit.util.GEOFENCE_LOITERING_DELAY_MILLIS
 import com.example.freizeit.util.GEOFENCE_RADIUS_METERS
 import com.example.freizeit.util.GeofenceEventLog
 import com.example.freizeit.util.effectiveRegisteredIds
@@ -34,7 +35,7 @@ import kotlinx.coroutines.tasks.await
  * "favorites" below means whichever of them are covered, and the 100-cap spans both. One circular geofence of
  * [GEOFENCE_RADIUS_METERS] per favorite.
  *
- * Each geofence also carries a [LOITERING_DELAY_MILLIS] DWELL trigger: passing by a favorite
+ * Each geofence also carries a [GEOFENCE_LOITERING_DELAY_MILLIS] DWELL trigger: passing by a favorite
  * (ENTER/EXIT with no DWELL in between) never prompts a check-in, only staying continuously for
  * the full delay does. ENTER/EXIT are still registered so [GeofenceBroadcastReceiver] can track
  * dwelling state, but only DWELL drives the notification.
@@ -246,7 +247,7 @@ class GeofenceSyncManager(
                     Geofence.GEOFENCE_TRANSITION_EXIT or
                     Geofence.GEOFENCE_TRANSITION_DWELL
             )
-            .setLoiteringDelay(LOITERING_DELAY_MILLIS)
+            .setLoiteringDelay(GEOFENCE_LOITERING_DELAY_MILLIS.toInt())
             .setNotificationResponsiveness(NOTIFICATION_RESPONSIVENESS_MILLIS)
             .build()
 
@@ -281,13 +282,6 @@ class GeofenceSyncManager(
         private const val GEOFENCE_PENDING_INTENT_REQUEST_CODE = 1
         /** Play Services' hard per-app cap on simultaneously active geofences. */
         private const val MAX_GEOFENCES = 100
-
-        /**
-         * How long a device must stay continuously inside a geofence before DWELL fires — the
-         * "staying" side of the passing-by-vs-staying distinction. The same in debug builds:
-         * the debug build is used day to day, and a short debug delay prompted on every walk-by.
-         */
-        private const val LOITERING_DELAY_MILLIS = 15 * 60 * 1000
 
         /**
          * Delays Play Services' transition reporting by this much to smooth over GPS jitter at

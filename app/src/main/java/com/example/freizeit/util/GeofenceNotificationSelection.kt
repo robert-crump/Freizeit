@@ -4,7 +4,8 @@ import java.time.Instant
 import java.time.ZoneId
 
 /**
- * Radius of each auto check-in geofence, and of the staleness check that backs it up. Deliberately
+ * Radius of each auto check-in geofence; the fresh-fix check behind it uses the tighter
+ * [CHECKIN_CONFIRM_RADIUS_METERS] (#82). Deliberately
  * its own constant, not the check-in tab's "Favorites nearby" radius: that one grew to 500 m in
  * #78, which silently grew the geofences too and put home inside a nearby favorite's circle, so
  * coming home prompted a check-in there.
@@ -41,24 +42,43 @@ fun closestEligibleFavorite(
         .minByOrNull { GeoDistance.metersBetween(triggerLat, triggerLon, it.lat, it.lon) }
 
 /**
- * True when [currentLat]/[currentLon] (a last-known location fix, taken at DWELL-broadcast
- * receipt time) is far enough from the favorite that the DWELL report — Play Services can delay
- * delivery well past its requested responsiveness under Doze/standby batching (issue #42) — no
- * longer reflects where the device actually is. [accuracyMeters] pads the radius so ordinary GPS
- * jitter right at the boundary doesn't false-positive; a null/non-positive accuracy adds no pad.
+ * How close a fresh fix must put the device to a favorite before its DWELL may prompt (#82).
+ * Tighter than [GEOFENCE_RADIUS_METERS] on purpose: the fence stays wide so Play Services' coarse
+ * detection doesn't miss real visits, and this check weeds out spots that merely sit inside the
+ * circle — e.g. a place passed every morning ~150 m from a favorite, with an 18 m accurate fix.
  */
-fun isNotificationStale(
+const val CHECKIN_CONFIRM_RADIUS_METERS = 100.0
+
+/**
+ * How long the device has to stay continuously inside a geofence before Play Services reports
+ * DWELL — the "staying" side of passing-by-vs-staying. The same in debug builds: the debug build
+ * is used day to day, and a short debug delay prompted on every walk-by. Its start is the arrival
+ * a prompt shows and its Check in logs (#82).
+ */
+const val GEOFENCE_LOITERING_DELAY_MILLIS = 15 * 60 * 1000L
+
+/**
+ * True when a fresh fix ([currentLat]/[currentLon], taken on DWELL receipt) is within
+ * [radiusMeters] of the favorite — the gate every prompt has to pass (#82). It also catches DWELL
+ * broadcasts Play Services delivered late under Doze batching, once the device has moved on
+ * (#42). No accuracy padding: a poor fix makes it stricter, never more lenient. A ±100 m fix 26 m
+ * from the place still passes, while padding would have let a ±56 m fix 161 m away through.
+ */
+fun isWithinConfirmRadius(
     currentLat: Double,
     currentLon: Double,
-    accuracyMeters: Float?,
     poiLat: Double,
     poiLon: Double,
-    radiusMeters: Double
-): Boolean {
-    val pad = accuracyMeters?.takeIf { it > 0f } ?: 0f
-    val distance = GeoDistance.metersBetween(currentLat, currentLon, poiLat, poiLon)
-    return distance > radiusMeters + pad
-}
+    radiusMeters: Double = CHECKIN_CONFIRM_RADIUS_METERS
+): Boolean = GeoDistance.metersBetween(currentLat, currentLon, poiLat, poiLon) <= radiusMeters
+
+/**
+ * When the device entered the geofence (#82): the start of the loitering clock that ended with a
+ * DWELL decided at [dwellFixTimeMillis] (the triggering location's time, not the possibly late
+ * broadcast's). Falls back to [nowMillis] when the fix carries no time.
+ */
+fun arrivalTime(dwellFixTimeMillis: Long, nowMillis: Long): Long =
+    (dwellFixTimeMillis.takeIf { it > 0L } ?: nowMillis) - GEOFENCE_LOITERING_DELAY_MILLIS
 
 /**
  * Favorites whose check-in notification was already posted today (issue #80) and so stay quiet

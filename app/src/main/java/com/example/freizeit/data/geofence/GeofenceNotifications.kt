@@ -46,15 +46,16 @@ object GeofenceNotifications {
     }
 
     /**
-     * Posts the prompt for [poi] at [postedAt], the time a Check in from it logs (#81) however
-     * late it's pressed. False when notifications are off and nothing was shown.
+     * Posts the prompt for [poi] at [postedAt]. Its text shows [arrivedAt], when the device
+     * entered the geofence, and a Check in from it logs that time however late it's pressed
+     * (#82). False when notifications are off and nothing was shown.
      */
-    fun showPrompt(context: Context, poi: Poi, postedAt: Long): Boolean {
+    fun showPrompt(context: Context, poi: Poi, postedAt: Long, arrivedAt: Long): Boolean {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return false
 
         val checkIn = receiverIntent(context, GeofenceBroadcastReceiver.ACTION_CHECK_IN, poi.id)
-            .putExtra(GeofenceBroadcastReceiver.EXTRA_POSTED_AT, postedAt)
+            .putExtra(GeofenceBroadcastReceiver.EXTRA_ARRIVED_AT, arrivedAt)
         val dismiss = receiverIntent(context, GeofenceBroadcastReceiver.ACTION_DISMISS, poi.id)
         val openOnMap = PendingIntent.getActivity(
             context,
@@ -70,7 +71,7 @@ object GeofenceNotifications {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_checkin)
             .setContentTitle(placeName(context, poi.name))
-            .setContentText(context.getString(R.string.notification_checkin_body, formatTime(context, postedAt)))
+            .setContentText(context.getString(R.string.notification_checkin_body, formatTime(context, arrivedAt)))
             .setWhen(postedAt)
             .setShowWhen(true)
             .setContentIntent(openOnMap)
